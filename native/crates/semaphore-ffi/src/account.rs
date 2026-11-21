@@ -79,6 +79,7 @@ pub struct Appearance {
     pub base: Rgb,
     pub match_system: bool,
     pub new_design: bool,
+    pub base_colour_settings: bool,
 }
 
 #[uniffi::remote(Record)]

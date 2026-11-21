@@ -277,7 +277,8 @@ fn text_on_the_old_names_stays_readable_for_every_base() {
             t(sem.snackbar_bg),
             4.5,
         );
-        check("tooltip text", t(sem.text_primary), t(sem.tooltip_bg), 4.5);
+        // What `Tip`, the player's card tip and the reaction tooltip draw.
+        check("tooltip text", t(sem.tooltip_text), t(sem.tooltip_bg), 4.5);
         check("on error", p.error_contrast_text, p.error_main, 4.5);
         check("on warning", p.warning_contrast_text, p.warning_main, 4.5);
         check("on success", p.success_contrast_text, p.success_main, 4.5);
@@ -292,37 +293,164 @@ fn text_on_the_old_names_stays_readable_for_every_base() {
     }
 }
 
-/// `text` as the UTF-16BE a TrueType name table stores for the Windows platform.
-fn utf16be(text: &str) -> Vec<u8> {
-    text.encode_utf16().flat_map(u16::to_be_bytes).collect()
+/// The Windows-platform (3) English (0x409) record `name_id` of a TrueType file's name table,
+/// decoded from UTF-16BE.
+fn font_name(bytes: &[u8], name_id: u16) -> Option<String> {
+    let u16_at = |at: usize| u16::from_be_bytes([bytes[at], bytes[at + 1]]);
+    let u32_at =
+        |at: usize| u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
+    let tables = usize::from(u16_at(4));
+    let name = (0..tables)
+        .map(|index| 12 + index * 16)
+        .find(|record| &bytes[*record..*record + 4] == b"name")?;
+    let table = u32_at(name + 8) as usize;
+    let count = usize::from(u16_at(table + 2));
+    let strings = table + usize::from(u16_at(table + 4));
+    (0..count)
+        .map(|index| table + 6 + index * 12)
+        .find_map(|record| {
+            let (platform, language, id) = (u16_at(record), u16_at(record + 4), u16_at(record + 6));
+            if platform != 3 || language != 0x409 || id != name_id {
+                return None;
+            }
+            let length = usize::from(u16_at(record + 8));
+            let start = strings + usize::from(u16_at(record + 10));
+            let units: Vec<u16> = bytes[start..start + length]
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| u16::from_be_bytes(*pair))
+                .collect();
+            String::from_utf16(&units).ok()
+        })
 }
 
 #[test]
 fn the_bundled_fonts_are_truetype_named_as_the_tokens() {
-    // The test platform's text system registers nothing, so this checks the files GPUI is handed:
-    // TrueType, with the family name GPUI looks up (`font.body` and `font.heading`).
+    // The test platform's text system registers nothing, so this reads the files GPUI is handed:
+    // TrueType, with the family GPUI looks up (`font.body`, `font.heading`) in name IDs 1 and 16,
+    // exactly, and the style in 2 and 17.
     assert_eq!(FONT_FAMILY, "Figtree");
     assert_eq!(HEADING_FONT_FAMILY, "Bricolage Grotesque");
-    let families = [
-        FONT_FAMILY,
-        FONT_FAMILY,
-        FONT_FAMILY,
-        FONT_FAMILY,
-        HEADING_FONT_FAMILY,
-        HEADING_FONT_FAMILY,
+    let faces = [
+        (FONT_FAMILY, "Regular", "Regular"),
+        (FONT_FAMILY, "Italic", "Italic"),
+        (FONT_FAMILY, "Regular", "Medium"),
+        (FONT_FAMILY, "Regular", "SemiBold"),
+        (HEADING_FONT_FAMILY, "Regular", "SemiBold"),
+        (HEADING_FONT_FAMILY, "Bold", "Bold"),
     ];
-    for (index, (bytes, family)) in FONTS.iter().zip(families).enumerate() {
+    for (index, (bytes, (family, subfamily, style))) in FONTS.iter().zip(faces).enumerate() {
         assert_eq!(bytes[..4], [0, 1, 0, 0], "font {index} is not TrueType");
-        let name = utf16be(family);
-        assert!(
-            bytes.windows(name.len()).any(|window| window == name),
-            "font {index} is not named {family}"
+        assert_eq!(
+            font_name(bytes, 1).as_deref(),
+            Some(family),
+            "font {index}: name ID 1"
         );
-        // fontsource's instance names must not survive: GPUI would file the face under them.
-        let wrong = utf16be(&format!("{family} Light"));
-        assert!(
-            !bytes.windows(wrong.len()).any(|window| window == wrong),
-            "font {index} still carries an instance name"
+        assert_eq!(
+            font_name(bytes, 16).as_deref(),
+            Some(family),
+            "font {index}: name ID 16"
         );
+        assert_eq!(
+            font_name(bytes, 2).as_deref(),
+            Some(subfamily),
+            "font {index}: name ID 2"
+        );
+        assert_eq!(
+            font_name(bytes, 17).as_deref(),
+            Some(style),
+            "font {index}: name ID 17"
+        );
+    }
+}
+
+#[test]
+fn a_window_appearance_maps_to_a_mode() {
+    // GPUI's Linux platform (patched, `third_party/patches/gpui-pre-linux.patch`) reports Dark when
+    // the Settings portal is missing or has no preference, so "Match system" gives dark there.
+    assert_eq!(mode_of(WindowAppearance::Dark), Mode::Dark);
+    assert_eq!(mode_of(WindowAppearance::VibrantDark), Mode::Dark);
+    assert_eq!(mode_of(WindowAppearance::Light), Mode::Light);
+    assert_eq!(mode_of(WindowAppearance::VibrantLight), Mode::Light);
+}
+
+#[test]
+fn every_preset_draws_its_on_colours_readably() {
+    // Each pairing a kit piece or an old screen draws on a role, for every colour the Appearance
+    // tab offers, in both modes and all intensities: 4.5:1 for text, 3:1 for icons.
+    for (base, name) in crate::settings::base_presets() {
+        let packed = Token(
+            u32::from(base.r) << 24 | u32::from(base.g) << 16 | u32::from(base.b) << 8 | 0xff,
+        );
+        for mode in Mode::ALL {
+            for intensity in Intensity::ALL {
+                let sem = Sem::new(ThemeInput::new(packed, mode, intensity));
+                let p = sem.palette;
+                let t = token_of;
+                let check = |what: &str, ink: Token, on: Token, target: f32| {
+                    let ratio = contrast_ratio(ink, on);
+                    assert!(
+                        ratio >= target,
+                        "{name} {mode:?} {intensity:?}: {what} is {ratio:.2}:1, need {target}:1"
+                    );
+                };
+                // Text.
+                check(
+                    "pinned-count digit on the accent",
+                    t(sem.primary_contrast),
+                    t(sem.primary),
+                    4.5,
+                );
+                check(
+                    "error count on danger",
+                    p.error_contrast_text,
+                    p.error_main,
+                    4.5,
+                );
+                check(
+                    "avatar initials on fill",
+                    t(sem.role.text),
+                    t(sem.role.fill),
+                    4.5,
+                );
+                check("tooltip text", t(sem.tooltip_text), t(sem.tooltip_bg), 4.5);
+                for (surface, on) in [("surface", sem.roles.surface), ("ground", sem.roles.ground)]
+                {
+                    check(&format!("accent text on {surface}"), t(sem.link), on, 4.5);
+                    check(
+                        &format!("accent text on a selected row on {surface}"),
+                        t(sem.link),
+                        over(sem.list_selected, on),
+                        4.5,
+                    );
+                }
+                // Icons.
+                check(
+                    "muted icon on danger",
+                    p.error_contrast_text,
+                    p.error_main,
+                    3.0,
+                );
+                check(
+                    "voice icon on positive",
+                    p.success_contrast_text,
+                    p.success_main,
+                    3.0,
+                );
+                check(
+                    "unread kind icon on the accent",
+                    t(sem.primary_contrast),
+                    t(sem.primary),
+                    3.0,
+                );
+                check(
+                    "read kind icon on fill",
+                    t(sem.text_secondary),
+                    t(sem.chip_bg),
+                    3.0,
+                );
+            }
+        }
     }
 }

@@ -141,6 +141,7 @@ fn appearance_view(
             base: accent.primary(),
             match_system: false,
             new_design: false,
+            base_colour_settings: true,
         },
     }
 }
@@ -491,6 +492,13 @@ pub fn stories() -> Vec<Story> {
             let mut view =
                 appearance_view(ThemeMode::Dark, AccentColor::Rose, ThemeIntensity::Vibrant);
             view.appearance.base = semaphore_core::model::Rgb::parse("#e0457b").expect("a colour");
+            appearance_story(view, cx)
+        }),
+        // A server older than the base colour (below v0.11.0): the accents' colours, no "Match system".
+        Story::new("settings-appearance-older-server", |_, _, cx| {
+            let mut view =
+                appearance_view(ThemeMode::Dark, AccentColor::Blue, ThemeIntensity::Minimal);
+            view.appearance.base_colour_settings = false;
             appearance_story(view, cx)
         }),
         Story::new("settings-appearance-loading", |_, _, cx| {

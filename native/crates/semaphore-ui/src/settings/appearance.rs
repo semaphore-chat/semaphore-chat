@@ -31,6 +31,16 @@ pub fn base_presets() -> Vec<(Rgb, &'static str)> {
     presets
 }
 
+/// The colours offered for `appearance`'s server: every preset, or, on a server without the base
+/// colour (below v0.11.0), the accents' primaries only, as that server keeps only a named accent.
+pub fn presets_for(appearance: Appearance) -> Vec<(Rgb, &'static str)> {
+    let mut presets = base_presets();
+    if !appearance.base_colour_settings {
+        presets.retain(|(base, _)| AccentColor::ALL.iter().any(|a| a.primary() == *base));
+    }
+    presets
+}
+
 /// The three modes the tab offers: `matchSystem` is the third.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ModeChoice {
@@ -146,13 +156,19 @@ impl AppearanceSettings {
             ModeChoice::Light
         };
         let mode_send = send.clone();
-        let mode = section("Theme Mode", cx).child(segmented(
-            "appearance-mode",
+        // "Match system" only where the server stores it (v0.11.0 on).
+        let modes: &[(ModeChoice, &'static str)] = if appearance.base_colour_settings {
             &[
                 (ModeChoice::Light, "Light"),
                 (ModeChoice::Dark, "Dark"),
                 (ModeChoice::System, "Match system"),
-            ],
+            ]
+        } else {
+            &[(ModeChoice::Light, "Light"), (ModeChoice::Dark, "Dark")]
+        };
+        let mode = section("Theme Mode", cx).child(segmented(
+            "appearance-mode",
+            modes,
             chosen_mode,
             move |choice, _, cx| {
                 let patch = match choice {
@@ -176,7 +192,7 @@ impl AppearanceSettings {
 
         let effective = theme_input(appearance, system);
         let ring = sem.text_primary;
-        let swatches = base_presets().into_iter().map(|(base, name)| {
+        let swatches = presets_for(appearance).into_iter().map(|(base, name)| {
             let send = send.clone();
             // The accent the base gives in the current mode and intensity: what the user gets.
             let tile = Sem::new(theme_input(Appearance { base, ..appearance }, system));

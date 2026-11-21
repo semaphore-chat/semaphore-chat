@@ -23,7 +23,8 @@ it and redraws every window, so a change in Appearance shows at once, with no re
 |---|---|
 | First start, signed out | the design default: `#8e75ff`, dark, minimal |
 | Later starts, before the server answers | the last one shown (`settings.json` `theme`, `ThemeInput::name`) |
-| Signed in | the server's appearance settings: `baseColor`, `themeMode`, `intensity`; with `matchSystem` on, the operating system's light or dark setting instead of `themeMode` (followed live) |
+| Signed in | the server's appearance settings: `baseColor`, `themeMode`, `intensity`; with `matchSystem` on, the operating system's light or dark setting instead of `themeMode` (followed live). On Linux that comes from the Settings portal; without one (a bare Hyprland or sway), or with no preference set, it is dark |
+| Signed in to a server below v0.11.0 | it stores no `baseColor` or `matchSystem`: the tab offers the accents' colours only and no "Match system", and a pick sends the base with its nearest `accentColor`, which that server keeps |
 
 `ThemeInput::name` is `<mode>-<intensity>-<rrggbb>`, for example `dark-minimal-8e75ff`. `parse`
 also reads the old `<mode>-<accent>-<intensity>` names (`dark-teal-minimal`), with that accent's
@@ -40,11 +41,11 @@ the colour at that alpha, drawn over whatever is underneath. "Mix" is opaque, as
 |---|---|
 | `background_default`, `body` | `ground` |
 | `paper`, `drawer`, `app_bar`, `palette.background_paper` | `surface` |
-| `chip_bg`, `snackbar_bg`, `tooltip_bg`, `action_disabled_bg` | `fill` |
+| `chip_bg`, `snackbar_bg`, `action_disabled_bg` | `fill` |
 | `divider`, `paper_border`, `card_border`, `outlined_border`, `input_border`, `progress_track`, `snackbar_border` | `hairline` |
-| `text_primary`, `app_bar_text`, `chip_text`, `snackbar_text` | `text` |
+| `text_primary`, `app_bar_text`, `chip_text`, `snackbar_text`, `tooltip_bg` | `text` |
 | `text_secondary`, `action_active` | `textSecondary` |
-| `text_disabled`, `action_disabled`, `palette.grey_400/500/600` | `textDim` |
+| `text_disabled`, `action_disabled`, `palette.grey_400/500/600` | `textDim` (the avatar fallback draws `text` on `fill` instead) |
 | `primary`, `contained`, `control_on`, `progress_bar`, `outlined_hover_border`, `info`, `palette.secondary_main`, `palette.info_main` | `accent` |
 | `primary_contrast`, `palette.secondary_contrast_text`, `palette.info_contrast_text` | `onAccent` |
 | `link`, `link_hover`, `outlined_text`, `tab_selected`, `palette.primary_light` | `accentText` |
@@ -65,7 +66,7 @@ the colour at that alpha, drawn over whatever is underneath. "Mix" is opaque, as
 | `list_selected_border` | `border.selected` (2 px) |
 | `chip_border` | none |
 | `body_band` | 0 (no gradient band) |
-| `palette.common_white` | `#ffffff` (MUI's constant) |
+| `tooltip_text` | `ground` (the tooltip is inverted, as the web kit's Tooltip) |
 
 `theme/tests.rs` checks every row and that text stays readable on each one, for a sweep of
 bases in both modes and all three intensities.

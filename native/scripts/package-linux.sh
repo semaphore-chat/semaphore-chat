@@ -366,6 +366,10 @@ EOF
     echo "Material Icons licence (MIT)"
     echo "----------------------------"
     cat "$NATIVE_DIR/crates/semaphore-design/assets/icons/LICENSE"
+    echo
+    echo "Lucide licence (ISC)"
+    echo "--------------------"
+    cat "$NATIVE_DIR/../design/icons/LICENSE"
   } >"$out"
 }
 

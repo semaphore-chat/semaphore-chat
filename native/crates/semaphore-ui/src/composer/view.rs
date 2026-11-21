@@ -1104,7 +1104,7 @@ impl Composer {
                                 .child(
                                     div()
                                         .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(p.primary)
+                                        .text_color(p.link)
                                         .child(reply.author_name.clone()),
                                 ),
                         )

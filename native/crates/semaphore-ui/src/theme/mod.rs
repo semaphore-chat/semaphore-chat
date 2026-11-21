@@ -190,7 +190,6 @@ impl Roles {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LegacyPalette {
     pub background_paper: Token,
-    pub common_white: Token,
     pub primary_light: Token,
     pub secondary_main: Token,
     pub secondary_contrast_text: Token,
@@ -222,7 +221,6 @@ impl LegacyPalette {
         };
         Self {
             background_paper: p.surface,
-            common_white: Token(0xffffffff),
             primary_light: p.accent_text,
             secondary_main: p.accent,
             secondary_contrast_text: p.on_accent,
@@ -289,7 +287,9 @@ pub struct Sem {
     pub snackbar_bg: Hsla,
     pub snackbar_text: Hsla,
     pub snackbar_border: Hsla,
+    /// The kit's Tooltip, as the web's: the `text` role as the fill, `ground` as its text.
     pub tooltip_bg: Hsla,
+    pub tooltip_text: Hsla,
     pub body: Paint,
     pub body_band: Pixels,
 
@@ -373,7 +373,8 @@ impl Sem {
             snackbar_bg: r.fill,
             snackbar_text: r.text,
             snackbar_border: r.hairline,
-            tooltip_bg: r.fill,
+            tooltip_bg: r.text,
+            tooltip_text: r.ground,
             body: Paint::Solid(r.ground),
             body_band: px(0.),
 

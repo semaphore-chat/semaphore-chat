@@ -882,6 +882,52 @@ fn each_appearance_pick_goes_out_at_once(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn an_older_server_gets_the_accents_and_no_match_system(cx: &mut TestAppContext) {
+    let older = Appearance {
+        base_colour_settings: false,
+        base: AccentColor::Teal.primary(),
+        accent: AccentColor::Teal,
+        ..Appearance::default()
+    };
+    let rig = rig(cx, 900., move |_, cx| {
+        let mut settings = AppearanceSettings::new(cx);
+        settings.set_view(
+            AppearanceView {
+                state: LoadState::Ready,
+                appearance: older,
+            },
+            cx,
+        );
+        settings
+    });
+    assert!(rig.has(cx, "appearance-mode-dark"));
+    assert!(!rig.has(cx, "appearance-mode-match-system"));
+    assert!(!rig.has(cx, "appearance-base-8e75ff"));
+    rig.click(cx, "appearance-base-3b82f6");
+    assert_eq!(
+        rig.events(),
+        [AppearanceEvent::Update(AppearancePatch {
+            base: Some(AccentColor::Blue.primary()),
+            ..AppearancePatch::default()
+        })]
+    );
+}
+
+#[test]
+fn presets_on_an_older_server_are_the_accents() {
+    let older = Appearance {
+        base_colour_settings: false,
+        ..Appearance::default()
+    };
+    let presets = presets_for(older);
+    assert_eq!(presets.len(), 12);
+    for accent in AccentColor::ALL {
+        assert!(presets.iter().any(|(base, _)| *base == accent.primary()));
+    }
+    assert_eq!(presets_for(Appearance::default()), base_presets());
+}
+
+#[gpui_kit::test]
 fn failed_appearance_offers_a_retry(cx: &mut TestAppContext) {
     let rig = appearance(cx, failed());
     assert!(!rig.has(cx, "appearance-mode-dark"));

@@ -69,6 +69,7 @@ pub struct Palette {
     pub overlay_medium: Hsla,
     pub overlay_heavy: Hsla,
     pub primary: Hsla,
+    /// Accent-coloured text: the `accentText` role.
     pub primary_light: Hsla,
     pub positive: Hsla,
     pub warning: Hsla,
@@ -76,6 +77,9 @@ pub struct Palette {
     pub avatar_bg: Hsla,
     pub skeleton: Hsla,
     pub selection: Hsla,
+    /// The theme's tooltip pair (`Sem::tooltip_bg`, `Sem::tooltip_text`).
+    pub tip_bg: Hsla,
+    pub tip_text: Hsla,
 }
 
 impl Palette {
@@ -107,6 +111,8 @@ impl Palette {
                 a: 0.35,
                 ..sem.primary
             },
+            tip_bg: sem.tooltip_bg,
+            tip_text: sem.tooltip_text,
         }
     }
 
@@ -114,11 +120,8 @@ impl Palette {
         Hsla { a, ..color }
     }
 
-    /// MUI's tooltip: grey 700 at 92%, in both modes. White text sits on it in every theme, so it
-    /// stays fixed until the list's tooltips move to the kit's (epic #848, B4).
+    /// The reaction tooltip's fill: the theme's tooltip.
     pub fn tooltip_bg(&self) -> Hsla {
-        let mut color: Hsla = rgb(0x616161).into();
-        color.a = 0.92;
-        color
+        self.tip_bg
     }
 }

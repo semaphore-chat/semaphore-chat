@@ -92,7 +92,7 @@ fn skeleton(id: &'static str, label: &'static str) -> AnyElement {
 fn count_chip(label: String, error: bool, cx: &App) -> impl IntoElement + use<> {
     let sem = cx.sem();
     let (bg, fg) = if error {
-        (sem.error, hsla_of(sem.palette.common_white))
+        (sem.error, hsla_of(sem.palette.error_contrast_text))
     } else {
         (sem.primary, sem.primary_contrast)
     };
@@ -418,7 +418,7 @@ impl HomeScreen {
             icon_face(
                 DesignIcon::VolumeUp,
                 sem.success,
-                hsla_of(sem.palette.common_white),
+                hsla_of(sem.palette.success_contrast_text),
             ),
             channel.channel_name.clone(),
             format!("{} · {names}", channel.community_name),

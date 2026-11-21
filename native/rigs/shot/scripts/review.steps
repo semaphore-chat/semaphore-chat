@@ -104,5 +104,5 @@ story kit-gallery 1440 1100 dark-rose-vibrant
 shot kit-gallery-desktop-vibrant
 story kit-gallery 390 1500 dark-blue-balanced
 shot kit-gallery-phone-dark
-story theme-swatches 1440 900 dark-teal-minimal
-shot theme-swatches
+story theme-roles 1440 900 dark-teal-minimal
+shot theme-roles

@@ -28,7 +28,7 @@ pub(crate) mod stories;
 mod tests;
 mod voice;
 
-pub use appearance::{accent_name, base_presets, theme_input};
+pub use appearance::{accent_name, base_presets, presets_for, theme_input};
 pub use camera_test::{CameraTestEvent, CameraTestState};
 pub use key_capture::{Capture, ptt_key_from, ptt_key_label};
 pub use sessions::{session_details, session_device_name};

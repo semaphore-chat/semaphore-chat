@@ -35,6 +35,8 @@ pub struct Palette {
     pub icon_disabled: Hsla,
     pub primary: Hsla,
     pub primary_hover: Hsla,
+    /// Accent-coloured text: the `accentText` role.
+    pub link: Hsla,
     pub warning: Hsla,
     pub success: Hsla,
     pub error: Hsla,
@@ -67,6 +69,7 @@ impl Palette {
             icon_disabled: sem.action_disabled,
             primary: sem.primary,
             primary_hover: sem.icon_button_hover,
+            link: sem.link,
             warning: sem.warning,
             success: sem.success,
             error: sem.error,

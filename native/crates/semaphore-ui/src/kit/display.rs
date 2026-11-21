@@ -155,16 +155,9 @@ impl Avatar {
 impl RenderOnce for Avatar {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let sem = cx.sem();
-        // MUI's fallback: grey[400] in light mode, grey[600] in dark.
-        let fallback = hsla_of(if sem.is_dark {
-            sem.palette.grey_600
-        } else {
-            sem.palette.grey_400
-        });
-        let background = self.background.unwrap_or(fallback);
-        let foreground = self
-            .foreground
-            .unwrap_or_else(|| hsla_of(sem.palette.common_white));
+        // No colour given: initials in the `text` role on the `fill` role.
+        let background = self.background.unwrap_or(sem.role.fill);
+        let foreground = self.foreground.unwrap_or(sem.role.text);
         // As the fixture's SVG avatars and the rail's `fontSize` do: 40% of the side.
         let font_size = self.font_size.unwrap_or((self.size * 0.4).round());
         let file = self.file.as_ref().and_then(|file_id| {

@@ -235,6 +235,10 @@ pub struct Appearance {
     pub match_system: bool,
     /// `newDesign`: the new design, stored here for the UI that will use it.
     pub new_design: bool,
+    /// The server stores `baseColor` and `matchSystem` (v0.11.0 on). An older one (down to the
+    /// contract's floor, v0.8.0) sends neither and drops both from an update: it keeps only the
+    /// named accent, so the UI offers the accents' colours there and no "Match system".
+    pub base_colour_settings: bool,
 }
 
 impl Default for Appearance {
@@ -246,6 +250,7 @@ impl Default for Appearance {
             base: DEFAULT_BASE,
             match_system: false,
             new_design: false,
+            base_colour_settings: true,
         }
     }
 }
