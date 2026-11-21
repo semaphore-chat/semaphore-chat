@@ -525,11 +525,14 @@ pub(crate) fn start_replay(inner: &Inner, channel_id: &str) -> Result<Value, Ref
     reconcile_v08_zombies(inner);
     let now = inner.now();
     let mut calls = lock(&inner.calls);
-    // v0.8: the start stops the previous session first, and that stop fails the start.
-    if calls
-        .active_session_mut()
-        .is_some_and(|active| active.egress_ended_at.is_some())
+    // v0.8: the start stops the previous session first, and that stop fails the start when the
+    // egress is already ending (in `replay_egress_ending` mode, a start on an active session
+    // finds it so: the stop marks it ending and the row stays active).
+    let ending = calls.egress_ending;
+    if let Some(active) = calls.active_session_mut()
+        && (ending || active.egress_ended_at.is_some())
     {
+        active.egress_ended_at.get_or_insert(now);
         return Err(refuse(400, "BAD_REQUEST", V08_STOP_FAILED));
     }
     if let Some(active) = calls.active_session_mut() {

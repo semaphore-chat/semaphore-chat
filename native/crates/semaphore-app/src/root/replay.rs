@@ -792,11 +792,18 @@ impl AppRoot {
         };
         let delay = Duration::from_millis(at.saturating_sub(self.config.clock.now_ms()));
         let core = Arc::downgrade(core);
-        let timer = cx.spawn(async move |_, cx| {
+        let timer = cx.spawn(async move |this, cx| {
             cx.background_executor().timer(delay).await;
-            if let Some(core) = core.upgrade() {
-                core.retry_replay();
-            }
+            let Some(core) = core.upgrade() else { return };
+            core.retry_replay();
+            // The core said "too early" (the wall clock stepped back): schedule again.
+            this.update(cx, |root, cx| {
+                if core.voice().replay_retry_at_ms == Some(at) {
+                    root.replay.retry = None;
+                    root.schedule_replay_retry(&core, cx);
+                }
+            })
+            .ok();
         });
         self.replay.retry = Some((at, timer));
     }

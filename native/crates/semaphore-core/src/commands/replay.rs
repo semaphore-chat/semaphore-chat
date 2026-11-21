@@ -156,6 +156,11 @@ impl State {
     }
 }
 
+/// What servers v0.3 to v0.11 answer (400) when a start finds the previous session's egress still
+/// ending: `LivekitReplayService.startReplayBuffer` stops the old row first and throws this when
+/// that stop fails (backend/src/livekit/livekit-replay.service.ts).
+const STOP_WEDGE_MESSAGE: &str = "Could not stop the replay recorder";
+
 impl Core {
     /// The effect `State::w4_replay` queues: tell the server to buffer this call's share.
     pub(crate) async fn start_replay(&self, call: u64) {
@@ -184,9 +189,9 @@ impl Core {
                 })
                 .await
                 .map_err(|error| {
-                    // A 400 may pass: servers before #876 refuse every start for up to a minute
-                    // after a share ends ("Could not stop the replay recorder").
-                    let retry = error.status == 400;
+                    // Only the old servers' stop wedge passes: servers before #876 refuse every
+                    // start for up to a minute after a share ends. Any other 400 fails at once.
+                    let retry = error.status == 400 && error.message.contains(STOP_WEDGE_MESSAGE);
                     (self.backend_failed(error), retry)
                 }),
             Err(error) => Err((error, false)),

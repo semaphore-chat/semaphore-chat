@@ -1283,7 +1283,9 @@ fn now_ms(rig: &Rig) -> u64 {
 }
 
 fn wedged() -> BackendError {
-    refusal(400, "BAD_REQUEST")
+    let mut error = refusal(400, "BAD_REQUEST");
+    error.message = "Could not stop the replay recorder. Please try again.".into();
+    error
 }
 
 /// Moves the clock to the retry time and lets the host's timer fire.
@@ -1361,6 +1363,23 @@ async fn a_replay_start_refused_through_every_retry_shows_the_failure() {
         rig.core.voice().replay
     );
     assert_eq!(rig.core.voice().replay_retry_at_ms, None);
+}
+
+#[tokio::test]
+async fn a_replay_start_refused_for_another_400_fails_at_once() {
+    let mut rig = in_channel_call(&[ME]).await;
+    replay_answers(&rig);
+    let mut error = refusal(400, "BAD_REQUEST");
+    error.message = "Could not start the replay recorder. Please try screen sharing again.".into();
+    rig.backend.w4.fail_next("replay_start", error);
+    share_published(&mut rig, false).await;
+    rig.settle().await;
+    assert!(matches!(
+        rig.core.voice().replay,
+        ReplayState::Failed { .. }
+    ));
+    assert_eq!(rig.core.voice().replay_retry_at_ms, None);
+    assert_eq!(rig.backend.w4.count("replay_start"), 1);
 }
 
 #[tokio::test]
