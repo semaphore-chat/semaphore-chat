@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **Replay recordings now use the intended bitrate.** They were stuck at the encoder default, about 2.4 Mbps, because the bitrate was sent to LiveKit in the wrong unit (bps instead of kbps). (#868)
+- **Replay no longer fails for up to a minute after you stop or switch a screen share.** Stopping a recording whose LiveKit egress had already ended (or was finishing) returned "Could not stop the replay recorder" (400), and the next share's replay then failed to start with the same error until the minute-by-minute cleanup ran. The server now treats LiveKit's "egress with status … cannot be stopped" and "egress does not exist" answers as already stopped. (#876)
 
 ### Upgrade notes
 

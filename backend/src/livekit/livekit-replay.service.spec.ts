@@ -9,12 +9,15 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { LivekitReplayService } from './livekit-replay.service';
+import {
+  LivekitReplayService,
+  isEgressAlreadyEndedError,
+} from './livekit-replay.service';
 import { DatabaseService } from '@/database/database.service';
 import { StorageService } from '@/storage/storage.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { ServerEvents } from '@semaphore-chat/shared';
-import { AudioCodec, EgressStatus } from 'livekit-server-sdk';
+import { AudioCodec, EgressStatus, TwirpError } from 'livekit-server-sdk';
 import { ThumbnailService } from '@/file/thumbnail.service';
 import { MediaDimensionsService } from '@/file/media-dimensions.service';
 import { FfmpegService } from './ffmpeg.service';
@@ -24,6 +27,28 @@ import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
 import { StorageQuotaService } from '@/storage-quota/storage-quota.service';
 import { PermissionsService } from '@/roles/permissions.service';
 import { RbacActions } from '@prisma/client';
+
+/**
+ * What livekit-server-sdk throws for a failed twirp call: `TwirpError(name =
+ * HTTP status text, message = twirp msg, status, code)`. The messages are
+ * livekit-server's (`pkg/service/egress.go`, `pkg/service/errors.go`).
+ */
+const cannotBeStopped = (status: string) =>
+  new TwirpError(
+    'Precondition Failed',
+    `egress with status ${status} cannot be stopped`,
+    412,
+    'failed_precondition',
+  );
+const egressDoesNotExist = () =>
+  new TwirpError('Not Found', 'egress does not exist', 404, 'not_found');
+const requestTimedOut = () =>
+  new TwirpError(
+    'Request Timeout',
+    'request timed out',
+    408,
+    'deadline_exceeded',
+  );
 
 describe('LivekitReplayService', () => {
   let service: LivekitReplayService;
@@ -228,6 +253,75 @@ describe('LivekitReplayService', () => {
       );
     });
 
+    describe('when the previous session is dead or stuck', () => {
+      const oldSession = {
+        id: 'old-session',
+        egressId: 'old-egress-123',
+        userId: 'user-123',
+        status: 'active',
+        segmentPath: 'old-session',
+      };
+
+      beforeEach(() => {
+        databaseService.egressSession.findFirst
+          .mockResolvedValueOnce(oldSession) // startReplayBuffer's check
+          .mockResolvedValueOnce(oldSession); // stopReplayBuffer's lookup
+        databaseService.egressSession.update.mockResolvedValue({
+          ...oldSession,
+          status: 'stopped_by_user',
+        });
+        storageService.deleteSegmentDirectory.mockResolvedValue(undefined);
+      });
+
+      it.each(['EGRESS_ENDING', 'EGRESS_COMPLETE', 'EGRESS_ABORTED'])(
+        'start succeeds when the old egress already ended (%s)',
+        async (status) => {
+          mockEgressClient.stopEgress.mockRejectedValue(
+            cannotBeStopped(status),
+          );
+
+          const result = await service.startReplayBuffer(startParams);
+
+          expect(result.sessionId).toBe('session-1');
+          expect(databaseService.egressSession.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+              where: { id: 'old-session' },
+              data: expect.objectContaining({ status: 'stopped_by_user' }),
+            }),
+          );
+          expect(mockEgressClient.startTrackCompositeEgress).toHaveBeenCalled();
+        },
+      );
+
+      it('start still fails when the old egress is STARTING and its stop times out', async () => {
+        // LiveKit hands back the underlying error for a STARTING/ACTIVE egress
+        mockEgressClient.stopEgress.mockRejectedValue(requestTimedOut());
+
+        await expect(service.startReplayBuffer(startParams)).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(databaseService.egressSession.update).not.toHaveBeenCalled();
+        expect(
+          mockEgressClient.startTrackCompositeEgress,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('start succeeds when the old row is closed between its lookup and the stop', async () => {
+        // The webhook or the reconcile cron closes the row after start sees it but
+        // before stopReplayBuffer looks it up again.
+        databaseService.egressSession.findFirst
+          .mockReset()
+          .mockResolvedValue(null)
+          .mockResolvedValueOnce(oldSession); // startReplayBuffer's check only
+
+        const result = await service.startReplayBuffer(startParams);
+
+        expect(result.sessionId).toBe('session-1');
+        expect(mockEgressClient.stopEgress).not.toHaveBeenCalled();
+        expect(mockEgressClient.startTrackCompositeEgress).toHaveBeenCalled();
+      });
+    });
+
     it('should use AAC audio codec (not Opus) for HLS/MPEG-TS compatibility', async () => {
       mockRoomServiceClient.getParticipant.mockResolvedValue({
         tracks: [
@@ -354,9 +448,7 @@ describe('LivekitReplayService', () => {
       };
 
       databaseService.egressSession.findFirst.mockResolvedValue(activeSession);
-      mockEgressClient.stopEgress.mockRejectedValue(
-        new Error('egress does not exist'),
-      );
+      mockEgressClient.stopEgress.mockRejectedValue(egressDoesNotExist());
       databaseService.egressSession.update.mockResolvedValue({
         ...activeSession,
         status: 'stopped',
@@ -369,36 +461,60 @@ describe('LivekitReplayService', () => {
       expect(databaseService.egressSession.update).toHaveBeenCalled();
     });
 
-    it('should tolerate "not active"-family stop errors (case-insensitive) and still clean up', async () => {
-      const activeSession = {
+    it.each([
+      'EGRESS_ENDING',
+      'EGRESS_COMPLETE',
+      'EGRESS_FAILED',
+      'EGRESS_ABORTED',
+      'EGRESS_LIMIT_REACHED',
+    ])(
+      'treats "egress with status %s cannot be stopped" as already ended and cleans up',
+      async (status) => {
+        const activeSession = {
+          id: 'session-1',
+          egressId: 'egress-123',
+          userId: 'user-123',
+          status: 'active',
+          segmentPath: 'session-1',
+        };
+
+        databaseService.egressSession.findFirst.mockResolvedValue(
+          activeSession,
+        );
+        // Zombie-active row: the egress already ended on the LiveKit side
+        mockEgressClient.stopEgress.mockRejectedValue(cannotBeStopped(status));
+        databaseService.egressSession.update.mockResolvedValue({
+          ...activeSession,
+          status: 'stopped_by_user',
+        });
+        storageService.deleteSegmentDirectory.mockResolvedValue(undefined);
+
+        // Must not throw: the zombie row would block the next start
+        const result = await service.stopReplayBuffer('user-123');
+        expect(result.status).toBe('stopped');
+        expect(databaseService.egressSession.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: 'session-1' },
+            data: expect.objectContaining({ status: 'stopped_by_user' }),
+          }),
+        );
+      },
+    );
+
+    it('a STARTING egress whose stop fails still errors', async () => {
+      databaseService.egressSession.findFirst.mockResolvedValue({
         id: 'session-1',
         egressId: 'egress-123',
         userId: 'user-123',
         status: 'active',
         segmentPath: 'session-1',
-      };
-
-      databaseService.egressSession.findFirst.mockResolvedValue(activeSession);
-      // Zombie-active row: the egress already completed on the LiveKit side
-      mockEgressClient.stopEgress.mockRejectedValue(
-        new Error('twirp error failed_precondition: Egress is not active'),
-      );
-      databaseService.egressSession.update.mockResolvedValue({
-        ...activeSession,
-        status: 'stopped',
       });
-      storageService.deleteSegmentDirectory.mockResolvedValue(undefined);
+      mockEgressClient.stopEgress.mockRejectedValue(requestTimedOut());
 
-      // Must not throw — otherwise the zombie row would block the next
-      // screen-share start forever
-      const result = await service.stopReplayBuffer('user-123');
-      expect(result.status).toBe('stopped');
-      expect(databaseService.egressSession.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'session-1' },
-          data: expect.objectContaining({ status: 'stopped_by_user' }),
-        }),
+      await expect(service.stopReplayBuffer('user-123')).rejects.toThrow(
+        BadRequestException,
       );
+      expect(databaseService.egressSession.update).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException for other egress stop failures', async () => {
@@ -1861,5 +1977,38 @@ describe('LivekitReplayService', () => {
       // rejection here would fail the test run)
       await new Promise((resolve) => setImmediate(resolve));
     });
+  });
+});
+
+describe('isEgressAlreadyEndedError', () => {
+  it.each([
+    ['not_found', egressDoesNotExist()],
+    ['a plain "egress does not exist"', new Error('egress does not exist')],
+    ['EGRESS_ENDING', cannotBeStopped('EGRESS_ENDING')],
+    ['EGRESS_COMPLETE', cannotBeStopped('EGRESS_COMPLETE')],
+    ['EGRESS_FAILED', cannotBeStopped('EGRESS_FAILED')],
+    ['EGRESS_ABORTED', cannotBeStopped('EGRESS_ABORTED')],
+    ['EGRESS_LIMIT_REACHED', cannotBeStopped('EGRESS_LIMIT_REACHED')],
+  ])('is true for %s', (_label, error) => {
+    expect(isEgressAlreadyEndedError(error)).toBe(true);
+  });
+
+  it.each([
+    ['a STARTING status', cannotBeStopped('EGRESS_STARTING')],
+    ['an ACTIVE status', cannotBeStopped('EGRESS_ACTIVE')],
+    ['a timeout', requestTimedOut()],
+    [
+      'another failed_precondition',
+      new TwirpError(
+        'Precondition Failed',
+        'egress not connected',
+        412,
+        'failed_precondition',
+      ),
+    ],
+    ['a network error', new Error('Network timeout')],
+    ['a non-error value', 'boom'],
+  ])('is false for %s', (_label, error) => {
+    expect(isEgressAlreadyEndedError(error)).toBe(false);
   });
 });
