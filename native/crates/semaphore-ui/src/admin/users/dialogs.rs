@@ -11,9 +11,7 @@
 use super::{Panel, UsersEvent, UsersPage};
 use crate::community_settings::common::{field_error, loading_rows, server_error, who};
 use crate::community_settings::rules::{act, failure, js_len, running};
-use crate::kit::{
-    Alert, Button, ButtonSize, ButtonTone, Dialog, Severity, TextField, Variant, spacing, text,
-};
+use crate::kit::{Alert, Button, ButtonSize, Dialog, Severity, TextField, Variant, spacing, text};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
@@ -208,12 +206,13 @@ impl UsersPage {
                     )
                     .action(
                         Button::new("admin-reset-password-cancel", "Cancel")
+                            .ghost()
                             .disabled(busy)
                             .on_click(as_click(cancel.clone())),
                     )
                     .action(
                         Button::new("admin-reset-password-save", "Reset Password")
-                            .contained()
+                            .primary()
                             .loading(busy)
                             .disabled(invalid.is_some() || typed.is_empty())
                             .on_click(as_click(save.clone())),
@@ -252,11 +251,12 @@ impl UsersPage {
                     )
                     .action(
                         Button::new("admin-quota-cancel", "Cancel")
+                            .ghost()
                             .on_click(as_click(cancel.clone())),
                     )
                     .action(
                         Button::new("admin-quota-save", "Save")
-                            .contained()
+                            .primary()
                             .disabled(invalid.is_some() || typed.trim().is_empty())
                             .on_click(as_click(save.clone())),
                     )
@@ -288,10 +288,10 @@ impl UsersPage {
             _ => press(cx, Press::Ban),
         };
         let mut action = Button::new(SharedString::from(format!("{id}-confirm")), confirm)
-            .contained()
+            .primary()
             .loading(busy);
         if danger {
-            action = action.tone(ButtonTone::Danger);
+            action = action.danger();
         }
         let refusal = (!busy).then(|| self.refusal(kind)).flatten();
         Dialog::new(title)
@@ -309,6 +309,7 @@ impl UsersPage {
             )
             .action(
                 Button::new(SharedString::from(format!("{id}-cancel")), "Cancel")
+                    .ghost()
                     .disabled(busy)
                     .on_click(as_click(cancel.clone())),
             )
@@ -339,7 +340,7 @@ impl UsersPage {
                     .children(server_error(Some(error)))
                     .child(
                         Button::new("admin-roles-retry", "Try again")
-                            .outlined()
+                            .soft()
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(UsersEvent::Retry))),
                     )
                     .into_any_element(),
@@ -394,7 +395,9 @@ impl UsersPage {
             .width(520.)
             .body(div().pt(spacing(1.)).child(body))
             .action(
-                Button::new("admin-user-roles-close", "Close").on_click(as_click(cancel.clone())),
+                Button::new("admin-user-roles-close", "Close")
+                    .ghost()
+                    .on_click(as_click(cancel.clone())),
             )
             .on_close(move |window, cx| cancel(window, cx));
         div()
@@ -443,9 +446,8 @@ impl UsersPage {
                 SharedString::from(format!("admin-role-remove-{}", role.id)),
                 "Remove",
             )
-            .outlined()
-            .color(sem.error)
-            .size(ButtonSize::Small)
+            .quiet_danger()
+            .size(ButtonSize::Sm)
             .loading(busy)
             .on_click(cx.listener(move |page, _, _, cx| page.toggle_role(id.clone(), true, cx)))
         } else {
@@ -453,8 +455,8 @@ impl UsersPage {
                 SharedString::from(format!("admin-role-assign-{}", role.id)),
                 "Assign",
             )
-            .contained()
-            .size(ButtonSize::Small)
+            .primary()
+            .size(ButtonSize::Sm)
             .loading(busy)
             .on_click(cx.listener(move |page, _, _, cx| page.toggle_role(id.clone(), false, cx)))
         };

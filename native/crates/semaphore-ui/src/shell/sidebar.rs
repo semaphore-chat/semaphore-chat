@@ -109,7 +109,6 @@ impl Shell {
                             "Community settings",
                         )
                         .small()
-                        .color(sem.text_secondary)
                         .on_click(move |_, _, cx| {
                             let community_id = id.clone();
                             view.update(cx, |_, cx| {
@@ -129,13 +128,11 @@ impl Shell {
         community_id: &str,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let sem = cx.sem();
         let (id, view) = (community_id.to_owned(), cx.entity().downgrade());
         // Drawn into the header's line without making it taller.
         div().ml_auto().my(px(-7.)).flex_shrink_0().child(
             IconButton::new("channels-create", IconName::Add, "Create channel")
-                .tiny()
-                .color(sem.text_secondary)
+                .small()
                 .on_click(move |_, _, cx| {
                     let community_id = id.clone();
                     view.update(cx, |_, cx| {
@@ -208,7 +205,7 @@ impl Shell {
                 .when(can_create, |empty| {
                     empty.child(
                         Button::new("channels-create", "Create channel")
-                            .outlined()
+                            .soft()
                             .on_click(move |_, _, cx| {
                                 let community_id = id.clone();
                                 view.update(cx, |_, cx| {

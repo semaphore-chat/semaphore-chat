@@ -424,8 +424,7 @@ impl Render for ForgotPasswordScreen {
                             &self.reset_link,
                             "Reset link or token",
                         )
-                        .error(self.link_error.is_some())
-                        .surface(sem.background_default);
+                        .error(self.link_error.is_some());
                         match self.link_error.clone() {
                             Some(message) => field.helper(message),
                             None => field,
@@ -433,7 +432,7 @@ impl Render for ForgotPasswordScreen {
                     })
                     .child(
                         Button::new("forgot-reset-open", "Continue")
-                            .outlined()
+                            .soft()
                             .full_width()
                             .on_click(
                                 cx.listener(|screen, _, _, cx| screen.open_pasted_link(cx)),
@@ -474,14 +473,13 @@ impl Render for ForgotPasswordScreen {
                         .required(true)
                         .disabled(self.busy)
                         .error(empty)
-                        .when(empty, |field| field.helper("Enter your email"))
-                        .surface(sem.background_default),
+                        .when(empty, |field| field.helper("Enter your email")),
                 ),
             )
             .child(
                 div().w_full().mb(spacing(2.)).child(
                     Button::new("forgot-submit", "Send reset link")
-                        .contained()
+                        .primary()
                         .full_width()
                         .loading(self.busy)
                         .on_click(cx.listener(|screen, _, _, cx| screen.submit(cx))),

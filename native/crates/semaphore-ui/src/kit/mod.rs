@@ -13,14 +13,20 @@ mod display_stories;
 #[cfg(test)]
 mod display_tests;
 mod fields;
+#[cfg(test)]
+mod keyboard_tests;
 mod lists;
 mod live;
+mod look;
 mod overlays;
 #[cfg(feature = "stories")]
 mod stories;
 #[cfg(feature = "stories")]
+mod stories_controls;
+#[cfg(feature = "stories")]
 mod stories_lists_overlays;
 mod surface;
+mod tabs;
 #[cfg(test)]
 mod tests_lists_overlays;
 mod typography;
@@ -28,8 +34,8 @@ mod typography;
 pub use assets::{UiAssets, icon_path, lounge_icon_path};
 pub use bus::{emit_core_event, on_core_event};
 pub use controls::{
-    Button, ButtonSize, ButtonTone, ButtonVariant, CheckState, Checkbox, IconButton, Radio, Slider,
-    Switch,
+    Button, ButtonSize, CheckState, Checkbox, IconButton, IconButtonVariant, KeyCap, Orientation,
+    Radio, RadioGroup, RadioOption, Slider, Switch,
 };
 pub use display::{
     Alert, Avatar, AvatarImages, AvatarShape, AvatarSize, AvatarStack, Badge, BadgeTone, Chip,
@@ -37,16 +43,18 @@ pub use display::{
     PillTone, Presence, ProgressTone, Severity, Skeleton, Snackbar, Spinner, StackPerson, Toast,
     ToastTone, count_words, reduced_motion, set_reduced_motion,
 };
-pub use fields::{SelectField, TextField, select_state, text_state};
+pub use fields::{FieldShape, SelectField, TextField, select_state, text_state};
 pub(crate) use fields::{floating_label, notched};
-pub use lists::{Align, ListRow, RowSize, Table, TableColumn, TableRow, Tabs};
+pub use lists::{Align, ListRow, RowSize, Table, TableColumn, TableRow};
 pub use live::{HIDDEN_SIZE, LiveElement, Said, Speaker, live_node};
+pub use look::{ButtonVariant, ControlSize};
 pub use overlays::{
     ANCHOR_GAP, Dialog, DialogCloseReason, DialogSize, Menu, MenuCloseReason, MenuEntry, MenuItem,
     MenuTone, Paper, Placement, Popover, PopoverExt, PopoverPadding, PopoverPanel, SecondaryTone,
     Tip, with_tip,
 };
 pub use surface::Surface;
+pub use tabs::{TabItem, Tabs, TabsVariant};
 pub use typography::{Variant, link, text};
 
 /// An action with no payload.
@@ -64,5 +72,6 @@ pub fn stories() -> Vec<crate::stories::Story> {
     let mut all = stories::stories();
     all.extend(display_stories::stories());
     all.extend(stories_lists_overlays::stories());
+    all.extend(stories_controls::stories());
     all
 }

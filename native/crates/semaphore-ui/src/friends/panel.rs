@@ -411,8 +411,8 @@ impl Render for FriendsPanel {
             })
             .child(
                 Button::new("friends-add", "Add Friend")
-                    .contained()
-                    .size(ButtonSize::Small)
+                    .primary()
+                    .size(ButtonSize::Sm)
                     .start_icon(DesignIcon::PersonAdd)
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(FriendsEvent::AddFriend))),
             );

@@ -10,6 +10,7 @@ use super::rules::{
     ExpiryPreset, InviteStatus, Outcome, Pending, act, date_label, failure, failure_of,
     invite_status, invite_url, needs, parse_max_uses, running, uses_label,
 };
+use crate::kit::IconButtonVariant;
 use crate::kit::{Button, ButtonSize, Dialog, TextField, Variant, spacing, text, text_state};
 use crate::messages::TimeFormat;
 use crate::panel::PanelClock;
@@ -233,7 +234,7 @@ impl InvitesTab {
             },
             None,
             false,
-            Some(sem.primary),
+            Some(IconButtonVariant::Soft),
             cx.listener(move |tab, _, _, cx| tab.copy(&copy_code, cx)),
         ))
         .child(action_icon(
@@ -242,7 +243,7 @@ impl InvitesTab {
             format!("Delete invite {code}"),
             (!self.caps.delete_invite).then(|| needs("Delete invites")),
             deleting,
-            Some(sem.error),
+            Some(IconButtonVariant::Danger),
             cx.listener(move |tab, _, _, cx| {
                 tab.deleting = Some(delete_code.clone());
                 cx.notify();
@@ -278,16 +279,17 @@ impl InvitesTab {
                         SharedString::from(format!("invite-expiry-{}", preset.key())),
                         preset.label(),
                     )
-                    .size(ButtonSize::Small)
+                    .text()
+                    .size(ButtonSize::Sm)
                     .disabled(busy)
                     .on_click(cx.listener(move |tab, _, _, cx| {
                         tab.expiry = preset;
                         cx.notify();
                     }));
                     if preset == self.expiry {
-                        button.contained()
+                        button.primary()
                     } else {
-                        button.outlined()
+                        button.soft()
                     }
                 }));
         let expires = match self.expiry.valid_until(self.clock.now_ms()) {
@@ -329,6 +331,7 @@ impl InvitesTab {
             )
             .action(
                 Button::new("invite-create-cancel", "Cancel")
+                    .ghost()
                     .disabled(busy)
                     .on_click(move |_, _, cx| {
                         cancel
@@ -341,7 +344,7 @@ impl InvitesTab {
             )
             .action(
                 Button::new("invite-create-submit", "Create Invite")
-                    .contained()
+                    .primary()
                     .loading(busy)
                     .disabled(uses_error.is_some())
                     .on_click(move |_, _, cx| {
@@ -365,7 +368,7 @@ impl Render for InvitesTab {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let create = locked_button(
             Button::new("invite-create", "Create Invite")
-                .contained()
+                .primary()
                 .start_icon(DesignIcon::Add)
                 .on_click(cx.listener(|tab, _, window, cx| {
                     tab.creating = true;

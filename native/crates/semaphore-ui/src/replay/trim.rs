@@ -554,7 +554,7 @@ impl Render for TrimTimeline {
                 .child(
                     div().child(
                         Button::new("trim-retry", "Try again")
-                            .outlined()
+                            .soft()
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(TrimEvent::Retry))),
                     ),
                 )

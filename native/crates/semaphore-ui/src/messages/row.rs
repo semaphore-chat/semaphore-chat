@@ -1060,8 +1060,8 @@ fn load_button(shared: &Rc<Shared>, id: String) -> impl IntoElement {
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(
             KitButton::new(SharedString::from(id), "Load")
-                .outlined()
-                .size(ButtonSize::Small)
+                .soft()
+                .size(ButtonSize::Sm)
                 .on_click(move |_, _, cx| {
                     cx.stop_propagation();
                     event_shared.emit(MessageListEvent::EnableThirdPartyMedia, cx);

@@ -7,6 +7,7 @@ use super::common::{
     who,
 };
 use super::rules::{Pending, act, date_label, failure_of, needs, running};
+use crate::kit::IconButtonVariant;
 use crate::kit::{
     Alert, Button, ButtonSize, Severity, TextField, Variant, spacing, text, text_state,
 };
@@ -165,13 +166,14 @@ impl PrivateChannelsTab {
                             SharedString::from(format!("private-channel-{id}")),
                             short_name(&channel.name),
                         )
-                        .size(ButtonSize::Small)
+                        .text()
+                        .size(ButtonSize::Sm)
                         .start_icon(DesignIcon::LockOutlined)
                         .on_click(cx.listener(move |tab, _, _, cx| tab.select(id.clone(), cx)));
                         if self.selected.as_deref() == Some(channel.id.as_str()) {
-                            button.contained()
+                            button.primary()
                         } else {
-                            button.outlined()
+                            button.soft()
                         }
                     })),
             )
@@ -232,7 +234,7 @@ impl PrivateChannelsTab {
                             format!("Remove {} from #{}", who(&user), channel.name),
                             locked.clone(),
                             busy,
-                            Some(sem.error),
+                            Some(IconButtonVariant::Danger),
                             cx.listener(move |tab, _, _, cx| {
                                 tab.removing = Some(user.clone());
                                 cx.notify();
@@ -306,8 +308,8 @@ impl PrivateChannelsTab {
                         .child(user_line(user, cx))
                         .child(
                             Button::new(SharedString::from(format!("private-add-{id}")), "Add")
-                                .outlined()
-                                .size(ButtonSize::Small)
+                                .soft()
+                                .size(ButtonSize::Sm)
                                 .start_icon(DesignIcon::PersonAdd)
                                 .loading(busy)
                                 .on_click(cx.listener(move |tab, _, _, cx| {

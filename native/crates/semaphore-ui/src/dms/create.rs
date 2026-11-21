@@ -132,7 +132,7 @@ impl Render for CreateDmDialog {
                         }),
                     ),
             )
-            .action(Button::new("create-dm-cancel", "Cancel").on_click({
+            .action(Button::new("create-dm-cancel", "Cancel").ghost().on_click({
                 let view = view.clone();
                 move |_, _, cx| {
                     view.update(cx, |_, cx| cx.emit(CreateDmEvent::Cancel)).ok();
@@ -140,7 +140,7 @@ impl Render for CreateDmDialog {
             }))
             .action(
                 Button::new("create-dm-create", "Create")
-                    .contained()
+                    .primary()
                     .disabled(picked == 0)
                     .loading(self.busy)
                     .on_click(move |_, _, cx| {

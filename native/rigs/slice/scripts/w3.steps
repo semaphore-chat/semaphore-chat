@@ -141,7 +141,8 @@ click desktop-link-preview-images
 expect settings /third_party_media false
 
 # "Open log folder" goes through the app's open seam; the rig records the path instead of opening
-# a file manager.
+# a file manager. The design-system controls make the page taller than the window: scroll down to it.
+scroll desktop-link-preview-images 0 -600
 click desktop-open-logs
 expect opened-url "app-data/logs"
 

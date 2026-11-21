@@ -10,6 +10,7 @@ use super::rules::{
     Outcome, Pending, act, check_emoji_file, check_emoji_name, failure_of, needs, running,
     shortcode, state_of,
 };
+use crate::kit::IconButtonVariant;
 use crate::kit::{Button, ButtonSize, TextField, Variant, spacing, text, text_state};
 use crate::panel::common::{design_icon, error_block};
 use crate::theme::SemTheme;
@@ -191,8 +192,8 @@ impl EmojiTab {
                     .gap(spacing(1.5))
                     .child(
                         Button::new("emoji-choose", "Choose image")
-                            .outlined()
-                            .size(ButtonSize::Small)
+                            .soft()
+                            .size(ButtonSize::Sm)
                             .start_icon(DesignIcon::UploadFile)
                             .disabled(busy)
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(EmojiEvent::PickImage))),
@@ -221,7 +222,7 @@ impl EmojiTab {
                     .child(
                         div().pt(px(10.)).child(
                             Button::new("emoji-upload", "Upload")
-                                .contained()
+                                .primary()
                                 .start_icon(DesignIcon::Upload)
                                 .loading(busy)
                                 .disabled(busy)
@@ -315,7 +316,7 @@ impl EmojiTab {
                             format!("Delete :{}:", emoji.name),
                             locked.clone(),
                             busy,
-                            Some(sem.error),
+                            Some(IconButtonVariant::Danger),
                             cx.listener(move |tab, _, _, cx| {
                                 tab.deleting = Some(row_emoji.clone());
                                 cx.notify();

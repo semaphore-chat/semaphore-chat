@@ -239,8 +239,11 @@ fn account_admin_button(
     caps: &InstanceAdminCaps,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Option<Button> {
-    caps.show_admin
-        .then(|| Button::new("account-admin", "Admin").on_click(on_click))
+    caps.show_admin.then(|| {
+        Button::new("account-admin", "Admin")
+            .text()
+            .on_click(on_click)
+    })
 }
 
 impl AppRoot {

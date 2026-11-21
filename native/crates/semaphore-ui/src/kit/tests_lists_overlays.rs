@@ -334,14 +334,18 @@ fn dialog(log: &Log) -> AnyElement {
     let close = log.clone();
     Dialog::new("Delete #memes?")
         .description("This removes the channel for everyone.")
-        .action(Button::new("dialog-cancel", "Cancel").on_click({
+        .action(Button::new("dialog-cancel", "Cancel").ghost().on_click({
             let log = log.clone();
             move |_, _, _| log.borrow_mut().push("cancel".into())
         }))
-        .action(Button::new("dialog-delete", "Delete channel").on_click({
-            let log = log.clone();
-            move |_, _, _| log.borrow_mut().push("delete".into())
-        }))
+        .action(
+            Button::new("dialog-delete", "Delete channel")
+                .text()
+                .on_click({
+                    let log = log.clone();
+                    move |_, _, _| log.borrow_mut().push("delete".into())
+                }),
+        )
         .on_request_close(move |reason, _, _| close.borrow_mut().push(format!("{reason:?}")))
         .into_any_element()
 }
@@ -486,7 +490,7 @@ fn menu_in_dialog(owned: bool) -> impl Fn(&Log) -> AnyElement {
         let dialog_log = log.clone();
         Dialog::new("Call options")
             .body(menu)
-            .action(Button::new("more-done", "Close").on_click({
+            .action(Button::new("more-done", "Close").ghost().on_click({
                 let log = log.clone();
                 move |_, _, _| log.borrow_mut().push("close".into())
             }))
@@ -621,7 +625,7 @@ fn dialog_with_focused_body(log: &Log, window: &mut Window, cx: &mut App) -> Any
                 })
                 .child("Name"),
         )
-        .action(Button::new("cancel", "Cancel").on_click({
+        .action(Button::new("cancel", "Cancel").ghost().on_click({
             let log = log.clone();
             move |_, _, _| log.borrow_mut().push("cancel".into())
         }))
@@ -639,12 +643,13 @@ fn popover(log: &Log) -> AnyElement {
     Popover::new("rename-popover")
         .placement(Placement::BottomStart)
         .default_open(true)
-        .trigger_element(Button::new("rename-trigger", "Rename channel"))
+        .trigger_element(Button::new("rename-trigger", "Rename channel").text())
         .content({
             let log = log.clone();
             move |_, _, _| {
                 PopoverPanel::new("Rename panel").child(
                     Button::new("save", "Save")
+                        .text()
                         .on_click(move |_, _, _| log.borrow_mut().push("save".into())),
                 )
             }

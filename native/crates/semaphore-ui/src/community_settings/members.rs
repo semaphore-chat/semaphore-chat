@@ -9,6 +9,7 @@ use super::common::{
 };
 use super::rules::{Outcome, Pending, act, date_label, failure_of, needs, running, running_of};
 use crate::dms::picker::{DEBOUNCE, Found, PickerModel};
+use crate::kit::IconButtonVariant;
 use crate::kit::{
     Alert, Button, ButtonSize, Chip, Severity, Spinner, TextField, Variant, spacing, text,
 };
@@ -286,7 +287,7 @@ impl MembersTab {
                     format!("Manage roles for {name}"),
                     roles_locked,
                     false,
-                    Some(sem.primary),
+                    Some(IconButtonVariant::Soft),
                     cx.listener(move |_, _, _, cx| {
                         cx.emit(MembersEvent::ManageRoles {
                             user_id: roles_id.clone(),
@@ -362,13 +363,14 @@ impl MembersTab {
         let this_adding = self.adding(&user_id);
         let button = if member {
             Button::new(SharedString::from(format!("member-add-{user_id}")), "Added")
-                .size(ButtonSize::Small)
+                .text()
+                .size(ButtonSize::Sm)
                 .disabled(true)
         } else {
             let id = user_id.clone();
             Button::new(SharedString::from(format!("member-add-{user_id}")), "Add")
-                .outlined()
-                .size(ButtonSize::Small)
+                .soft()
+                .size(ButtonSize::Sm)
                 .start_icon(DesignIcon::PersonAdd)
                 .loading(this_adding)
                 .on_click(cx.listener(move |tab, _, _, cx| tab.add(id.clone(), cx)))

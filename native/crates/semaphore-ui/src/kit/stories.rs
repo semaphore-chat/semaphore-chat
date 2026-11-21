@@ -1,10 +1,10 @@
 //! Every primitive, so a screenshot reviews them all at once, in any theme.
 
 use super::{
-    Alert, Avatar, Badge, Button, ButtonSize, ButtonTone, CheckState, Checkbox, Chip, Dialog, Icon,
-    IconButton, LinearProgress, ListRow, Paper, Radio, SecondaryTone, SelectField, Severity,
-    Skeleton, Slider, Snackbar, Spinner, Switch, Table, TableColumn, TableRow, Tabs, TextField,
-    Tip, Variant, link, select_state, text, text_state,
+    Alert, Avatar, Badge, Button, ButtonSize, CheckState, Checkbox, Chip, Dialog, Icon, IconButton,
+    LinearProgress, ListRow, Paper, Radio, SecondaryTone, SelectField, Severity, Skeleton, Slider,
+    Snackbar, Spinner, Switch, Table, TableColumn, TableRow, Tabs, TextField, Tip, Variant, link,
+    select_state, text, text_state,
 };
 use super::{Menu as KitMenu, MenuItem as KitMenuItem};
 use crate::stories::Story;
@@ -101,21 +101,21 @@ impl Render for Gallery {
                     .gap(px(8.))
                     .child(
                         row()
-                            .child(Button::new("b1", "Contained").contained())
-                            .child(Button::new("b2", "Outlined").outlined())
-                            .child(Button::new("b3", "Text")),
+                            .child(Button::new("b1", "Contained").primary())
+                            .child(Button::new("b2", "Outlined").soft())
+                            .child(Button::new("b3", "Text").text()),
                     )
                     .child(
                         row()
                             .child(
                                 Button::new("b4", "Open")
-                                    .contained()
+                                    .primary()
                                     .start_icon(I::OpenInBrowser)
-                                    .size(ButtonSize::Large),
+                                    .size(ButtonSize::Lg),
                             )
-                            .child(Button::new("b5", "Disabled").contained().disabled(true))
-                            .child(Button::new("b6", "Saving").outlined().loading(true))
-                            .child(Button::new("open-dialog", "Dialog").outlined().on_click({
+                            .child(Button::new("b5", "Disabled").primary().disabled(true))
+                            .child(Button::new("b6", "Saving").soft().loading(true))
+                            .child(Button::new("open-dialog", "Dialog").soft().on_click({
                                 let view = view.clone();
                                 move |_, _, cx| {
                                     view.update(cx, |this, cx| {
@@ -128,38 +128,33 @@ impl Render for Gallery {
                     )
                     .child(
                         row()
-                            .child(Button::new("b7", "Saving").contained().loading(true))
-                            .child(Button::new("b8", "Delete").contained().tone(ButtonTone::Danger))
+                            .child(Button::new("b7", "Saving").primary().loading(true))
+                            .child(Button::new("b8", "Delete").danger())
                             .child(
                                 Button::new("b9", "Timeout")
-                                    .contained()
-                                    .tone(ButtonTone::Warning),
+                                    .danger(),
                             ),
                     )
                     .child(
                         row()
                             .child(
                                 Button::new("b10", "Delete")
-                                    .contained()
-                                    .tone(ButtonTone::Danger)
+                                    .danger()
                                     .disabled(true),
                             )
                             .child(
                                 Button::new("b11", "Timeout")
-                                    .contained()
-                                    .tone(ButtonTone::Warning)
+                                    .danger()
                                     .disabled(true),
                             )
                             .child(
                                 Button::new("b12", "Deleting")
-                                    .contained()
-                                    .tone(ButtonTone::Danger)
+                                    .danger()
                                     .loading(true),
                             )
                             .child(
                                 Button::new("b13", "Timing out")
-                                    .contained()
-                                    .tone(ButtonTone::Warning)
+                                    .danger()
                                     .loading(true),
                             ),
                     )
@@ -183,23 +178,19 @@ impl Render for Gallery {
                     .pt(px(6.))
                     .child(
                         TextField::new("username", &self.username, "Username")
-                            .required(true)
-                            .surface(sem.background_default),
+                            .required(true),
                     )
                     .child(
                         TextField::new("filled", &self.filled, "Filled")
-                            .helper("A helper line")
-                            .surface(sem.background_default),
+                            .helper("A helper line"),
                     )
                     .child(
                         TextField::new("failed", &self.failed, "Server URL")
                             .error(true)
-                            .helper("Couldn't reach that server")
-                            .surface(sem.background_default),
+                            .helper("Couldn't reach that server"),
                     )
                     .child(
-                        SelectField::new("accent", &self.choice, "Accent")
-                            .surface(sem.background_default),
+                        SelectField::new("accent", &self.choice, "Accent"),
                     ),
             ))
             .child(section(
@@ -243,7 +234,7 @@ impl Render for Gallery {
                                 .state(CheckState::Indeterminate))
                             .child(
                                 Checkbox::new("c4", "Granted", true)
-                                    .caption("CREATE_MESSAGE"),
+                                    .description("CREATE_MESSAGE"),
                             )
                             .child(
                                 Checkbox::new(
@@ -251,15 +242,15 @@ impl Render for Gallery {
                                     "A label long enough that it has to wrap onto several lines before the row runs out of width",
                                     true,
                                 )
-                                .caption("And a caption under the label, muted and smaller"),
+                                .description("And a caption under the label, muted and smaller"),
                             )
                             .child(
                                 Checkbox::new("c6", "Partly selected, off", false)
                                     .state(CheckState::Indeterminate)
-                                    .caption("You don't have permission")
+                                    .description("You don't have permission")
                                     .disabled(true),
                             )
-                            .child(Checkbox::new("c7", "Box only", false).hide_label()),
+                            .child(Checkbox::new("c7", "Box only", false).label_hidden()),
                     )
                     .child(row().children((0..3).map(|index| {
                         let view = view.clone();
@@ -432,7 +423,7 @@ impl Render for Gallery {
                     .child(cx.new(|_| Tip("A tooltip".into())))
                     .child(
                         Snackbar::new("Message sent")
-                            .action(Button::new("undo", "Undo")),
+                            .action(Button::new("undo", "Undo").text()),
                     ),
             ));
 
@@ -464,16 +455,16 @@ impl Render for Gallery {
                             Variant::Body1,
                             "You'll lose access to its channels until someone invites you back.",
                         ))
-                        .action(
-                            Button::new("dialog-cancel", "Cancel").on_click(move |_, _, cx| {
+                        .action(Button::new("dialog-cancel", "Cancel").text().on_click(
+                            move |_, _, cx| {
                                 view.update(cx, |this, cx| {
                                     this.dialog = false;
                                     cx.notify();
                                 })
                                 .ok();
-                            }),
-                        )
-                        .action(Button::new("dialog-ok", "Leave").color(sem.error))
+                            },
+                        ))
+                        .action(Button::new("dialog-ok", "Leave").quiet_danger())
                         .on_close(move |_, cx| {
                             close
                                 .update(cx, |this, cx| {

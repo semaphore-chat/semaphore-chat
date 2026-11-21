@@ -249,7 +249,7 @@ impl Render for ResetPasswordScreen {
             .child(
                 div().w_full().child(
                     Button::new("reset-password-sign-in", "Sign in")
-                        .contained()
+                        .primary()
                         .full_width()
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(ResetEvent::SignIn))),
                 ),
@@ -317,8 +317,7 @@ impl Render for ResetPasswordScreen {
                 let field = TextField::new("reset-password", &self.password, "New password")
                     .required(true)
                     .disabled(self.busy)
-                    .error(helper.is_some())
-                    .surface(sem.background_default);
+                    .error(helper.is_some());
                 match helper {
                     Some(helper) => field.helper(helper),
                     None => field,
@@ -339,8 +338,7 @@ impl Render for ResetPasswordScreen {
                 )
                 .required(true)
                 .disabled(self.busy)
-                .error(helper.is_some())
-                .surface(sem.background_default);
+                .error(helper.is_some());
                 match helper {
                     Some(helper) => field.helper(helper),
                     None => field,
@@ -349,7 +347,7 @@ impl Render for ResetPasswordScreen {
             .child(
                 div().w_full().mb(spacing(2.)).child(
                     Button::new("reset-password-submit", "Reset Password")
-                        .contained()
+                        .primary()
                         .full_width()
                         .loading(self.busy)
                         .disabled(!can)
