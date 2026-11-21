@@ -108,7 +108,6 @@ fn sized(width: f32, tile: impl IntoElement) -> AnyElement {
 fn fake_video(hue: f32, text: &'static str) -> impl FnOnce(super::VideoSlot) -> AnyElement {
     move |slot| {
         let picture = div()
-            .rounded(slot.radius)
             .bg(linear_gradient(
                 135.,
                 linear_color_stop(hsla(hue / 360., 0.6, 0.38, 1.), 0.),
@@ -121,7 +120,7 @@ fn fake_video(hue: f32, text: &'static str) -> impl FnOnce(super::VideoSlot) -> 
             .text_color(hsla(0., 0., 1., 0.85))
             .child(text);
         let picture = match slot.fit {
-            VideoFit::Cover => picture.size_full(),
+            VideoFit::Cover => picture.size_full().rounded(slot.radius),
             VideoFit::Contain => picture.h_full().aspect_ratio(4. / 3.),
         };
         div()
@@ -188,7 +187,7 @@ fn speaking_body(cx: &App) -> Vec<AnyElement> {
 
 fn blank_body(cx: &App) -> Vec<AnyElement> {
     vec![row(
-        "A blank label reads \"Unknown user\" (named so; the avatar has no initials)",
+        "A blank label: the tile is named \"Unknown user\", the avatar shows its initials, no caption",
         cx,
         vec![grid(vec![
             any(tile("b-avatar", " ", MediaKind::Avatar)),
@@ -206,7 +205,7 @@ fn long_label_body(_: &App) -> Vec<AnyElement> {
             .gap(px(SPACE_LG))
             .child(sized(
                 200.,
-                with_video("l-camera", LONG, MediaKind::Camera, 90.),
+                tile("l-camera", LONG, MediaKind::Camera).video(fake_video(90., "camera")),
             ))
             .child(sized(200., tile("l-avatar", LONG, MediaKind::Avatar)))
             .into_any_element(),
