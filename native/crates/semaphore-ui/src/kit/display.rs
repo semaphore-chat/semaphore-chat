@@ -378,7 +378,7 @@ pub fn avatar_label(name: &str, presence: Option<Presence>) -> String {
 /// A box `by` px outside its parent on every side, its corners `radius + by` so it stays
 /// concentric. GPUI grows a spread shadow's box but keeps the element's corner radii, so a ring
 /// drawn as one round a circle comes out a rounded square: rings are drawn as these instead.
-fn outset(by: f32, radius: f32) -> Div {
+pub(super) fn outset(by: f32, radius: f32) -> Div {
     div()
         .absolute()
         .top(px(-by))

@@ -11,14 +11,14 @@
 //! are laid out once per step and only the step that fits the tile's laid-out width is drawn
 //! ([`ByWidth`]), in the same frame: nothing flickers on a resize.
 
-use super::display::{Avatar, AvatarSize, shown_name, speaking_ring, styled, weighted};
+use super::display::{Avatar, AvatarSize, outset, shown_name, styled, weighted};
 use super::surface::{Surface, SurfaceScope, stand_out_fill, tint_base};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_design::lounge::{
-    RADIUS_CARD, RADIUS_SM, SPACE_MD, SPACE_SM, TEXT_BODY_STRONG, TEXT_META,
+    BORDER_SELECTED, RADIUS_CARD, RADIUS_SM, SPACE_MD, SPACE_SM, TEXT_BODY_STRONG, TEXT_META,
 };
 
 /// What a tile shows.
@@ -57,11 +57,9 @@ pub enum VideoFit {
 pub struct VideoSlot {
     /// How to fit the frame in the tile.
     pub fit: VideoFit,
-    /// The tile's corner radius: paint the frame rounded by this much (GPUI clips to rectangles).
+    /// The tile's corner radius. The tile clips the element to its box and masks the corners
+    /// itself, so a frame painted square or oversized (cropped to cover) still comes out rounded.
     pub radius: Pixels,
-    /// What shows just outside the tile's rounded corners (the layer behind the tile): the colour
-    /// to paint over the corners of a covering frame drawn oversized.
-    pub corners: Hsla,
 }
 
 type VideoBuilder = Box<dyn FnOnce(VideoSlot) -> AnyElement>;
@@ -141,6 +139,7 @@ pub struct MediaTile {
     kind: MediaKind,
     speaking: bool,
     on: Option<Surface>,
+    fit: Option<VideoFit>,
     video: Option<VideoBuilder>,
 }
 
@@ -152,6 +151,7 @@ impl MediaTile {
             kind,
             speaking: false,
             on: None,
+            fit: None,
             video: None,
         }
     }
@@ -165,6 +165,13 @@ impl MediaTile {
     /// The layer it is drawn on (otherwise the current [`SurfaceScope`]'s).
     pub fn on_surface(mut self, on: Surface) -> Self {
         self.on = Some(on);
+        self
+    }
+
+    /// How the video fits, instead of the kind's own ([`MediaKind::fit`]): `Contain` for a camera
+    /// shown whole on a focused stage, say.
+    pub fn fit(mut self, fit: VideoFit) -> Self {
+        self.fit = Some(fit);
         self
     }
 
@@ -194,35 +201,42 @@ impl RenderOnce for MediaTile {
         let name = media_tile_label(&self.label, self.speaking);
         let initials_from: SharedString = shown_name(&self.label).to_owned().into();
         let video = self.video.filter(|_| self.kind != MediaKind::Avatar);
+        // A blank label is named "Unknown user" but draws no line or chip: an empty one would only
+        // push the avatar off centre, or put an empty pill on the picture.
+        let has_label = !self.label.trim().is_empty();
 
         let body: AnyElement = match video {
             Some(build) => {
                 let slot = VideoSlot {
-                    fit: self.kind.fit(),
+                    fit: self.fit.unwrap_or(self.kind.fit()),
                     radius: px(RADIUS_CARD),
-                    corners: behind,
                 };
                 div()
                     .absolute()
                     .inset_0()
                     .child(div().absolute().inset_0().child(build(slot)))
-                    .child(
-                        // Over video the label sits on its own opaque chip, so it reads on any
-                        // picture.
-                        div()
-                            .absolute()
-                            .left(px(SPACE_SM))
-                            .bottom(px(SPACE_SM))
-                            .right(px(SPACE_SM))
-                            .flex()
-                            .child(
-                                label_text(self.label.clone())
-                                    .px(px(SPACE_SM))
-                                    .rounded(px(RADIUS_SM))
-                                    .bg(sem.role.surface)
-                                    .text_color(sem.role.text),
-                            ),
-                    )
+                    .child(corner_mask(behind))
+                    .when(has_label, |body| {
+                        body.child(
+                            // Over video the label sits on its own opaque chip, so it reads on any
+                            // picture.
+                            div()
+                                .absolute()
+                                .left(px(SPACE_SM))
+                                .bottom(px(SPACE_SM))
+                                .right(px(SPACE_SM))
+                                .flex()
+                                .child(
+                                    label_text(self.label.clone())
+                                        .id("media-caption")
+                                        .test_support()
+                                        .px(px(SPACE_SM))
+                                        .rounded(px(RADIUS_SM))
+                                        .bg(sem.role.surface)
+                                        .text_color(sem.role.text),
+                                ),
+                        )
+                    })
                     .into_any_element()
             }
             None => {
@@ -254,8 +268,15 @@ impl RenderOnce for MediaTile {
                                     ),
                             )
                         })
-                        .when(step.label, |centre| {
-                            centre.child(label_text(self.label.clone()))
+                        .when(step.label && has_label, |centre| {
+                            centre.child(
+                                div()
+                                    .id("media-label")
+                                    .test_support()
+                                    .min_w_0()
+                                    .max_w_full()
+                                    .child(label_text(self.label.clone())),
+                            )
                         });
                     (width, centre.into_any_element())
                 });
@@ -275,9 +296,6 @@ impl RenderOnce for MediaTile {
             .w_full()
             .aspect_ratio(RATIO)
             .rounded(px(RADIUS_CARD))
-            .when(self.speaking, |root| {
-                root.children(speaking_ring(&sem, behind, RADIUS_CARD))
-            })
             .child(
                 // Clips the picture to the rounded corners; the ring outside is not clipped.
                 div()
@@ -291,7 +309,38 @@ impl RenderOnce for MediaTile {
                     // avatar) sits one layer over.
                     .child(SurfaceScope::new(on.inside_fill(), body)),
             )
+            // Last, so nothing in the tile (the corner masks) is ever painted over it.
+            .when(self.speaking, |root| {
+                root.children(ring(sem.role.positive, behind))
+            })
     }
+}
+
+/// The speaking ring, as Avatar's (a gap in the layer's colour, then the positive ring, outside
+/// the box), but border-only: drawn over the tile, it covers nothing inside it.
+fn ring(positive: Hsla, behind: Hsla) -> [AnyElement; 2] {
+    [
+        outset(BORDER_SELECTED, RADIUS_CARD)
+            .border(px(BORDER_SELECTED))
+            .border_color(behind)
+            .into_any_element(),
+        outset(BORDER_SELECTED * 2., RADIUS_CARD)
+            .id("media-speaking-ring")
+            .test_support()
+            .border(px(BORDER_SELECTED))
+            .border_color(positive)
+            .into_any_element(),
+    ]
+}
+
+/// Paints the layer's colour outside the tile's rounded corners, over the video: GPUI clips the
+/// video to the tile's rectangle, not its rounded shape. A border whose inner edge is the tile's
+/// outline, wide enough to reach the box's corners, clipped to the box by the frame.
+fn corner_mask(behind: Hsla) -> Div {
+    let width = (RADIUS_CARD * (std::f32::consts::SQRT_2 - 1.)).ceil() + 1.;
+    outset(width, RADIUS_CARD)
+        .border(px(width))
+        .border_color(behind)
 }
 
 /// Lays out every step and draws only the first whose minimum width the laid-out width reaches

@@ -103,8 +103,10 @@ fn sized(width: f32, tile: impl IntoElement) -> AnyElement {
         .into_any_element()
 }
 
-/// A stand-in stream: a diagonal gradient and the label, fitted as the slot says (a screen keeps
-/// its 4:3 frame whole, with bars).
+/// A stand-in stream, painted square as real frames are: the tile clips and rounds it. A camera
+/// is a 4:3 frame cropped to cover, so it is painted oversized past the tile's top and bottom (as
+/// `VideoFrames::paint` does for `Fit::Cover`) and only the tile's corner masks round it. A screen
+/// keeps its 4:3 frame whole, with bars.
 fn fake_video(hue: f32, text: &'static str) -> impl FnOnce(super::VideoSlot) -> AnyElement {
     move |slot| {
         let picture = div()
@@ -119,18 +121,27 @@ fn fake_video(hue: f32, text: &'static str) -> impl FnOnce(super::VideoSlot) -> 
             .text_size(px(20.))
             .text_color(hsla(0., 0., 1., 0.85))
             .child(text);
-        let picture = match slot.fit {
-            VideoFit::Cover => picture.size_full().rounded(slot.radius),
-            VideoFit::Contain => picture.h_full().aspect_ratio(4. / 3.),
-        };
-        div()
-            .size_full()
-            .flex()
-            .justify_center()
-            .bg(black())
-            .rounded(slot.radius)
-            .child(picture)
-            .into_any_element()
+        match slot.fit {
+            VideoFit::Cover => div()
+                .size_full()
+                .relative()
+                .child(
+                    picture
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .top(relative(-0.17))
+                        .bottom(relative(-0.17)),
+                )
+                .into_any_element(),
+            VideoFit::Contain => div()
+                .size_full()
+                .flex()
+                .justify_center()
+                .bg(black())
+                .child(picture.h_full().aspect_ratio(4. / 3.))
+                .into_any_element(),
+        }
     }
 }
 
@@ -185,13 +196,36 @@ fn speaking_body(cx: &App) -> Vec<AnyElement> {
     )]
 }
 
+fn speaking_cropped_body(cx: &App) -> Vec<AnyElement> {
+    vec![row(
+        "Speaking over a cropped 4:3 camera painted past the tile: the corner masks round it and the ring stays whole",
+        cx,
+        vec![
+            div()
+                .flex()
+                .flex_wrap()
+                .gap(px(SPACE_LG))
+                .child(sized(
+                    480.,
+                    with_video("c-loud", "dropbear", MediaKind::Camera, 140.).speaking(true),
+                ))
+                .child(sized(
+                    480.,
+                    with_video("c-quiet", "pri", MediaKind::Camera, 320.),
+                ))
+                .into_any_element(),
+        ],
+    )]
+}
+
 fn blank_body(cx: &App) -> Vec<AnyElement> {
     vec![row(
-        "A blank label: the tile is named \"Unknown user\", the avatar shows its initials, no caption",
+        "A blank label: the tile is named \"Unknown user\", the avatar shows its initials, no line under it and no chip over video",
         cx,
         vec![grid(vec![
             any(tile("b-avatar", " ", MediaKind::Avatar)),
             any(tile("b-camera", "", MediaKind::Camera)),
+            any(tile("b-video", "", MediaKind::Camera).video(fake_video(250., "video"))),
         ])],
     )]
 }
@@ -294,6 +328,16 @@ pub fn stories() -> Vec<Story> {
         story!("kit-media-tile--kinds-tinted", Tinted, kinds_body),
         story!("kit-media-tile--speaking", Dark, speaking_body),
         story!("kit-media-tile--speaking-light", Light, speaking_body),
+        story!(
+            "kit-media-tile--speaking-cropped",
+            Dark,
+            speaking_cropped_body
+        ),
+        story!(
+            "kit-media-tile--speaking-cropped-light",
+            Light,
+            speaking_cropped_body
+        ),
         story!("kit-media-tile--blank-label", Dark, blank_body),
         story!("kit-media-tile--blank-label-light", Light, blank_body),
         story!("kit-media-tile--long-label", Dark, long_label_body),

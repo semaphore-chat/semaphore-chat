@@ -10,7 +10,9 @@ use core::prelude::v1::test;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::*;
-use semaphore_design::lounge::{AVATAR_XL, RADIUS_CARD, SPACE_MD, SPACE_SM, TEXT_META};
+use semaphore_design::lounge::{
+    AVATAR_XL, BORDER_SELECTED, RADIUS_CARD, SPACE_MD, SPACE_SM, TEXT_META,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -230,5 +232,96 @@ fn speaking_is_in_the_name_and_the_ring_never_moves_the_box(cx: &mut TestAppCont
         let loud = window.find("loud").bounds();
         assert_eq!(quiet.size, loud.size);
         assert_eq!(loud.origin.y, quiet.origin.y + quiet.size.height + px(8.));
+        // The ring is drawn round the speaking tile only, two `border.selected` outside it.
+        let rings = window.find_all("media-speaking-ring");
+        assert_eq!(rings.len(), 1);
+        let ring = rings[0].bounds();
+        let by = px(2. * BORDER_SELECTED);
+        assert_eq!(ring.origin, point(loud.origin.x - by, loud.origin.y - by));
+        assert_eq!(ring.size.width, loud.size.width + by * 2.);
+        assert!(
+            window
+                .within("quiet")
+                .try_find("media-speaking-ring")
+                .is_none()
+        );
+    });
+}
+
+/// Which video fit the tile hands its slot.
+fn slot_of(cx: &mut TestAppContext, build: fn() -> MediaTile) -> VideoSlot {
+    let seen: Rc<RefCell<Option<VideoSlot>>> = Rc::default();
+    let record = seen.clone();
+    let _rig = host(cx, 320., move || {
+        let record = record.clone();
+        build()
+            .video(move |slot| {
+                *record.borrow_mut() = Some(slot);
+                div().size_full().into_any_element()
+            })
+            .into_any_element()
+    });
+    seen.borrow().expect("the slot was built")
+}
+
+#[gpui_kit::test]
+fn a_camera_covers_and_the_fit_can_be_overridden(cx: &mut TestAppContext) {
+    let camera = slot_of(cx, || MediaTile::new("t", "pri", MediaKind::Camera));
+    assert_eq!(camera.fit, VideoFit::Cover);
+    assert_eq!(camera.radius, px(RADIUS_CARD));
+    // A focused camera is shown whole, and the override works the other way too.
+    let focused = slot_of(cx, || {
+        MediaTile::new("t", "pri", MediaKind::Camera).fit(VideoFit::Contain)
+    });
+    assert_eq!(focused.fit, VideoFit::Contain);
+    let screen = slot_of(cx, || {
+        MediaTile::new("t", "s", MediaKind::Screen).fit(VideoFit::Cover)
+    });
+    assert_eq!(screen.fit, VideoFit::Cover);
+}
+
+fn has_label(cx: &mut TestAppContext, width: f32, label: &'static str) -> bool {
+    let rig = host(cx, width, move || {
+        MediaTile::new("t", label, MediaKind::Avatar).into_any_element()
+    });
+    rig.with(cx, |_, window, _| window.try_find("media-label").is_some())
+}
+
+#[gpui_kit::test]
+fn the_label_under_the_avatar_goes_below_the_md_step(cx: &mut TestAppContext) {
+    let [_, _, md] = media_tile_breakpoints();
+    assert!(has_label(cx, 400., "dropbear"));
+    assert!(has_label(cx, md, "dropbear"));
+    assert!(!has_label(cx, md - 1., "dropbear"));
+}
+
+#[gpui_kit::test]
+fn a_blank_label_draws_no_line_and_no_chip(cx: &mut TestAppContext) {
+    assert!(!has_label(cx, 400., " "));
+    // The avatar is centred in the tile: no empty line pushes it up.
+    let rig = host(cx, 400., || {
+        MediaTile::new("t", " ", MediaKind::Avatar).into_any_element()
+    });
+    rig.with(cx, |_, window, _| {
+        let tile = window.find("t").bounds();
+        let avatar = window.find("media-avatar-xl").bounds();
+        assert_eq!(avatar.center().y, tile.center().y);
+    });
+    let rig = host(cx, 400., || {
+        MediaTile::new("v", "", MediaKind::Camera)
+            .video(|_| div().size_full().into_any_element())
+            .into_any_element()
+    });
+    rig.with(cx, |_, window, _| {
+        assert!(window.try_find("media-caption").is_none());
+    });
+    // A named one has its chip.
+    let rig = host(cx, 400., || {
+        MediaTile::new("v", "pri", MediaKind::Camera)
+            .video(|_| div().size_full().into_any_element())
+            .into_any_element()
+    });
+    rig.with(cx, |_, window, _| {
+        assert!(window.try_find("media-caption").is_some());
     });
 }
