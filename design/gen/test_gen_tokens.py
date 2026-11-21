@@ -560,6 +560,41 @@ class RenderKtTest(unittest.TestCase):
         self.assertIn("package app.semaphorechat.android.design\n", self.rendered)
 
 
+class KotlinLiteralTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tokens = gen.load(REAL)
+        self.colour = gen.load_colour(REAL_COLOUR)
+
+    def render(self) -> str:
+        return gen.render_kt(self.tokens, self.colour)
+
+    def test_two_keys_with_the_same_kotlin_name_fail(self):
+        self.tokens["space"]["twoXs"] = 3
+        with self.assertRaisesRegex(
+            gen.TokenError,
+            r"^space\.twoXs: Kotlin member 'TwoXs' is already used by 'space\.2xs'$",
+        ):
+            self.render()
+
+    def test_kt_string_escapes_the_kotlin_metacharacters(self):
+        self.assertEqual(gen._kt_string('a"b\\c$d'), '"a\\"b\\\\c\\$d"')
+
+    def test_a_dollar_in_a_font_is_escaped_in_both_places(self):
+        self.tokens["font"]["body"] = "Fig$tree"
+        rendered = self.render()
+        self.assertIn('val Body: String = "Fig\\$tree"', rendered)
+        self.assertIn('family = "Fig\\$tree",', rendered)
+
+    def test_a_whole_number_past_int_is_a_float_literal(self):
+        self.tokens["space"]["huge"] = 3000000000
+        self.assertIn("val Huge: Dp = 3000000000f.dp", self.render())
+
+    def test_a_number_beyond_float_range_is_an_error(self):
+        self.tokens["space"]["huge"] = 10**39
+        with self.assertRaisesRegex(gen.TokenError, r"^space\.huge: .*Float range"):
+            self.render()
+
+
 COLOUR_ENTRY = re.compile(
     r"^  \{\n"
     r"    base: '([^']+)',\n"

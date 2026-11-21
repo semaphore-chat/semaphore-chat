@@ -40,457 +40,581 @@ private fun strokeIcon(name: String, paths: List<String>): ImageVector =
  * so each icon is a stroke-only `ImageVector`: `Icon` tints it.
  */
 object Icons {
-    val Inbox: ImageVector = strokeIcon(
-        name = "Inbox",
-        paths = listOf(
-            "M22 12 L16 12 L14 15 L10 15 L8 12 L2 12",
-            "M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z",
-        ),
-    )
-    val Hash: ImageVector = strokeIcon(
-        name = "Hash",
-        paths = listOf(
-            "M4 9 L20 9",
-            "M4 15 L20 15",
-            "M10 3 L8 21",
-            "M16 3 L14 21",
-        ),
-    )
-    val Volume2: ImageVector = strokeIcon(
-        name = "Volume2",
-        paths = listOf(
-            "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z",
-            "M16 9a5 5 0 0 1 0 6",
-            "M19.364 18.364a9 9 0 0 0 0-12.728",
-        ),
-    )
-    val Mic: ImageVector = strokeIcon(
-        name = "Mic",
-        paths = listOf(
-            "M12 19v3",
-            "M19 10v2a7 7 0 0 1-14 0v-2",
-            "M12 2 H12 A3 3 0 0 1 15 5 V12 A3 3 0 0 1 12 15 H12 A3 3 0 0 1 9 12 V5 A3 3 0 0 1 12 2 Z",
-        ),
-    )
-    val MicOff: ImageVector = strokeIcon(
-        name = "MicOff",
-        paths = listOf(
-            "M12 19v3",
-            "M15 9.34V5a3 3 0 0 0-5.68-1.33",
-            "M16.95 16.95A7 7 0 0 1 5 12v-2",
-            "M18.89 13.23A7 7 0 0 0 19 12v-2",
-            "m2 2 20 20",
-            "M9 9v3a3 3 0 0 0 5.12 2.12",
-        ),
-    )
-    val Headphones: ImageVector = strokeIcon(
-        name = "Headphones",
-        paths = listOf("M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"),
-    )
-    val HeadphoneOff: ImageVector = strokeIcon(
-        name = "HeadphoneOff",
-        paths = listOf(
-            "M21 14h-1.343",
-            "M9.128 3.47A9 9 0 0 1 21 12v3.343",
-            "m2 2 20 20",
-            "M20.414 20.414A2 2 0 0 1 19 21h-1a2 2 0 0 1-2-2v-3",
-            "M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 2.636-6.364",
-        ),
-    )
-    val Video: ImageVector = strokeIcon(
-        name = "Video",
-        paths = listOf(
-            "m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5",
-            "M4 6 H14 A2 2 0 0 1 16 8 V16 A2 2 0 0 1 14 18 H4 A2 2 0 0 1 2 16 V8 A2 2 0 0 1 4 6 Z",
-        ),
-    )
-    val VideoOff: ImageVector = strokeIcon(
-        name = "VideoOff",
-        paths = listOf(
-            "M10.66 6H14a2 2 0 0 1 2 2v2.5l5.248-3.062A.5.5 0 0 1 22 7.87v8.196",
-            "M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2",
-            "m2 2 20 20",
-        ),
-    )
-    val ScreenShare: ImageVector = strokeIcon(
-        name = "ScreenShare",
-        paths = listOf(
-            "M13 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3",
-            "M8 21h8",
-            "M12 17v4",
-            "m17 8 5-5",
-            "M17 3h5v5",
-        ),
-    )
-    val PhoneOff: ImageVector = strokeIcon(
-        name = "PhoneOff",
-        paths = listOf(
-            "M10.1 13.9a14 14 0 0 0 3.732 2.668 1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2 18 18 0 0 1-12.728-5.272",
-            "M22 2 2 22",
-            "M4.76 13.582A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 .244.473",
-        ),
-    )
-    val Settings: ImageVector = strokeIcon(
-        name = "Settings",
-        paths = listOf(
-            "M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915",
-            "M9 12 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0 Z",
-        ),
-    )
-    val ChevronDown: ImageVector = strokeIcon(
-        name = "ChevronDown",
-        paths = listOf("m6 9 6 6 6-6"),
-    )
-    val ChevronUp: ImageVector = strokeIcon(
-        name = "ChevronUp",
-        paths = listOf("m18 15-6-6-6 6"),
-    )
-    val ChevronLeft: ImageVector = strokeIcon(
-        name = "ChevronLeft",
-        paths = listOf("m15 18-6-6 6-6"),
-    )
-    val ChevronRight: ImageVector = strokeIcon(
-        name = "ChevronRight",
-        paths = listOf("m9 18 6-6-6-6"),
-    )
-    val ArrowLeft: ImageVector = strokeIcon(
-        name = "ArrowLeft",
-        paths = listOf(
-            "m12 19-7-7 7-7",
-            "M19 12H5",
-        ),
-    )
-    val X: ImageVector = strokeIcon(
-        name = "X",
-        paths = listOf(
-            "M18 6 6 18",
-            "m6 6 12 12",
-        ),
-    )
-    val Plus: ImageVector = strokeIcon(
-        name = "Plus",
-        paths = listOf(
-            "M5 12h14",
-            "M12 5v14",
-        ),
-    )
-    val Minus: ImageVector = strokeIcon(
-        name = "Minus",
-        paths = listOf("M5 12h14"),
-    )
-    val Check: ImageVector = strokeIcon(
-        name = "Check",
-        paths = listOf("M20 6 9 17l-5-5"),
-    )
-    val Search: ImageVector = strokeIcon(
-        name = "Search",
-        paths = listOf(
-            "m21 21-4.34-4.34",
-            "M3 11 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0 Z",
-        ),
-    )
-    val Users: ImageVector = strokeIcon(
-        name = "Users",
-        paths = listOf(
-            "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2",
-            "M16 3.128a4 4 0 0 1 0 7.744",
-            "M22 21v-2a4 4 0 0 0-3-3.87",
-            "M5 7 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z",
-        ),
-    )
-    val User: ImageVector = strokeIcon(
-        name = "User",
-        paths = listOf(
-            "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2",
-            "M8 7 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z",
-        ),
-    )
-    val UserPlus: ImageVector = strokeIcon(
-        name = "UserPlus",
-        paths = listOf(
-            "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2",
-            "M5 7 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z",
-            "M19 8 L19 14",
-            "M22 11 L16 11",
-        ),
-    )
-    val Bell: ImageVector = strokeIcon(
-        name = "Bell",
-        paths = listOf(
-            "M10.268 21a2 2 0 0 0 3.464 0",
-            "M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326",
-        ),
-    )
-    val BellOff: ImageVector = strokeIcon(
-        name = "BellOff",
-        paths = listOf(
-            "M10.268 21a2 2 0 0 0 3.464 0",
-            "M17 17H4a1 1 0 0 1-.74-1.673C4.59 13.956 6 12.499 6 8a6 6 0 0 1 .258-1.742",
-            "m2 2 20 20",
-            "M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05",
-        ),
-    )
-    val Pin: ImageVector = strokeIcon(
-        name = "Pin",
-        paths = listOf(
-            "M12 17v5",
-            "M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z",
-        ),
-    )
-    val PinOff: ImageVector = strokeIcon(
-        name = "PinOff",
-        paths = listOf(
-            "M12 17v5",
-            "M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89",
-            "m2 2 20 20",
-            "M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11",
-        ),
-    )
-    val Smile: ImageVector = strokeIcon(
-        name = "Smile",
-        paths = listOf(
-            "M15 10V9",
-            "M16.472 15a6 6 0 01-8.943 0",
-            "M9 10V9",
-            "M2 12 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 Z",
-        ),
-    )
-    val SmilePlus: ImageVector = strokeIcon(
-        name = "SmilePlus",
-        paths = listOf(
-            "M13.267 2.08a10 10 0 108.653 8.653",
-            "M15 10V9",
-            "M16 5h6",
-            "M16.472 15a6 6 0 01-8.943 0",
-            "M19 2v6",
-            "M9 10V9",
-        ),
-    )
-    val Paperclip: ImageVector = strokeIcon(
-        name = "Paperclip",
-        paths = listOf("m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"),
-    )
-    val Send: ImageVector = strokeIcon(
-        name = "Send",
-        paths = listOf(
-            "M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z",
-            "m21.854 2.147-10.94 10.939",
-        ),
-    )
-    val MessageSquare: ImageVector = strokeIcon(
-        name = "MessageSquare",
-        paths = listOf("M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"),
-    )
-    val Reply: ImageVector = strokeIcon(
-        name = "Reply",
-        paths = listOf(
-            "M20 18v-2a4 4 0 0 0-4-4H4",
-            "m9 17-5-5 5-5",
-        ),
-    )
-    val Pencil: ImageVector = strokeIcon(
-        name = "Pencil",
-        paths = listOf(
-            "M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z",
-            "m15 5 4 4",
-        ),
-    )
-    val Trash2: ImageVector = strokeIcon(
-        name = "Trash2",
-        paths = listOf(
-            "M10 11v6",
-            "M14 11v6",
-            "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6",
-            "M3 6h18",
-            "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2",
-        ),
-    )
-    val Ellipsis: ImageVector = strokeIcon(
-        name = "Ellipsis",
-        paths = listOf(
-            "M11 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
-            "M18 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
-            "M4 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
-        ),
-    )
-    val Copy: ImageVector = strokeIcon(
-        name = "Copy",
-        paths = listOf(
-            "M10 8 H20 A2 2 0 0 1 22 10 V20 A2 2 0 0 1 20 22 H10 A2 2 0 0 1 8 20 V10 A2 2 0 0 1 10 8 Z",
-            "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2",
-        ),
-    )
-    val Link: ImageVector = strokeIcon(
-        name = "Link",
-        paths = listOf(
-            "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71",
-            "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
-        ),
-    )
-    val ExternalLink: ImageVector = strokeIcon(
-        name = "ExternalLink",
-        paths = listOf(
-            "M15 3h6v6",
-            "M10 14 21 3",
-            "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6",
-        ),
-    )
-    val Image: ImageVector = strokeIcon(
-        name = "Image",
-        paths = listOf(
-            "M5 3 H19 A2 2 0 0 1 21 5 V19 A2 2 0 0 1 19 21 H5 A2 2 0 0 1 3 19 V5 A2 2 0 0 1 5 3 Z",
-            "M7 9 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 Z",
-            "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21",
-        ),
-    )
-    val ImagePlay: ImageVector = strokeIcon(
-        name = "ImagePlay",
-        paths = listOf(
-            "M15 15.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997a1 1 0 0 1-1.517-.86z",
-            "M21 12.17V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6",
-            "m6 21 5-5",
-            "M7 9 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 Z",
-        ),
-    )
-    val AtSign: ImageVector = strokeIcon(
-        name = "AtSign",
-        paths = listOf(
-            "M8 12 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z",
-            "M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8",
-        ),
-    )
-    val Eye: ImageVector = strokeIcon(
-        name = "Eye",
-        paths = listOf(
-            "M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0",
-            "M9 12 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0 Z",
-        ),
-    )
-    val EyeOff: ImageVector = strokeIcon(
-        name = "EyeOff",
-        paths = listOf(
-            "M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49",
-            "M14.084 14.158a3 3 0 0 1-4.242-4.242",
-            "M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143",
-            "m2 2 20 20",
-        ),
-    )
-    val Lock: ImageVector = strokeIcon(
-        name = "Lock",
-        paths = listOf(
-            "M5 11 H19 A2 2 0 0 1 21 13 V20 A2 2 0 0 1 19 22 H5 A2 2 0 0 1 3 20 V13 A2 2 0 0 1 5 11 Z",
-            "M7 11V7a5 5 0 0 1 10 0v4",
-        ),
-    )
-    val Shield: ImageVector = strokeIcon(
-        name = "Shield",
-        paths = listOf("M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"),
-    )
-    val Crown: ImageVector = strokeIcon(
-        name = "Crown",
-        paths = listOf(
-            "M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z",
-            "M5 21h14",
-        ),
-    )
-    val GripVertical: ImageVector = strokeIcon(
-        name = "GripVertical",
-        paths = listOf(
-            "M8 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
-            "M8 5 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
-            "M8 19 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
-            "M14 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
-            "M14 5 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
-            "M14 19 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
-        ),
-    )
-    val LayoutGrid: ImageVector = strokeIcon(
-        name = "LayoutGrid",
-        paths = listOf(
-            "M4 3 H9 A1 1 0 0 1 10 4 V9 A1 1 0 0 1 9 10 H4 A1 1 0 0 1 3 9 V4 A1 1 0 0 1 4 3 Z",
-            "M15 3 H20 A1 1 0 0 1 21 4 V9 A1 1 0 0 1 20 10 H15 A1 1 0 0 1 14 9 V4 A1 1 0 0 1 15 3 Z",
-            "M15 14 H20 A1 1 0 0 1 21 15 V20 A1 1 0 0 1 20 21 H15 A1 1 0 0 1 14 20 V15 A1 1 0 0 1 15 14 Z",
-            "M4 14 H9 A1 1 0 0 1 10 15 V20 A1 1 0 0 1 9 21 H4 A1 1 0 0 1 3 20 V15 A1 1 0 0 1 4 14 Z",
-        ),
-    )
-    val Maximize: ImageVector = strokeIcon(
-        name = "Maximize",
-        paths = listOf(
-            "M8 3H5a2 2 0 0 0-2 2v3",
-            "M21 8V5a2 2 0 0 0-2-2h-3",
-            "M3 16v3a2 2 0 0 0 2 2h3",
-            "M16 21h3a2 2 0 0 0 2-2v-3",
-        ),
-    )
-    val LogOut: ImageVector = strokeIcon(
-        name = "LogOut",
-        paths = listOf(
-            "m16 17 5-5-5-5",
-            "M21 12H9",
-            "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4",
-        ),
-    )
-    val Info: ImageVector = strokeIcon(
-        name = "Info",
-        paths = listOf(
-            "M2 12 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 Z",
-            "M12 16v-4",
-            "M12 8h.01",
-        ),
-    )
-    val TriangleAlert: ImageVector = strokeIcon(
-        name = "TriangleAlert",
-        paths = listOf(
-            "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
-            "M12 9v4",
-            "M12 17h.01",
-        ),
-    )
-    val CircleAlert: ImageVector = strokeIcon(
-        name = "CircleAlert",
-        paths = listOf(
-            "M2 12 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 Z",
-            "M12 8 L12 12",
-            "M12 16 L12.01 16",
-        ),
-    )
-    val CircleCheck: ImageVector = strokeIcon(
-        name = "CircleCheck",
-        paths = listOf(
-            "M2 12 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 Z",
-            "m16 9-5.5 5.5L8 12",
-        ),
-    )
-    val LoaderCircle: ImageVector = strokeIcon(
-        name = "LoaderCircle",
-        paths = listOf("M21 12a9 9 0 1 1-6.219-8.56"),
-    )
-    val Megaphone: ImageVector = strokeIcon(
-        name = "Megaphone",
-        paths = listOf(
-            "M11 6a13 13 0 0 0 8.4-2.8A1 1 0 0 1 21 4v12a1 1 0 0 1-1.6.8A13 13 0 0 0 11 14H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z",
-            "M6 14a12 12 0 0 0 2.4 7.2 2 2 0 0 0 3.2-2.4A8 8 0 0 1 10 14",
-            "M8 6v8",
-        ),
-    )
-    val Play: ImageVector = strokeIcon(
-        name = "Play",
-        paths = listOf("M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"),
-    )
-    val Download: ImageVector = strokeIcon(
-        name = "Download",
-        paths = listOf(
-            "M12 15V3",
-            "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4",
-            "m7 10 5 5 5-5",
-        ),
-    )
-    val Music: ImageVector = strokeIcon(
-        name = "Music",
-        paths = listOf(
-            "M21 16V3a1 1 0 0 0-1.28-.96l-10 2.917a1 1 0 0 0-.72.96V19",
-            "M15 16 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0 Z",
-            "M3 19 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0 Z",
-        ),
-    )
+    val Inbox: ImageVector by lazy {
+        strokeIcon(
+            name = "Inbox",
+            paths = listOf(
+                "M22 12 L16 12 L14 15 L10 15 L8 12 L2 12",
+                "M 5.45 5.11 2 12 v 6 a 2 2 0 0 0 2 2 h 16 a 2 2 0 0 0 2 -2 v -6 l -3.45 -6.89 A 2 2 0 0 0 16.76 4 H 7.24 a 2 2 0 0 0 -1.79 1.11 z",
+            ),
+        )
+    }
+    val Hash: ImageVector by lazy {
+        strokeIcon(
+            name = "Hash",
+            paths = listOf(
+                "M4 9 L20 9",
+                "M4 15 L20 15",
+                "M10 3 L8 21",
+                "M16 3 L14 21",
+            ),
+        )
+    }
+    val Volume2: ImageVector by lazy {
+        strokeIcon(
+            name = "Volume2",
+            paths = listOf(
+                "M 11 4.702 a 0.705 0.705 0 0 0 -1.203 -0.498 L 6.413 7.587 A 1.4 1.4 0 0 1 5.416 8 H 3 a 1 1 0 0 0 -1 1 v 6 a 1 1 0 0 0 1 1 h 2.416 a 1.4 1.4 0 0 1 0.997 0.413 l 3.383 3.384 A 0.705 0.705 0 0 0 11 19.298 z",
+                "M 16 9 a 5 5 0 0 1 0 6",
+                "M 19.364 18.364 a 9 9 0 0 0 0 -12.728",
+            ),
+        )
+    }
+    val Mic: ImageVector by lazy {
+        strokeIcon(
+            name = "Mic",
+            paths = listOf(
+                "M 12 19 v 3",
+                "M 19 10 v 2 a 7 7 0 0 1 -14 0 v -2",
+                "M12 2 H12 A3 3 0 0 1 15 5 V12 A3 3 0 0 1 12 15 H12 A3 3 0 0 1 9 12 V5 A3 3 0 0 1 12 2 Z",
+            ),
+        )
+    }
+    val MicOff: ImageVector by lazy {
+        strokeIcon(
+            name = "MicOff",
+            paths = listOf(
+                "M 12 19 v 3",
+                "M 15 9.34 V 5 a 3 3 0 0 0 -5.68 -1.33",
+                "M 16.95 16.95 A 7 7 0 0 1 5 12 v -2",
+                "M 18.89 13.23 A 7 7 0 0 0 19 12 v -2",
+                "m 2 2 20 20",
+                "M 9 9 v 3 a 3 3 0 0 0 5.12 2.12",
+            ),
+        )
+    }
+    val Headphones: ImageVector by lazy {
+        strokeIcon(
+            name = "Headphones",
+            paths = listOf("M 3 14 h 3 a 2 2 0 0 1 2 2 v 3 a 2 2 0 0 1 -2 2 H 5 a 2 2 0 0 1 -2 -2 v -7 a 9 9 0 0 1 18 0 v 7 a 2 2 0 0 1 -2 2 h -1 a 2 2 0 0 1 -2 -2 v -3 a 2 2 0 0 1 2 -2 h 3"),
+        )
+    }
+    val HeadphoneOff: ImageVector by lazy {
+        strokeIcon(
+            name = "HeadphoneOff",
+            paths = listOf(
+                "M 21 14 h -1.343",
+                "M 9.128 3.47 A 9 9 0 0 1 21 12 v 3.343",
+                "m 2 2 20 20",
+                "M 20.414 20.414 A 2 2 0 0 1 19 21 h -1 a 2 2 0 0 1 -2 -2 v -3",
+                "M 3 14 h 3 a 2 2 0 0 1 2 2 v 3 a 2 2 0 0 1 -2 2 H 5 a 2 2 0 0 1 -2 -2 v -7 a 9 9 0 0 1 2.636 -6.364",
+            ),
+        )
+    }
+    val Video: ImageVector by lazy {
+        strokeIcon(
+            name = "Video",
+            paths = listOf(
+                "m 16 13 5.223 3.482 a 0.5 0.5 0 0 0 0.777 -0.416 V 7.87 a 0.5 0.5 0 0 0 -0.752 -0.432 L 16 10.5",
+                "M4 6 H14 A2 2 0 0 1 16 8 V16 A2 2 0 0 1 14 18 H4 A2 2 0 0 1 2 16 V8 A2 2 0 0 1 4 6 Z",
+            ),
+        )
+    }
+    val VideoOff: ImageVector by lazy {
+        strokeIcon(
+            name = "VideoOff",
+            paths = listOf(
+                "M 10.66 6 H 14 a 2 2 0 0 1 2 2 v 2.5 l 5.248 -3.062 A 0.5 0.5 0 0 1 22 7.87 v 8.196",
+                "M 16 16 a 2 2 0 0 1 -2 2 H 4 a 2 2 0 0 1 -2 -2 V 8 a 2 2 0 0 1 2 -2 h 2",
+                "m 2 2 20 20",
+            ),
+        )
+    }
+    val ScreenShare: ImageVector by lazy {
+        strokeIcon(
+            name = "ScreenShare",
+            paths = listOf(
+                "M 13 3 H 4 a 2 2 0 0 0 -2 2 v 10 a 2 2 0 0 0 2 2 h 16 a 2 2 0 0 0 2 -2 v -3",
+                "M 8 21 h 8",
+                "M 12 17 v 4",
+                "m 17 8 5 -5",
+                "M 17 3 h 5 v 5",
+            ),
+        )
+    }
+    val PhoneOff: ImageVector by lazy {
+        strokeIcon(
+            name = "PhoneOff",
+            paths = listOf(
+                "M 10.1 13.9 a 14 14 0 0 0 3.732 2.668 1 1 0 0 0 1.213 -0.303 l 0.355 -0.465 A 2 2 0 0 1 17 15 h 3 a 2 2 0 0 1 2 2 v 3 a 2 2 0 0 1 -2 2 18 18 0 0 1 -12.728 -5.272",
+                "M 22 2 2 22",
+                "M 4.76 13.582 A 18 18 0 0 1 2 4 a 2 2 0 0 1 2 -2 h 3 a 2 2 0 0 1 2 2 v 3 a 2 2 0 0 1 -0.8 1.6 l -0.468 0.351 a 1 1 0 0 0 -0.292 1.233 14 14 0 0 0 0.244 0.473",
+            ),
+        )
+    }
+    val Settings: ImageVector by lazy {
+        strokeIcon(
+            name = "Settings",
+            paths = listOf(
+                "M 9.671 4.136 a 2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1 -2.33 4.033 2.34 2.34 0 0 0 -3.319 1.915 2.34 2.34 0 0 1 -4.659 0 2.34 2.34 0 0 0 -3.32 -1.915 2.34 2.34 0 0 1 -2.33 -4.033 2.34 2.34 0 0 0 0 -3.831 A 2.34 2.34 0 0 1 6.35 6.051 a 2.34 2.34 0 0 0 3.319 -1.915",
+                "M9 12 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0 Z",
+            ),
+        )
+    }
+    val ChevronDown: ImageVector by lazy {
+        strokeIcon(
+            name = "ChevronDown",
+            paths = listOf("m 6 9 6 6 6 -6"),
+        )
+    }
+    val ChevronUp: ImageVector by lazy {
+        strokeIcon(
+            name = "ChevronUp",
+            paths = listOf("m 18 15 -6 -6 -6 6"),
+        )
+    }
+    val ChevronLeft: ImageVector by lazy {
+        strokeIcon(
+            name = "ChevronLeft",
+            paths = listOf("m 15 18 -6 -6 6 -6"),
+        )
+    }
+    val ChevronRight: ImageVector by lazy {
+        strokeIcon(
+            name = "ChevronRight",
+            paths = listOf("m 9 18 6 -6 -6 -6"),
+        )
+    }
+    val ArrowLeft: ImageVector by lazy {
+        strokeIcon(
+            name = "ArrowLeft",
+            paths = listOf(
+                "m 12 19 -7 -7 7 -7",
+                "M 19 12 H 5",
+            ),
+        )
+    }
+    val X: ImageVector by lazy {
+        strokeIcon(
+            name = "X",
+            paths = listOf(
+                "M 18 6 6 18",
+                "m 6 6 12 12",
+            ),
+        )
+    }
+    val Plus: ImageVector by lazy {
+        strokeIcon(
+            name = "Plus",
+            paths = listOf(
+                "M 5 12 h 14",
+                "M 12 5 v 14",
+            ),
+        )
+    }
+    val Minus: ImageVector by lazy {
+        strokeIcon(
+            name = "Minus",
+            paths = listOf("M 5 12 h 14"),
+        )
+    }
+    val Check: ImageVector by lazy {
+        strokeIcon(
+            name = "Check",
+            paths = listOf("M 20 6 9 17 l -5 -5"),
+        )
+    }
+    val Search: ImageVector by lazy {
+        strokeIcon(
+            name = "Search",
+            paths = listOf(
+                "m 21 21 -4.34 -4.34",
+                "M3 11 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0 Z",
+            ),
+        )
+    }
+    val Users: ImageVector by lazy {
+        strokeIcon(
+            name = "Users",
+            paths = listOf(
+                "M 16 21 v -2 a 4 4 0 0 0 -4 -4 H 6 a 4 4 0 0 0 -4 4 v 2",
+                "M 16 3.128 a 4 4 0 0 1 0 7.744",
+                "M 22 21 v -2 a 4 4 0 0 0 -3 -3.87",
+                "M5 7 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z",
+            ),
+        )
+    }
+    val User: ImageVector by lazy {
+        strokeIcon(
+            name = "User",
+            paths = listOf(
+                "M 19 21 v -2 a 4 4 0 0 0 -4 -4 H 9 a 4 4 0 0 0 -4 4 v 2",
+                "M8 7 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z",
+            ),
+        )
+    }
+    val UserPlus: ImageVector by lazy {
+        strokeIcon(
+            name = "UserPlus",
+            paths = listOf(
+                "M 16 21 v -2 a 4 4 0 0 0 -4 -4 H 6 a 4 4 0 0 0 -4 4 v 2",
+                "M5 7 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z",
+                "M19 8 L19 14",
+                "M22 11 L16 11",
+            ),
+        )
+    }
+    val Bell: ImageVector by lazy {
+        strokeIcon(
+            name = "Bell",
+            paths = listOf(
+                "M 10.268 21 a 2 2 0 0 0 3.464 0",
+                "M 3.262 15.326 A 1 1 0 0 0 4 17 h 16 a 1 1 0 0 0 0.74 -1.673 C 19.41 13.956 18 12.499 18 8 A 6 6 0 0 0 6 8 c 0 4.499 -1.411 5.956 -2.738 7.326",
+            ),
+        )
+    }
+    val BellOff: ImageVector by lazy {
+        strokeIcon(
+            name = "BellOff",
+            paths = listOf(
+                "M 10.268 21 a 2 2 0 0 0 3.464 0",
+                "M 17 17 H 4 a 1 1 0 0 1 -0.74 -1.673 C 4.59 13.956 6 12.499 6 8 a 6 6 0 0 1 0.258 -1.742",
+                "m 2 2 20 20",
+                "M 8.668 3.01 A 6 6 0 0 1 18 8 c 0 2.687 0.77 4.653 1.707 6.05",
+            ),
+        )
+    }
+    val Pin: ImageVector by lazy {
+        strokeIcon(
+            name = "Pin",
+            paths = listOf(
+                "M 12 17 v 5",
+                "M 9 10.76 a 2 2 0 0 1 -1.11 1.79 l -1.78 0.9 A 2 2 0 0 0 5 15.24 V 16 a 1 1 0 0 0 1 1 h 12 a 1 1 0 0 0 1 -1 v -0.76 a 2 2 0 0 0 -1.11 -1.79 l -1.78 -0.9 A 2 2 0 0 1 15 10.76 V 7 a 1 1 0 0 1 1 -1 2 2 0 0 0 0 -4 H 8 a 2 2 0 0 0 0 4 1 1 0 0 1 1 1 z",
+            ),
+        )
+    }
+    val PinOff: ImageVector by lazy {
+        strokeIcon(
+            name = "PinOff",
+            paths = listOf(
+                "M 12 17 v 5",
+                "M 15 9.34 V 7 a 1 1 0 0 1 1 -1 2 2 0 0 0 0 -4 H 7.89",
+                "m 2 2 20 20",
+                "M 9 9 v 1.76 a 2 2 0 0 1 -1.11 1.79 l -1.78 0.9 A 2 2 0 0 0 5 15.24 V 16 a 1 1 0 0 0 1 1 h 11",
+            ),
+        )
+    }
+    val Smile: ImageVector by lazy {
+        strokeIcon(
+            name = "Smile",
+            paths = listOf(
+                "M 15 10 V 9",
+                "M 16.472 15 a 6 6 0 0 1 -8.943 0",
+                "M 9 10 V 9",
+                "M2 12 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 Z",
+            ),
+        )
+    }
+    val SmilePlus: ImageVector by lazy {
+        strokeIcon(
+            name = "SmilePlus",
+            paths = listOf(
+                "M 13.267 2.08 a 10 10 0 1 0 8.653 8.653",
+                "M 15 10 V 9",
+                "M 16 5 h 6",
+                "M 16.472 15 a 6 6 0 0 1 -8.943 0",
+                "M 19 2 v 6",
+                "M 9 10 V 9",
+            ),
+        )
+    }
+    val Paperclip: ImageVector by lazy {
+        strokeIcon(
+            name = "Paperclip",
+            paths = listOf("m 16 6 -8.414 8.586 a 2 2 0 0 0 2.829 2.829 l 8.414 -8.586 a 4 4 0 1 0 -5.657 -5.657 l -8.379 8.551 a 6 6 0 1 0 8.485 8.485 l 8.379 -8.551"),
+        )
+    }
+    val Send: ImageVector by lazy {
+        strokeIcon(
+            name = "Send",
+            paths = listOf(
+                "M 14.536 21.686 a 0.5 0.5 0 0 0 0.937 -0.024 l 6.5 -19 a 0.496 0.496 0 0 0 -0.635 -0.635 l -19 6.5 a 0.5 0.5 0 0 0 -0.024 0.937 l 7.93 3.18 a 2 2 0 0 1 1.112 1.11 z",
+                "m 21.854 2.147 -10.94 10.939",
+            ),
+        )
+    }
+    val MessageSquare: ImageVector by lazy {
+        strokeIcon(
+            name = "MessageSquare",
+            paths = listOf("M 22 17 a 2 2 0 0 1 -2 2 H 6.828 a 2 2 0 0 0 -1.414 0.586 l -2.202 2.202 A 0.71 0.71 0 0 1 2 21.286 V 5 a 2 2 0 0 1 2 -2 h 16 a 2 2 0 0 1 2 2 z"),
+        )
+    }
+    val Reply: ImageVector by lazy {
+        strokeIcon(
+            name = "Reply",
+            paths = listOf(
+                "M 20 18 v -2 a 4 4 0 0 0 -4 -4 H 4",
+                "m 9 17 -5 -5 5 -5",
+            ),
+        )
+    }
+    val Pencil: ImageVector by lazy {
+        strokeIcon(
+            name = "Pencil",
+            paths = listOf(
+                "M 21.174 6.812 a 1 1 0 0 0 -3.986 -3.987 L 3.842 16.174 a 2 2 0 0 0 -0.5 0.83 l -1.321 4.352 a 0.5 0.5 0 0 0 0.623 0.622 l 4.353 -1.32 a 2 2 0 0 0 0.83 -0.497 z",
+                "m 15 5 4 4",
+            ),
+        )
+    }
+    val Trash2: ImageVector by lazy {
+        strokeIcon(
+            name = "Trash2",
+            paths = listOf(
+                "M 10 11 v 6",
+                "M 14 11 v 6",
+                "M 19 6 v 14 a 2 2 0 0 1 -2 2 H 7 a 2 2 0 0 1 -2 -2 V 6",
+                "M 3 6 h 18",
+                "M 8 6 V 4 a 2 2 0 0 1 2 -2 h 4 a 2 2 0 0 1 2 2 v 2",
+            ),
+        )
+    }
+    val Ellipsis: ImageVector by lazy {
+        strokeIcon(
+            name = "Ellipsis",
+            paths = listOf(
+                "M11 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
+                "M18 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
+                "M4 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
+            ),
+        )
+    }
+    val Copy: ImageVector by lazy {
+        strokeIcon(
+            name = "Copy",
+            paths = listOf(
+                "M10 8 H20 A2 2 0 0 1 22 10 V20 A2 2 0 0 1 20 22 H10 A2 2 0 0 1 8 20 V10 A2 2 0 0 1 10 8 Z",
+                "M 4 16 c -1.1 0 -2 -0.9 -2 -2 V 4 c 0 -1.1 0.9 -2 2 -2 h 10 c 1.1 0 2 0.9 2 2",
+            ),
+        )
+    }
+    val Link: ImageVector by lazy {
+        strokeIcon(
+            name = "Link",
+            paths = listOf(
+                "M 10 13 a 5 5 0 0 0 7.54 0.54 l 3 -3 a 5 5 0 0 0 -7.07 -7.07 l -1.72 1.71",
+                "M 14 11 a 5 5 0 0 0 -7.54 -0.54 l -3 3 a 5 5 0 0 0 7.07 7.07 l 1.71 -1.71",
+            ),
+        )
+    }
+    val ExternalLink: ImageVector by lazy {
+        strokeIcon(
+            name = "ExternalLink",
+            paths = listOf(
+                "M 15 3 h 6 v 6",
+                "M 10 14 21 3",
+                "M 18 13 v 6 a 2 2 0 0 1 -2 2 H 5 a 2 2 0 0 1 -2 -2 V 8 a 2 2 0 0 1 2 -2 h 6",
+            ),
+        )
+    }
+    val Image: ImageVector by lazy {
+        strokeIcon(
+            name = "Image",
+            paths = listOf(
+                "M5 3 H19 A2 2 0 0 1 21 5 V19 A2 2 0 0 1 19 21 H5 A2 2 0 0 1 3 19 V5 A2 2 0 0 1 5 3 Z",
+                "M7 9 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 Z",
+                "m 21 15 -3.086 -3.086 a 2 2 0 0 0 -2.828 0 L 6 21",
+            ),
+        )
+    }
+    val ImagePlay: ImageVector by lazy {
+        strokeIcon(
+            name = "ImagePlay",
+            paths = listOf(
+                "M 15 15.003 a 1 1 0 0 1 1.517 -0.859 l 4.997 2.997 a 1 1 0 0 1 0 1.718 l -4.997 2.997 a 1 1 0 0 1 -1.517 -0.86 z",
+                "M 21 12.17 V 5 a 2 2 0 0 0 -2 -2 H 5 a 2 2 0 0 0 -2 2 v 14 a 2 2 0 0 0 2 2 h 6",
+                "m 6 21 5 -5",
+                "M7 9 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 Z",
+            ),
+        )
+    }
+    val AtSign: ImageVector by lazy {
+        strokeIcon(
+            name = "AtSign",
+            paths = listOf(
+                "M8 12 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z",
+                "M 16 8 v 5 a 3 3 0 0 0 6 0 v -1 a 10 10 0 1 0 -4 8",
+            ),
+        )
+    }
+    val Eye: ImageVector by lazy {
+        strokeIcon(
+            name = "Eye",
+            paths = listOf(
+                "M 2.062 12.348 a 1 1 0 0 1 0 -0.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 0.696 10.75 10.75 0 0 1 -19.876 0",
+                "M9 12 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0 Z",
+            ),
+        )
+    }
+    val EyeOff: ImageVector by lazy {
+        strokeIcon(
+            name = "EyeOff",
+            paths = listOf(
+                "M 10.733 5.076 a 10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 0.696 10.747 10.747 0 0 1 -1.444 2.49",
+                "M 14.084 14.158 a 3 3 0 0 1 -4.242 -4.242",
+                "M 17.479 17.499 a 10.75 10.75 0 0 1 -15.417 -5.151 1 1 0 0 1 0 -0.696 10.75 10.75 0 0 1 4.446 -5.143",
+                "m 2 2 20 20",
+            ),
+        )
+    }
+    val Lock: ImageVector by lazy {
+        strokeIcon(
+            name = "Lock",
+            paths = listOf(
+                "M5 11 H19 A2 2 0 0 1 21 13 V20 A2 2 0 0 1 19 22 H5 A2 2 0 0 1 3 20 V13 A2 2 0 0 1 5 11 Z",
+                "M 7 11 V 7 a 5 5 0 0 1 10 0 v 4",
+            ),
+        )
+    }
+    val Shield: ImageVector by lazy {
+        strokeIcon(
+            name = "Shield",
+            paths = listOf("M 20 13 c 0 5 -3.5 7.5 -7.66 8.95 a 1 1 0 0 1 -0.67 -0.01 C 7.5 20.5 4 18 4 13 V 6 a 1 1 0 0 1 1 -1 c 2 0 4.5 -1.2 6.24 -2.72 a 1.17 1.17 0 0 1 1.52 0 C 14.51 3.81 17 5 19 5 a 1 1 0 0 1 1 1 z"),
+        )
+    }
+    val Crown: ImageVector by lazy {
+        strokeIcon(
+            name = "Crown",
+            paths = listOf(
+                "M 11.562 3.266 a 0.5 0.5 0 0 1 0.876 0 L 15.39 8.87 a 1 1 0 0 0 1.516 0.294 L 21.183 5.5 a 0.5 0.5 0 0 1 0.798 0.519 l -2.834 10.246 a 1 1 0 0 1 -0.956 0.734 H 5.81 a 1 1 0 0 1 -0.957 -0.734 L 2.02 6.02 a 0.5 0.5 0 0 1 0.798 -0.519 l 4.276 3.664 a 1 1 0 0 0 1.516 -0.294 z",
+                "M 5 21 h 14",
+            ),
+        )
+    }
+    val GripVertical: ImageVector by lazy {
+        strokeIcon(
+            name = "GripVertical",
+            paths = listOf(
+                "M8 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
+                "M8 5 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
+                "M8 19 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
+                "M14 12 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
+                "M14 5 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
+                "M14 19 a1 1 0 1 0 2 0 a1 1 0 1 0 -2 0 Z",
+            ),
+        )
+    }
+    val LayoutGrid: ImageVector by lazy {
+        strokeIcon(
+            name = "LayoutGrid",
+            paths = listOf(
+                "M4 3 H9 A1 1 0 0 1 10 4 V9 A1 1 0 0 1 9 10 H4 A1 1 0 0 1 3 9 V4 A1 1 0 0 1 4 3 Z",
+                "M15 3 H20 A1 1 0 0 1 21 4 V9 A1 1 0 0 1 20 10 H15 A1 1 0 0 1 14 9 V4 A1 1 0 0 1 15 3 Z",
+                "M15 14 H20 A1 1 0 0 1 21 15 V20 A1 1 0 0 1 20 21 H15 A1 1 0 0 1 14 20 V15 A1 1 0 0 1 15 14 Z",
+                "M4 14 H9 A1 1 0 0 1 10 15 V20 A1 1 0 0 1 9 21 H4 A1 1 0 0 1 3 20 V15 A1 1 0 0 1 4 14 Z",
+            ),
+        )
+    }
+    val Maximize: ImageVector by lazy {
+        strokeIcon(
+            name = "Maximize",
+            paths = listOf(
+                "M 8 3 H 5 a 2 2 0 0 0 -2 2 v 3",
+                "M 21 8 V 5 a 2 2 0 0 0 -2 -2 h -3",
+                "M 3 16 v 3 a 2 2 0 0 0 2 2 h 3",
+                "M 16 21 h 3 a 2 2 0 0 0 2 -2 v -3",
+            ),
+        )
+    }
+    val LogOut: ImageVector by lazy {
+        strokeIcon(
+            name = "LogOut",
+            paths = listOf(
+                "m 16 17 5 -5 -5 -5",
+                "M 21 12 H 9",
+                "M 9 21 H 5 a 2 2 0 0 1 -2 -2 V 5 a 2 2 0 0 1 2 -2 h 4",
+            ),
+        )
+    }
+    val Info: ImageVector by lazy {
+        strokeIcon(
+            name = "Info",
+            paths = listOf(
+                "M2 12 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 Z",
+                "M 12 16 v -4",
+                "M 12 8 h 0.01",
+            ),
+        )
+    }
+    val TriangleAlert: ImageVector by lazy {
+        strokeIcon(
+            name = "TriangleAlert",
+            paths = listOf(
+                "m 21.73 18 -8 -14 a 2 2 0 0 0 -3.48 0 l -8 14 A 2 2 0 0 0 4 21 h 16 a 2 2 0 0 0 1.73 -3",
+                "M 12 9 v 4",
+                "M 12 17 h 0.01",
+            ),
+        )
+    }
+    val CircleAlert: ImageVector by lazy {
+        strokeIcon(
+            name = "CircleAlert",
+            paths = listOf(
+                "M2 12 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 Z",
+                "M12 8 L12 12",
+                "M12 16 L12.01 16",
+            ),
+        )
+    }
+    val CircleCheck: ImageVector by lazy {
+        strokeIcon(
+            name = "CircleCheck",
+            paths = listOf(
+                "M2 12 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0 Z",
+                "m 16 9 -5.5 5.5 L 8 12",
+            ),
+        )
+    }
+    val LoaderCircle: ImageVector by lazy {
+        strokeIcon(
+            name = "LoaderCircle",
+            paths = listOf("M 21 12 a 9 9 0 1 1 -6.219 -8.56"),
+        )
+    }
+    val Megaphone: ImageVector by lazy {
+        strokeIcon(
+            name = "Megaphone",
+            paths = listOf(
+                "M 11 6 a 13 13 0 0 0 8.4 -2.8 A 1 1 0 0 1 21 4 v 12 a 1 1 0 0 1 -1.6 0.8 A 13 13 0 0 0 11 14 H 5 a 2 2 0 0 1 -2 -2 V 8 a 2 2 0 0 1 2 -2 z",
+                "M 6 14 a 12 12 0 0 0 2.4 7.2 2 2 0 0 0 3.2 -2.4 A 8 8 0 0 1 10 14",
+                "M 8 6 v 8",
+            ),
+        )
+    }
+    val Play: ImageVector by lazy {
+        strokeIcon(
+            name = "Play",
+            paths = listOf("M 5 5 a 2 2 0 0 1 3.008 -1.728 l 11.997 6.998 a 2 2 0 0 1 0.003 3.458 l -12 7 A 2 2 0 0 1 5 19 z"),
+        )
+    }
+    val Download: ImageVector by lazy {
+        strokeIcon(
+            name = "Download",
+            paths = listOf(
+                "M 12 15 V 3",
+                "M 21 15 v 4 a 2 2 0 0 1 -2 2 H 5 a 2 2 0 0 1 -2 -2 v -4",
+                "m 7 10 5 5 5 -5",
+            ),
+        )
+    }
+    val Music: ImageVector by lazy {
+        strokeIcon(
+            name = "Music",
+            paths = listOf(
+                "M 21 16 V 3 a 1 1 0 0 0 -1.28 -0.96 l -10 2.917 a 1 1 0 0 0 -0.72 0.96 V 19",
+                "M15 16 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0 Z",
+                "M3 19 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0 Z",
+            ),
+        )
+    }
 }

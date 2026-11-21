@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import re
 import xml.etree.ElementTree as ElementTree
+from decimal import Decimal
 from pathlib import Path
 from typing import Callable, NoReturn
 from xml.sax.saxutils import escape
@@ -70,10 +71,12 @@ CHILD_ATTRIBUTES = frozenset(
 )
 # The values those attributes may hold, matched in full: path data letters and
 # numbers, a point list, and one number, so nothing else (`javascript:…`,
-# `1e3x`) can slip into an attribute the renderers copy.
-PATH_DATA = re.compile(r"[MmLlHhVvCcSsQqTtAaZz0-9.,\s+-]+")
-POINT_LIST = re.compile(r"[0-9.,\s-]+")
-NUMBER = re.compile(r"-?[0-9]*\.?[0-9]+")
+# `1e3x`) can slip into an attribute the renderers copy. `PATH_DATA` and
+# `POINT_LIST` are only a coarse character check; both are tokenised below.
+PATH_DATA = re.compile(r"[MmLlHhVvCcSsQqTtAaZz0-9.,\s+\-eE]+")
+POINT_LIST = re.compile(r"[0-9.,\s+\-eE]+")
+# An SVG number: sign, digits with at most one point, and an optional exponent.
+NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
 # The root may also carry the licence-compatible extras the real files have:
 # `xmlns` and `class`, whose tokens must all be Lucide's own.
 ROOT_ATTRIBUTES = frozenset(
@@ -342,16 +345,118 @@ def _kt_number(value: float) -> str:
     return "0" if text in ("", "-0") else text
 
 
-def _kt_attribute(where: str, tag: str, attributes: dict[str, str], name: str) -> str:
+def _kt_attribute(
+    where: str, tag: str, attributes: dict[str, str], name: str, *, default: str | None = None
+) -> str:
     """One shape's attribute, or the error naming the attribute it is missing."""
-    if name not in attributes:
-        _fail(where, f"<{tag}> is missing {name}")
-    return attributes[name]
+    if name in attributes:
+        return attributes[name]
+    if default is not None:
+        return default
+    _fail(where, f"<{tag}> is missing {name}")
+
+
+def _kt_decimal(value: str) -> str:
+    """An SVG number as a plain decimal: `+1`, `1e3`, `.5` -> `1`, `1000`, `0.5`."""
+    text = format(Decimal(value), "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return "0" if text in ("", "-0") else text
+
+
+# How many arguments each path command takes before it may repeat implicitly.
+PATH_ARGUMENTS = {
+    "M": 2,
+    "L": 2,
+    "T": 2,
+    "H": 1,
+    "V": 1,
+    "C": 6,
+    "S": 4,
+    "Q": 4,
+    "A": 7,
+    "Z": 0,
+}
+PATH_COMMANDS = frozenset("MmLlHhVvCcSsQqTtAaZz")
+# The positions of an arc's two flags in its seven arguments.
+ARC_FLAGS = frozenset((3, 4))
+SEPARATORS = re.compile(r"[\s,]*")
+
+
+def _kt_path_data(where: str, data: str) -> str:
+    """One `d` string, read as SVG reads it and re-emitted with every argument spaced.
+
+    SVG lets an arc's two flags be written as single characters without a
+    separator (`a6 6 0 01-8.943 0`). Compose's `PathParser` drops such an arc
+    without an error, so the flags are read one character at a time, and the
+    whole string is written back with a space between every token.
+    """
+    tokens: list[str] = []
+    index = 0
+    command = ""
+    need = 0
+    argument = 0
+    started = False
+    while True:
+        index = SEPARATORS.match(data, index).end()
+        if index == len(data):
+            break
+        letter = data[index]
+        if letter in PATH_COMMANDS:
+            if command and not started:
+                _fail(where, f"'{command}' takes {need} arguments")
+            if argument:
+                _fail(where, f"'{command}' takes {need} arguments, got {argument}")
+            command = letter.upper()
+            need = PATH_ARGUMENTS[command]
+            started = not need
+            tokens.append(letter)
+            index += 1
+            continue
+        if not command:
+            _fail(where, f"path data must start with a command, got {data!r}")
+        if not need:
+            _fail(where, f"'{command}' takes no arguments")
+        if command == "A" and argument in ARC_FLAGS:
+            if letter not in "01":
+                _fail(where, f"arc flag must be 0 or 1, got {data[index:]!r}")
+            tokens.append(letter)
+            index += 1
+        else:
+            match = NUMBER.match(data, index)
+            if match is None:
+                _fail(where, f"unexpected {data[index:]!r} in path data")
+            tokens.append(_kt_decimal(match.group()))
+            index = match.end()
+        started = True
+        argument += 1
+        if argument == need:
+            argument = 0
+    if command and not started:
+        _fail(where, f"'{command}' takes {need} arguments")
+    if argument:
+        _fail(where, f"'{command}' takes {need} arguments, got {argument}")
+    return " ".join(tokens)
 
 
 def _kt_points(where: str, tag: str, points: str) -> list[str]:
-    """The coordinates of a `points` list, still as written and in pairs."""
-    values = [value for value in re.split(r"[,\s]+", points.strip()) if value]
+    """The coordinates of a `points` list, as plain decimals and in pairs.
+
+    Numbers are taken the SVG way, so a sign may start the next one
+    (`1,2-3,4-5,6`), and anything that is not a number or a separator is an
+    error rather than a silently shorter list.
+    """
+    values: list[str] = []
+    index = 0
+    while index < len(points):
+        match = NUMBER.match(points, index)
+        if match is None:
+            if points[index] in " \t\r\n,":
+                index += 1
+                continue
+            _fail(where, f"<{tag}> points={points!r} has an unexpected {points[index]!r}")
+        values.append(_kt_decimal(match.group()))
+        index = match.end()
     if len(values) < 4 or len(values) % 2:
         _fail(where, f"<{tag}> needs an even number of coordinates, got {points!r}")
     return values
@@ -369,10 +474,11 @@ def _kt_ellipse(cx: float, cy: float, rx: float, ry: float) -> str:
 def _kt_rect(where: str, attributes: dict[str, str]) -> str:
     """A `rect` as path data, rounded when it has `rx`/`ry` (each defaults to the other)."""
     tag = "rect"
-    x, y, width, height = (
-        float(_kt_attribute(where, tag, attributes, name))
-        for name in ("x", "y", "width", "height")
-    )
+    # SVG leaves `x` and `y` at 0 when the shape does not say.
+    x = float(_kt_attribute(where, tag, attributes, "x", default="0"))
+    y = float(_kt_attribute(where, tag, attributes, "y", default="0"))
+    width = float(_kt_attribute(where, tag, attributes, "width"))
+    height = float(_kt_attribute(where, tag, attributes, "height"))
     rx_text = attributes.get("rx")
     ry_text = attributes.get("ry")
     if rx_text is None:
@@ -401,10 +507,12 @@ def _kt_shape_path(icon: dict, tag: str, attributes: dict[str, str]) -> str:
     """One validated shape as SVG path data, in the same 24 unit box."""
     where = f"icons/{icon['file']}.svg"
     if tag == "path":
-        return _kt_attribute(where, tag, attributes, "d")
+        return _kt_path_data(where, _kt_attribute(where, tag, attributes, "d"))
     if tag == "line":
+        # SVG leaves every one of a line's coordinates at 0 when it does not say.
         x1, y1, x2, y2 = (
-            _kt_attribute(where, tag, attributes, name) for name in ("x1", "y1", "x2", "y2")
+            _kt_decimal(_kt_attribute(where, tag, attributes, name, default="0"))
+            for name in ("x1", "y1", "x2", "y2")
         )
         return f"M{x1} {y1} L{x2} {y2}"
     if tag in ("polyline", "polygon"):
@@ -414,15 +522,16 @@ def _kt_shape_path(icon: dict, tag: str, attributes: dict[str, str]) -> str:
         )
         return path + " Z" if tag == "polygon" else path
     if tag == "circle":
-        cx, cy, r = (
-            float(_kt_attribute(where, tag, attributes, name)) for name in ("cx", "cy", "r")
-        )
+        cx = float(_kt_attribute(where, tag, attributes, "cx", default="0"))
+        cy = float(_kt_attribute(where, tag, attributes, "cy", default="0"))
+        r = float(_kt_attribute(where, tag, attributes, "r"))
         return _kt_ellipse(cx, cy, r, r)
     if tag == "ellipse":
-        cx, cy, rx, ry = (
-            float(_kt_attribute(where, tag, attributes, name))
-            for name in ("cx", "cy", "rx", "ry")
-        )
+        # SVG leaves the centre at the origin when the shape does not say.
+        cx = float(_kt_attribute(where, tag, attributes, "cx", default="0"))
+        cy = float(_kt_attribute(where, tag, attributes, "cy", default="0"))
+        rx = float(_kt_attribute(where, tag, attributes, "rx"))
+        ry = float(_kt_attribute(where, tag, attributes, "ry"))
         return _kt_ellipse(cx, cy, rx, ry)
     if tag == "rect":
         return _kt_rect(where, attributes)
@@ -482,15 +591,18 @@ def render_icons_kt(icons: dict) -> str:
         paths = [
             _kt_shape_path(icon, tag, attributes) for tag, attributes in icon["nodes"]
         ]
-        lines.append(f"    val {icon['name']}: ImageVector = strokeIcon(")
-        lines.append(f'        name = "{icon["name"]}",')
+        # Each icon is built on first use: touching `Icons` parses nothing else.
+        lines.append(f"    val {icon['name']}: ImageVector by lazy {{")
+        lines.append("        strokeIcon(")
+        lines.append(f'            name = "{icon["name"]}",')
         if len(paths) == 1:
-            lines.append(f'        paths = listOf("{paths[0]}"),')
+            lines.append(f'            paths = listOf("{paths[0]}"),')
         else:
-            lines.append("        paths = listOf(")
-            lines.extend(f'            "{path}",' for path in paths)
-            lines.append("        ),")
-        lines.append("    )")
+            lines.append("            paths = listOf(")
+            lines.extend(f'                "{path}",' for path in paths)
+            lines.append("            ),")
+        lines.append("        )")
+        lines.append("    }")
     lines.append("}")
     return "\n".join(lines) + "\n"
 

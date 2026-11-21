@@ -655,14 +655,39 @@ def _kt_name(group: str, key: str) -> str:
     return name + "Ms" if group == "motion" else name
 
 
-def _kt_dp(value: int | float) -> str:
-    """A `Dp` literal: `16.dp`, and `2.5f.dp` for a fraction (`Double.dp` does not exist)."""
-    return f"{fmt_num(value)}f.dp" if not float(value).is_integer() else f"{int(value)}.dp"
+def _kt_string(value: str) -> str:
+    """A double-quoted Kotlin string literal, with `$`, `"` and `\\` escaped."""
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$")
+    return f'"{escaped}"'
 
 
-def _kt_sp(value: int | float) -> str:
+# `Int.dp`/`Int.sp` take an Int: a whole number outside that range would be a
+# Long literal (`3000000000.dp`) with no such extension, so it is written as a
+# Float, and a number beyond Float's range is rejected rather than emitted.
+KT_INT_MIN = -(2**31)
+KT_INT_MAX = 2**31 - 1
+KT_FLOAT_MAX = 3.4028234663852886e38
+
+
+def _kt_unit(value: int | float, unit: str, path: str) -> str:
+    """A `Dp`/`TextUnit` literal: an Int when it fits, a Float when it does not."""
+    if float(value).is_integer():
+        whole = int(value)
+        if KT_INT_MIN <= whole <= KT_INT_MAX:
+            return f"{whole}.{unit}"
+    if abs(value) > KT_FLOAT_MAX:
+        _fail(path, f"{fmt_num(value)} is beyond Kotlin's Float range, got {value!r}")
+    return f"{fmt_num(value)}f.{unit}"
+
+
+def _kt_dp(value: int | float, path: str) -> str:
+    """A `Dp` literal: `16.dp`, `2.5f.dp` (a fraction) and `3000000000f.dp` (past Int)."""
+    return _kt_unit(value, "dp", path)
+
+
+def _kt_sp(value: int | float, path: str) -> str:
     """A `TextUnit` in sp: `15.sp`, and `12.5f.sp` for a fraction."""
-    return f"{fmt_num(value)}f.sp" if not float(value).is_integer() else f"{int(value)}.sp"
+    return _kt_unit(value, "sp", path)
 
 
 def _kt_float(value: int | float) -> str:
@@ -678,26 +703,36 @@ def _kt_colour(value: str) -> str:
 def _kt_group_lines(name: str, group: dict, fonts: dict) -> list[str]:
     """One group's properties, each with a doc comment naming its source token."""
     lines = []
+    members: dict[str, str] = {}
     for key, value in group.items():
         member = _kt_name(name, key)
+        # Two keys can spell the same identifier (`2xs` and `twoXs` both give
+        # `TwoXs`); Kotlin would refuse the object, so say which pair.
+        if member in members:
+            _fail(
+                f"{name}.{key}",
+                f"Kotlin member '{member}' is already used by '{name}.{members[member]}'",
+            )
+        members[member] = key
+        path = f"{name}.{key}"
         lines.append(f"        /** `{name}.{key}`, {KT_UNITS[name]}. */")
         if name == "font":
-            lines.append(f'        val {member}: String = "{value}"')
+            lines.append(f"        val {member}: String = {_kt_string(value)}")
         elif name == "text":
             lines.append(f"        val {member}: TokenTextStyle = TokenTextStyle(")
             lines += [
-                f'            family = "{fonts[value["font"]]}",',
-                f"            size = {_kt_sp(value['size'])},",
-                f"            lineHeight = {_kt_sp(value['line'])},",
+                f"            family = {_kt_string(fonts[value['font']])},",
+                f"            size = {_kt_sp(value['size'], f'{path}.size')},",
+                f"            lineHeight = {_kt_sp(value['line'], f'{path}.line')},",
                 f"            weight = FontWeight.W{fmt_num(value['weight'])},",
                 "        )",
             ]
         elif name == "shadow":
             lines.append(f"        val {member}: TokenShadow = TokenShadow(")
             lines += [
-                f"            x = {_kt_dp(value['x'])},",
-                f"            y = {_kt_dp(value['y'])},",
-                f"            blur = {_kt_dp(value['blur'])},",
+                f"            x = {_kt_dp(value['x'], f'{path}.x')},",
+                f"            y = {_kt_dp(value['y'], f'{path}.y')},",
+                f"            blur = {_kt_dp(value['blur'], f'{path}.blur')},",
                 f"            alpha = {_kt_float(value['alpha'])},",
                 f"            alphaLight = {_kt_float(value['alphaLight'])},",
                 "        )",
@@ -707,7 +742,7 @@ def _kt_group_lines(name: str, group: dict, fonts: dict) -> list[str]:
         elif name == "state":
             lines.append(f"        val {member}: Float = {_kt_float(value)}")
         else:
-            lines.append(f"        val {member}: Dp = {_kt_dp(value)}")
+            lines.append(f"        val {member}: Dp = {_kt_dp(value, path)}")
     return lines
 
 
