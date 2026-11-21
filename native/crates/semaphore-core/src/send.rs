@@ -118,9 +118,8 @@ fn optimistic_dto(
     spans: &[Value],
     now_ms: u64,
 ) -> Result<MessageDto, CoreError> {
-    let sent_at = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(now_ms as i64)
-        .unwrap_or_default()
-        .to_rfc3339();
+    let sent_at =
+        jiff::Timestamp::from_millisecond(now_ms as i64).unwrap_or(jiff::Timestamp::UNIX_EPOCH);
     let (channel_id, group_id, parent_id) = match conversation {
         Conversation::Channel { id } => (Some(id), None, None),
         Conversation::DirectMessage { id } => (None, Some(id), None),
@@ -417,9 +416,7 @@ impl Core {
             let client_id = send.client_id.clone();
             if let Some(window) = state.windows.get_mut(&conversation) {
                 window.mark_pending(&client_id);
-                if let Some(sent_at) =
-                    chrono::DateTime::<chrono::Utc>::from_timestamp_millis(now as i64)
-                {
+                if let Ok(sent_at) = jiff::Timestamp::from_millisecond(now as i64) {
                     window.edit(&client_id, |dto| dto.sent_at = sent_at);
                 }
             }

@@ -133,7 +133,7 @@ async fn generate_token(State(inner): State<Arc<Inner>>, body: Bytes) -> Respons
         return invalid("identity and roomId are required");
     };
     let ttl = dto.ttl.map(|ttl| ttl.get()).unwrap_or(3600).min(3600);
-    let expires_at = inner.now() + chrono::Duration::seconds(ttl as i64);
+    let expires_at = inner.now() + jiff::SignedDuration::from_secs(ttl as i64);
     // One lock at a time: the token and the URL each read the LiveKit settings.
     let token = lock(&inner.livekit).as_ref().map_or_else(
         || "fake-livekit-token".to_owned(),
@@ -221,7 +221,7 @@ async fn generate_dm_token(State(inner): State<Arc<Inner>>, body: Bytes) -> Resp
         .clone()
         .unwrap_or_else(|| me.username.clone());
     let ttl = dto.ttl.map(|ttl| ttl.get()).unwrap_or(3600).min(3600);
-    let expires_at = inner.now() + chrono::Duration::seconds(ttl as i64);
+    let expires_at = inner.now() + jiff::SignedDuration::from_secs(ttl as i64);
     let token = lock(&inner.livekit).as_ref().map_or_else(
         || "fake-livekit-token".to_owned(),
         |livekit| livekit.token(&me.id, Some(&name), &dto.room_id, ttl),

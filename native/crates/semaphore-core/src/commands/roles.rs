@@ -263,7 +263,7 @@ fn role_rows(roles: &[wire::RoleDto], me: &Standing) -> Vec<RoleRow> {
                 fixed: is_fixed(role),
                 can_move_up,
                 can_move_down,
-                created_at_ms: Some(role.created_at.timestamp_millis()),
+                created_at_ms: Some(role.created_at.as_millisecond()),
                 edit_blocked,
                 delete_blocked,
                 assign_blocked,

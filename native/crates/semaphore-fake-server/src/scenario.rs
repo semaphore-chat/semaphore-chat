@@ -5,7 +5,7 @@
 //! `semaphore-wire`'s generated types, so a scenario that drifts from the
 //! contract fails to load instead of being served as something else.
 
-use chrono::{DateTime, NaiveDate, Utc};
+use jiff::{SignedDuration, Timestamp};
 use semaphore_wire::types::{
     ChannelDto, ChannelNotificationOverrideDto, DmGroupResponseDto, FriendshipWithUsersDto,
     MembershipResponseDto, MessageDto, NotificationDto, UserEntity, UserNotificationSettingsDto,
@@ -189,12 +189,12 @@ fn fixtures_dir() -> PathBuf {
 
 /// The builder's fixed epoch (`frontend/src/stories/fixtures/rng.ts`), used when a
 /// scenario has no timestamps at all.
-fn builder_epoch() -> DateTime<Utc> {
-    NaiveDate::from_ymd_opt(2026, 9, 22)
-        .expect("a valid date")
-        .and_hms_opt(18, 0, 0)
-        .expect("a valid time")
-        .and_utc()
+fn builder_epoch() -> Timestamp {
+    jiff::civil::date(2026, 9, 22)
+        .at(18, 0, 0, 0)
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .expect("a valid time in UTC")
+        .timestamp()
 }
 
 /// A community as the scenario stores it: the API fields plus the fixture-only
@@ -207,7 +207,7 @@ pub struct Community {
     pub avatar: Option<String>,
     pub banner: Option<String>,
     #[serde(rename = "createdAt")]
-    pub created_at: DateTime<Utc>,
+    pub created_at: Timestamp,
     #[serde(default)]
     pub channels: Vec<ChannelDto>,
 }
@@ -277,7 +277,7 @@ pub struct Scenario {
     pub notification_settings: Option<UserNotificationSettingsDto>,
     pub channel_overrides: Vec<ChannelNotificationOverrideDto>,
     pub unread_notifications: i64,
-    pub epoch: DateTime<Utc>,
+    pub epoch: Timestamp,
     /// Its message ids are UUIDs (`message_uuid`), and new messages get UUIDs too.
     pub uuid_message_ids: bool,
     /// W5: the scenario's other top-level keys as JSON, ids already converted like the rest.
@@ -323,7 +323,7 @@ impl Scenario {
             epoch = epoch.max(message.sent_at);
         }
         // New messages must land after everything the scenario already has.
-        epoch += chrono::Duration::seconds(1);
+        epoch += SignedDuration::from_secs(1);
 
         let mut dm_groups = raw.dm_groups;
         let mut notifications = raw.notifications;

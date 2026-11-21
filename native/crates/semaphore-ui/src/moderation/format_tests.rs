@@ -21,7 +21,7 @@ const EDGES: [i64; 12] = [
     NOW - 1,
     NOW,
     NOW + 1,
-    253_402_300_800_000, // year 10000: past chrono's display range
+    253_402_300_800_000, // year 10000: past the timestamp range
     i64::MAX - 1,
     i64::MAX,
 ];
@@ -32,7 +32,7 @@ fn utc() -> TimeFormat {
 
 fn new_york() -> TimeFormat {
     TimeFormat {
-        zone: FixedOffset::west_opt(5 * 3600),
+        zone: Some(jiff::tz::Offset::constant(-5)),
         now: PanelClock::fixed(NOW),
     }
 }
@@ -354,7 +354,7 @@ fn time_formatters_never_panic_or_go_blank() {
         }
         for seconds in [0, 1, 60, u32::MAX] {
             let time = TimeFormat {
-                zone: FixedOffset::east_opt(0),
+                zone: Some(jiff::tz::Offset::UTC),
                 now: PanelClock::fixed(now),
             };
             assert!(!ends_label(&time, seconds).is_empty());

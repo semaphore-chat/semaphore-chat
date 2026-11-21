@@ -5,7 +5,6 @@
 
 use crate::dms::names::user_name;
 use crate::messages::TimeFormat;
-use chrono::{DateTime, FixedOffset, Local, Utc};
 use semaphore_core::model::{
     AdminAction, AdminActionKind, BAN_PRESETS_SECONDS, BanDuration, BanRequest,
     ModerationActionKind, ModerationLogRow, ModerationTargetView, NotAllowed,
@@ -156,26 +155,18 @@ pub fn now_ms(time: &TimeFormat) -> i64 {
     time.now.now_ms()
 }
 
-/// An instant in `TimeFormat`'s zone (the user's, unless a story fixes one), as message times are.
-fn zoned(time: &TimeFormat, ms: i64) -> Option<DateTime<FixedOffset>> {
-    let utc = DateTime::<Utc>::from_timestamp_millis(ms)?;
-    Some(match time.zone {
-        Some(zone) => utc.with_timezone(&zone),
-        None => utc.with_timezone(&Local).fixed_offset(),
-    })
-}
-
-/// "Nov 5, 2026 at 4:12 PM", in the user's zone.
+/// "Nov 5, 2026 at 4:12 PM", in `TimeFormat`'s zone (the user's, unless a story fixes one), as
+/// message times are.
 pub fn date_time(time: &TimeFormat, ms: i64) -> String {
-    zoned(time, ms)
-        .map(|at| at.format("%b %-d, %Y at %-I:%M %p").to_string())
+    time.at(ms)
+        .map(|at| at.strftime("%b %-d, %Y at %-I:%M %p").to_string())
         .unwrap_or_else(|| "an unknown date".to_owned())
 }
 
 /// "Nov 5, 2026 at 4:12:07 PM", the log's time with seconds.
 pub fn date_time_seconds(time: &TimeFormat, ms: i64) -> String {
-    zoned(time, ms)
-        .map(|at| at.format("%b %-d, %Y at %-I:%M:%S %p").to_string())
+    time.at(ms)
+        .map(|at| at.strftime("%b %-d, %Y at %-I:%M:%S %p").to_string())
         .unwrap_or_else(|| "an unknown date".to_owned())
 }
 

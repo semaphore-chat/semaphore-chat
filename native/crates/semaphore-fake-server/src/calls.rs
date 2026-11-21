@@ -4,7 +4,8 @@
 //! Kept under its own lock ([`Inner::calls`](crate::Inner)), never held together with `data`.
 
 use crate::{Inner, lock, scenario::entity_uuid};
-use chrono::{DateTime, Utc};
+use jiff::tz::TimeZone;
+use jiff::{SignedDuration, Timestamp};
 use semaphore_wire::types::VoicePresenceUserDto;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -21,11 +22,11 @@ const REPLAY_SEGMENTS: [&[u8]; 3] = [
 
 /// `LivekitReplayService.STALE_NOTIFY_MAX_AGE_MS`: a session that ended longer ago than this
 /// gets no "missed" stop or fail event.
-const STALE_NOTIFY_MAX_AGE: chrono::Duration = chrono::Duration::hours(24);
+const STALE_NOTIFY_MAX_AGE: SignedDuration = SignedDuration::from_hours(24);
 
 /// `JOIN_FAILURE_REPORT_LIMIT` reports per `JOIN_FAILURE_REPORT_WINDOW_MS`, per user.
 const JOIN_FAILURE_LIMIT: usize = 3;
-const JOIN_FAILURE_WINDOW: chrono::Duration = chrono::Duration::seconds(60);
+const JOIN_FAILURE_WINDOW: SignedDuration = SignedDuration::from_secs(60);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SessionStatus {
@@ -40,8 +41,8 @@ pub(crate) struct ReplaySession {
     pub id: String,
     pub egress_id: String,
     pub channel_id: String,
-    pub started_at: DateTime<Utc>,
-    pub ended_at: Option<DateTime<Utc>>,
+    pub started_at: Timestamp,
+    pub ended_at: Option<Timestamp>,
     pub status: SessionStatus,
     /// Complete segments on disk (10 s each), set by `emit_segments_ready`.
     pub segments: usize,
@@ -56,7 +57,7 @@ pub(crate) struct Clip {
     pub channel_id: Option<String>,
     pub duration_seconds: i64,
     pub is_public: bool,
-    pub captured_at: DateTime<Utc>,
+    pub captured_at: Timestamp,
     pub filename: String,
     pub size: i64,
 }
@@ -78,7 +79,7 @@ pub(crate) struct Calls {
     /// Valid join-failure reports, as the backend logs them.
     pub join_failures: Vec<Value>,
     /// When each user sent a report in the last minute, valid or not (the throttle's count).
-    pub join_failure_hits: Vec<(DateTime<Utc>, String)>,
+    pub join_failure_hits: Vec<(Timestamp, String)>,
     next: u64,
 }
 
@@ -558,7 +559,7 @@ fn recover_stale(inner: &Inner) -> Refusal {
         );
     };
     let ended = session.ended_at.unwrap_or(session.started_at);
-    if inner.now() - ended > STALE_NOTIFY_MAX_AGE {
+    if inner.now().duration_since(ended) > STALE_NOTIFY_MAX_AGE {
         return refuse(
             404,
             "NOT_FOUND",
@@ -611,7 +612,10 @@ pub(crate) fn session_info(inner: &Inner) -> Value {
 fn segment_name(session: &ReplaySession, index: usize) -> String {
     format!(
         "{}-segment_{index:05}.ts",
-        session.started_at.format("%Y-%m-%dT%H%M%S")
+        session
+            .started_at
+            .to_zoned(TimeZone::UTC)
+            .strftime("%Y-%m-%dT%H%M%S")
     )
 }
 
@@ -796,7 +800,7 @@ pub(crate) fn store_clip(
         let clip_id = id.unwrap_or_else(|| calls.new_id("clip"));
         (clip_id, calls.new_id("clip-file"))
     };
-    let filename = format!("replay-{}.mp4", now.timestamp_millis());
+    let filename = format!("replay-{}.mp4", now.as_millisecond());
     lock(&inner.data).files.insert(
         file_id.clone(),
         crate::StoredFile {
@@ -1176,7 +1180,7 @@ pub(crate) fn throttle_join_failure(inner: &Inner, user_id: &str) -> bool {
     let mut calls = lock(&inner.calls);
     calls
         .join_failure_hits
-        .retain(|(at, _)| now - *at < JOIN_FAILURE_WINDOW);
+        .retain(|(at, _)| now.duration_since(*at) < JOIN_FAILURE_WINDOW);
     calls.join_failure_hits.push((now, user_id.to_owned()));
     calls
         .join_failure_hits

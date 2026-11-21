@@ -39,7 +39,7 @@ impl State {
         FriendRequestRow {
             friendship_id: request.id.clone(),
             user: user_view(other),
-            sent_at_ms: request.created_at.timestamp_millis(),
+            sent_at_ms: request.created_at.as_millisecond(),
             busy: self.w2.busy_friendships.contains_key(&request.id),
         }
     }

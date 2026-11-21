@@ -165,7 +165,7 @@ async fn stream(
         Ok(bytes) => {
             let disposition = format!(
                 "attachment; filename=\"replay-{}.mp4\"",
-                inner.now().timestamp_millis()
+                inner.now().as_millisecond()
             );
             (
                 [

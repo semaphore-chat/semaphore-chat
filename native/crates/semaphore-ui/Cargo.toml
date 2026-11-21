@@ -7,10 +7,12 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 gpui-kit.workspace = true
 # Builds RenderImage frames: fixture emoji and images, and the RGBA video fallback.
 image = { version = "0.25", default-features = false }
+# The display clock and the zone every date is written in: `TimeZone::system()` is the user's,
+# from the OS tz database (bundled on Windows, which has none in that form, as in core).
+jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-bundle-platform", "tzdb-zoneinfo", "tzdb-concatenated"] }
 semaphore-core.workspace = true
 semaphore-design.workspace = true
 # Reads the emoji picker's data (`assets/emoji/emoji.json`, exported from the web client).

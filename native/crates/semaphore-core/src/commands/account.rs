@@ -95,9 +95,9 @@ fn session_row(session: &wire::SessionInfoDto, busy: bool) -> SessionRow {
         id: session.id.clone(),
         device_name: Some(session.device_name.clone()).filter(|name| !name.trim().is_empty()),
         ip_address: session.ip_address.clone().filter(|ip| !ip.is_empty()),
-        created_at_ms: session.created_at.timestamp_millis(),
-        last_used_at_ms: session.last_used_at.timestamp_millis(),
-        expires_at_ms: session.expires_at.timestamp_millis(),
+        created_at_ms: session.created_at.as_millisecond(),
+        last_used_at_ms: session.last_used_at.as_millisecond(),
+        expires_at_ms: session.expires_at.as_millisecond(),
         is_current: session.is_current,
         busy,
     }

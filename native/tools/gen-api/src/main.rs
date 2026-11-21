@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use quote::quote;
+use schemars::schema::{InstanceType, SchemaObject};
 use syn::punctuated::Punctuated;
 use syn::{Token, parse_quote};
 
@@ -71,6 +72,18 @@ fn main() -> anyhow::Result<()> {
             std::iter::empty::<progenitor::TypeImpl>(),
         );
     }
+
+    // Every `string`/`date-time` is an instant: `jiff::Timestamp` reads and writes the same RFC
+    // 3339 (`chrono`'s `DateTime<Utc>`, which typify would pick, is unmaintained).
+    settings.with_conversion(
+        SchemaObject {
+            instance_type: Some(InstanceType::String.into()),
+            format: Some("date-time".to_owned()),
+            ..SchemaObject::default()
+        },
+        "::jiff::Timestamp",
+        [progenitor::TypeImpl::Display, progenitor::TypeImpl::FromStr].into_iter(),
+    );
 
     let mut generator = progenitor::Generator::new(&settings);
     let tokens = generator

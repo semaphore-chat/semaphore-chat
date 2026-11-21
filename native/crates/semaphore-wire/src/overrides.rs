@@ -17,7 +17,7 @@ pub struct AppearanceSettingsResponseDto {
     #[serde(rename = "baseColor", default)]
     pub base_color: ::std::string::String,
     #[serde(rename = "createdAt")]
-    pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+    pub created_at: ::jiff::Timestamp,
     pub id: ::std::string::String,
     pub intensity: ::std::string::String,
     #[serde(rename = "matchSystem", default)]
@@ -27,7 +27,7 @@ pub struct AppearanceSettingsResponseDto {
     #[serde(rename = "themeMode")]
     pub theme_mode: ::std::string::String,
     #[serde(rename = "updatedAt")]
-    pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+    pub updated_at: ::jiff::Timestamp,
     #[serde(rename = "userId")]
     pub user_id: ::std::string::String,
 }
@@ -138,9 +138,9 @@ mod tests {
     /// One instance of each overridden type with every field set: serialized, its keys are the
     /// names its serde attributes give it, which is what the contract's properties must be.
     fn overridden_values() -> Vec<(&'static str, serde_json::Value)> {
-        let at = ::chrono::DateTime::parse_from_rfc3339("2026-11-01T00:00:00Z")
-            .unwrap()
-            .with_timezone(&::chrono::offset::Utc);
+        let at = "2026-11-01T00:00:00Z"
+            .parse::<::jiff::Timestamp>()
+            .expect("a timestamp");
         let appearance = AppearanceSettingsResponseDto {
             accent_color: "teal".to_owned(),
             base_color: "#0d9488".to_owned(),

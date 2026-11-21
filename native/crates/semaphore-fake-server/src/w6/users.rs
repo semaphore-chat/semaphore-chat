@@ -6,14 +6,14 @@
 
 use crate::Inner;
 use axum::response::Response;
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// When and by whom a user was banned.
 #[derive(Debug, Clone)]
 pub(crate) struct Ban {
-    pub at: DateTime<Utc>,
+    pub at: Timestamp,
     pub by: String,
 }
 
@@ -34,7 +34,7 @@ impl Users {
         self.deleted.contains(user_id)
     }
 
-    pub fn set_ban(&mut self, user_id: &str, by: &str, at: DateTime<Utc>) {
+    pub fn set_ban(&mut self, user_id: &str, by: &str, at: Timestamp) {
         self.banned.insert(
             user_id.to_owned(),
             Ban {

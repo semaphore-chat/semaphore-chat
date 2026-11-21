@@ -106,7 +106,7 @@ fn admin_row(
     avatar: Option<String>,
     member_count: i64,
     channel_count: i64,
-    created_at: chrono::DateTime<chrono::Utc>,
+    created_at: jiff::Timestamp,
 ) -> AdminCommunityRow {
     AdminCommunityRow {
         id,
@@ -115,7 +115,7 @@ fn admin_row(
         avatar_file_id: avatar,
         member_count: count(member_count),
         channel_count: count(channel_count),
-        created_at_ms: created_at.timestamp_millis(),
+        created_at_ms: created_at.as_millisecond(),
     }
 }
 
@@ -156,8 +156,8 @@ fn invite_row(invite: &wire::InviteResponseDto, names: &[(String, String)]) -> I
         }),
         uses: clamped(invite.uses),
         max_uses: invite.max_uses.map(clamped),
-        valid_until_ms: invite.valid_until.map(|at| at.timestamp_millis()),
-        created_at_ms: invite.created_at.timestamp_millis(),
+        valid_until_ms: invite.valid_until.map(|at| at.as_millisecond()),
+        created_at_ms: invite.created_at.as_millisecond(),
         disabled: invite.disabled,
         communities: invite
             .default_communities
@@ -202,8 +202,8 @@ fn invite_body(
     let now_ms = i64::try_from(now_ms).unwrap_or(i64::MAX);
     let valid_until = match draft.valid_until_ms {
         None => None,
-        Some(ms) => match chrono::DateTime::from_timestamp_millis(ms) {
-            Some(at) if at.timestamp_millis() > now_ms => Some(at),
+        Some(ms) => match jiff::Timestamp::from_millisecond(ms) {
+            Ok(at) if at.as_millisecond() > now_ms => Some(at),
             _ => return Err(refused("The expiry must be in the future")),
         },
     };

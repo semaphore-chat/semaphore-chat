@@ -36,7 +36,7 @@ fn channel_permissions(capability: &wire::ChannelCapabilitiesDto) -> ChannelPerm
         share: capability.share,
         manage_permissions: capability.manage_permissions,
         posting_role_names: capability.posting_role_names.clone(),
-        timed_out_until_ms: capability.timed_out_until.map(|at| at.timestamp_millis()),
+        timed_out_until_ms: capability.timed_out_until.map(|at| at.as_millisecond()),
     }
 }
 
@@ -166,7 +166,7 @@ impl Core {
                                 .copied()
                                 .unwrap_or(false),
                         display_role,
-                        joined_at_ms: Some(member.joined_at.timestamp_millis()),
+                        joined_at_ms: Some(member.joined_at.as_millisecond()),
                     }
                 })
                 .collect();

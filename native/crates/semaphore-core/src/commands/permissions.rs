@@ -285,7 +285,7 @@ impl Core {
                 state.ensure_query(status_key.clone());
                 match state.w5b_value(&status_key) {
                     Some(W5bValue::TimeoutStatus(status)) if status.is_timed_out => {
-                        status.expires_at.map(|at| at.timestamp_millis())
+                        status.expires_at.map(|at| at.as_millisecond())
                     }
                     _ => None,
                 }

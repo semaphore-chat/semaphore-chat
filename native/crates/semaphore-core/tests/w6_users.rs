@@ -413,9 +413,9 @@ async fn the_list_maps_every_field() {
     assert!(!row.is_owner);
     assert!(row.banned);
     let at = |text: &str| {
-        chrono::DateTime::parse_from_rfc3339(text)
-            .unwrap()
-            .timestamp_millis()
+        text.parse::<jiff::Timestamp>()
+            .expect("a timestamp")
+            .as_millisecond()
     };
     assert_eq!(row.banned_at_ms, Some(at("2026-09-24T10:00:00Z")));
     assert_eq!(row.created_at_ms, at("2026-08-01T09:30:00Z"));

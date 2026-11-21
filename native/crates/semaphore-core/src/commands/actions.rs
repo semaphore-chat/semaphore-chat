@@ -71,8 +71,8 @@ fn failed(message: impl Into<String>) -> CoreError {
     }
 }
 
-fn timestamp(now_ms: u64) -> chrono::DateTime<chrono::Utc> {
-    chrono::DateTime::<chrono::Utc>::from_timestamp_millis(now_ms as i64).unwrap_or_default()
+fn timestamp(now_ms: u64) -> jiff::Timestamp {
+    jiff::Timestamp::from_millisecond(now_ms as i64).unwrap_or(jiff::Timestamp::UNIX_EPOCH)
 }
 
 /// A pinned message as a message: the same fields, plus an author the message doesn't carry.

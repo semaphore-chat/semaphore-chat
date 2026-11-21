@@ -24,7 +24,7 @@ mod w6;
 
 use axum::Json;
 use axum::response::{IntoResponse, Response};
-use chrono::{DateTime, Utc};
+use jiff::{SignedDuration, Timestamp};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -108,12 +108,12 @@ pub(crate) struct Data {
     /// Thread subscriptions the signed-in user set or cleared, and when, by parent. Otherwise, or
     /// once they reply after that, the backend's default: subscribed if they wrote the parent or
     /// a reply.
-    pub thread_subscriptions: std::collections::BTreeMap<String, (bool, DateTime<Utc>)>,
+    pub thread_subscriptions: std::collections::BTreeMap<String, (bool, Timestamp)>,
     pub voice: std::collections::BTreeMap<String, Vec<semaphore_wire::VoicePresenceUserDto>>,
     pub unread: std::collections::BTreeMap<String, (i64, i64)>,
     /// When each user last read a channel or a DM, by (context id, user id). One map for both:
     /// the ids differ across the two.
-    pub receipts: std::collections::BTreeMap<(String, String), DateTime<Utc>>,
+    pub receipts: std::collections::BTreeMap<(String, String), Timestamp>,
     pub nonces: HashMap<(String, String), NonceEntry>,
     /// What clients uploaded, by file id: served back from the file routes.
     pub files: HashMap<String, StoredFile>,
@@ -159,7 +159,7 @@ pub(crate) struct Inner {
     pub livekit: Mutex<Option<livekit::LiveKit>>,
     pub scenario: scenario::Scenario,
     pub data: Mutex<Data>,
-    pub clock: Mutex<DateTime<Utc>>,
+    pub clock: Mutex<Timestamp>,
     pub records: Mutex<Vec<Record>>,
     pub sockets: Mutex<HashMap<u64, mpsc::UnboundedSender<Outbound>>>,
     /// Whose socket each is: the handshake's `userId` (a fake-only extension, so a test can
@@ -318,7 +318,7 @@ impl Inner {
         });
     }
 
-    pub fn now(&self) -> DateTime<Utc> {
+    pub fn now(&self) -> Timestamp {
         *lock(&self.clock)
     }
 
@@ -438,7 +438,7 @@ impl Inner {
     }
 
     pub fn advance_clock(&self, by: Duration) {
-        let by = chrono::Duration::from_std(by).unwrap_or(chrono::Duration::MAX);
+        let by = SignedDuration::try_from(by).unwrap_or(SignedDuration::MAX);
         *lock(&self.clock) += by;
     }
 

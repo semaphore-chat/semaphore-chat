@@ -18,8 +18,8 @@
 //!
 //! **Bounds.** logind gets [`LOGIND_WITHIN`] to answer, on a helper thread; past that the attempt
 //! fails, and an inhibitor that comes later is closed at once. An answer slower than
-//! `ANSWER_WITHIN` isn't waited for: `set` returns `Ok` and the outcome is logged (the trait is
-//! synchronous, so a late refusal has nowhere else to go). Dropping it waits [`DROP_WITHIN`] for the
+//! `ANSWER_WITHIN` isn't waited for: `set` returns `Ok` and the outcome is logged (the trait
+//! blocks, so a late refusal has nowhere else to go). Dropping it waits [`DROP_WITHIN`] for the
 //! thread to let go, then leaves it to finish alone, so app shutdown never hangs on the bus.
 
 use semaphore_core::platform::{CoreError, KeepAwake};

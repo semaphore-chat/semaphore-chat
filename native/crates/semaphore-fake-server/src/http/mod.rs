@@ -484,7 +484,7 @@ async fn control(
                     .map(|credential| credential.user_id.clone())
                     .unwrap_or_else(|| inner.scenario.me.id.clone())
             };
-            let expires_at = inner.now() + chrono::Duration::seconds(seconds);
+            let expires_at = inner.now() + jiff::SignedDuration::from_secs(seconds);
             let mut accounts = lock(&inner.accounts);
             accounts
                 .password_resets
@@ -524,8 +524,7 @@ async fn control(
                 return invalid("dmGroupId or channelId is required");
             };
             let at = field("at")
-                .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
-                .map(|at| at.with_timezone(&chrono::Utc))
+                .and_then(|text| text.parse::<jiff::Timestamp>().ok())
                 .unwrap_or_else(|| inner.now());
             lock(&inner.data)
                 .receipts

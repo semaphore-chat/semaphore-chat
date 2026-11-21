@@ -538,8 +538,8 @@ async fn draft_table() {
     assert_eq!(body["maxUses"], json!(5));
     assert_eq!(body["communityIds"], json!([COMMUNITY, COMMUNITY_B]));
     let until = body["validUntil"].as_str().expect("an expiry");
-    let until: chrono::DateTime<chrono::Utc> = until.parse().unwrap();
-    assert_eq!(until.timestamp_millis(), 2_000_000);
+    let until: jiff::Timestamp = until.parse().unwrap();
+    assert_eq!(until.as_millisecond(), 2_000_000);
     assert_eq!(codes(&rig), ["limited", "open"], "newest first");
 }
 

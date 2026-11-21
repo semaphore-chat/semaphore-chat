@@ -104,15 +104,9 @@ async fn the_clock_is_settable_and_stamps_messages() {
 
     let before_sent = before["sentAt"].as_str().expect("sentAt");
     let after_sent = after["sentAt"].as_str().expect("sentAt");
-    assert_eq!(
-        chrono::DateTime::parse_from_rfc3339(after_sent)
-            .expect("a timestamp")
-            .timestamp()
-            - chrono::DateTime::parse_from_rfc3339(before_sent)
-                .expect("a timestamp")
-                .timestamp(),
-        3600
-    );
+    let after_sent = after_sent.parse::<jiff::Timestamp>().expect("a timestamp");
+    let before_sent = before_sent.parse::<jiff::Timestamp>().expect("a timestamp");
+    assert_eq!(after_sent.duration_since(before_sent).as_secs(), 3600);
 }
 
 #[tokio::test]

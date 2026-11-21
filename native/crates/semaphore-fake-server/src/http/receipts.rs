@@ -144,7 +144,7 @@ async fn message_readers(
         }
     }
     let context = channel.or(dm).map(String::as_str).unwrap_or_default();
-    let readers: Vec<(String, chrono::DateTime<chrono::Utc>)> = lock(&inner.data)
+    let readers: Vec<(String, jiff::Timestamp)> = lock(&inner.data)
         .receipts
         .iter()
         .filter(|((read_context, reader), at)| {

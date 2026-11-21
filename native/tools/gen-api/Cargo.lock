@@ -160,6 +160,7 @@ dependencies = [
  "prettyplease",
  "progenitor",
  "quote",
+ "schemars",
  "serde_json",
  "syn 2.0.119",
 ]

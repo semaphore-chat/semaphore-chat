@@ -1056,7 +1056,6 @@ fn with_ends(mut op: AdminOp, ends: &[(AdminActionKind, Option<&str>, u64, bool)
 #[gpui_kit::test]
 fn role_dates_are_written_in_the_panels_zone(cx: &mut TestAppContext) {
     use crate::messages::TimeFormat;
-    use chrono::FixedOffset;
     let rig = roles_rig(cx, roles_view(vec![]));
     // 2026-11-01 02:00 UTC.
     let ms = 1_793_498_400_000;
@@ -1070,7 +1069,7 @@ fn role_dates_are_written_in_the_panels_zone(cx: &mut TestAppContext) {
     ];
     for (minutes, want) in cases {
         let time = TimeFormat {
-            zone: Some(FixedOffset::east_opt(minutes * 60).expect("a zone")),
+            zone: Some(jiff::tz::Offset::from_seconds(minutes * 60).expect("a zone")),
             now: PanelClock::fixed(ms),
         };
         let shown = rig.with(cx, move |view, _, cx| {

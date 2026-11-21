@@ -57,9 +57,11 @@ fn integer(value: &Value) -> i64 {
 }
 
 fn time_ms(value: &Value) -> Option<i64> {
-    chrono::DateTime::parse_from_rfc3339(value.as_str()?)
+    value
+        .as_str()?
+        .parse::<jiff::Timestamp>()
         .ok()
-        .map(|at| at.timestamp_millis())
+        .map(|at| at.as_millisecond())
 }
 
 fn reply_to_view(value: &Value, authors: &HashMap<String, UserView>) -> Option<ReplyToView> {
@@ -230,8 +232,8 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 /// RFC 3339 in UTC (`2026-09-22T18:00:00.000Z`), as `Date.prototype.toISOString` writes it, to
 /// Unix milliseconds. `None` for anything else. Fractions are truncated to milliseconds.
 ///
-/// `chrono` would do this, but the core boundary guard rejects it: in the workspace graph its
-/// package reaches `iana-time-zone`, `cc` and `js-sys` through other crates' features.
+/// Hand-rolled because it is stricter than `jiff`: only the `Z` form is accepted, which is what
+/// the scenario builder writes, so a stray local offset is an error rather than a silent shift.
 fn parse_rfc3339_ms(text: &str) -> Option<i64> {
     let body = text.strip_suffix('Z')?;
     let (date_time, fraction) = match body.split_once('.') {

@@ -113,7 +113,7 @@ async fn every_route_answers_the_contracts_shape() {
         ("Couch Co-op", 12, 6)
     );
     assert_eq!(detail.message_count, 21, "its six channels' messages");
-    assert_eq!(detail.created_at.to_rfc3339(), "2025-08-18T13:00:00+00:00");
+    assert_eq!(detail.created_at, "2025-08-18T13:00:00Z".parse().unwrap());
 
     // The instance invites are W5-A's routes; their answers still decode as the contract.
     let (status, body) = get(&client, &base, "/api/invite").await;

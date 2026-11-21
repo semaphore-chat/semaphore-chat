@@ -8,7 +8,7 @@
 
 use crate::{Inner, lock};
 use axum::response::{IntoResponse, Response};
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use semaphore_wire::enums::RegistrationMode;
 use semaphore_wire::types::InstanceStorageStatsDto;
 use serde_json::{Value, json};
@@ -21,8 +21,8 @@ pub(crate) struct Settings {
     pub registration_mode: RegistrationMode,
     pub default_storage_quota_bytes: i64,
     pub max_file_size_bytes: i64,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
 }
 
 impl Default for Settings {
@@ -33,8 +33,8 @@ impl Default for Settings {
             registration_mode: RegistrationMode::InviteOnly,
             default_storage_quota_bytes: 53_687_091_200,
             max_file_size_bytes: 524_288_000,
-            created_at: DateTime::<Utc>::UNIX_EPOCH,
-            updated_at: DateTime::<Utc>::UNIX_EPOCH,
+            created_at: Timestamp::UNIX_EPOCH,
+            updated_at: Timestamp::UNIX_EPOCH,
         }
     }
 }
@@ -90,7 +90,7 @@ impl Instance {
     }
 
     /// Applies the fields a validated `PATCH /api/instance/settings` names.
-    pub(crate) fn update(&mut self, changes: &Value, now: DateTime<Utc>) {
+    pub(crate) fn update(&mut self, changes: &Value, now: Timestamp) {
         let Some(changes) = changes.as_object() else {
             return;
         };

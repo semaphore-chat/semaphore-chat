@@ -159,8 +159,20 @@ pub(crate) fn key_for(view: &ViewKey) -> Option<QueryKey> {
     })
 }
 
-fn ms(at: &chrono::DateTime<chrono::Utc>) -> i64 {
-    at.timestamp_millis()
+fn ms(at: &jiff::Timestamp) -> i64 {
+    at.as_millisecond()
+}
+
+/// RFC 3339 in UTC with exactly millisecond precision (`2026-09-22T19:00:00.000Z`): what the
+/// backend's `Date` writes and what the app has always sent as a ban's expiry.
+fn rfc3339_millis(at: jiff::Timestamp) -> String {
+    const PRINTER: jiff::fmt::temporal::DateTimePrinter =
+        jiff::fmt::temporal::DateTimePrinter::new().precision(Some(3));
+    let mut text = String::new();
+    PRINTER
+        .print_timestamp(&at, &mut text)
+        .expect("a timestamp always prints");
+    text
 }
 
 pub(crate) fn moderation_user(user: &Option<wire::ModerationUserDto>, id: &str) -> UserView {
@@ -320,7 +332,7 @@ impl State {
                 );
             }
             ServerEvent::UserBanned(event) if event.user_id == me => {
-                let until_ms = event.expires_at.map(|at| at.timestamp_millis());
+                let until_ms = event.expires_at.map(|at| at.as_millisecond());
                 self.w5b_removed(
                     &event.community_id,
                     RemovalCause::Banned {
@@ -488,8 +500,9 @@ impl Core {
         let expires_at = match request.duration {
             BanDuration::Permanent => None,
             BanDuration::Seconds { seconds } => {
-                chrono::DateTime::from_timestamp_millis(now_ms as i64 + i64::from(seconds) * 1000)
-                    .map(|at| at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+                jiff::Timestamp::from_millisecond(now_ms as i64 + i64::from(seconds) * 1000)
+                    .ok()
+                    .map(rfc3339_millis)
             }
         };
         let body = wire::ModerationBanUserDto {

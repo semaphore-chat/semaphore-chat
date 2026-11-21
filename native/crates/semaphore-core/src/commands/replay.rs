@@ -35,7 +35,7 @@ fn clip_view(dto: &wire::ClipResponseDto) -> Clip {
         channel_id: dto.channel_id.clone(),
         duration_seconds: dto.duration_seconds.clamp(0, i64::from(u32::MAX)) as u32,
         is_public: dto.is_public,
-        captured_at_ms: dto.captured_at.timestamp_millis(),
+        captured_at_ms: dto.captured_at.as_millisecond(),
         download_url: dto.download_url.clone(),
         size_bytes: dto.size_bytes.max(0) as u64,
         filename: dto.filename.clone(),
@@ -270,8 +270,8 @@ impl Core {
                     .total_duration_seconds
                     .unwrap_or(0)
                     .clamp(0, i64::from(u32::MAX)) as u32,
-                start_ms: info.buffer_start_time.map(|at| at.timestamp_millis()),
-                end_ms: info.buffer_end_time.map(|at| at.timestamp_millis()),
+                start_ms: info.buffer_start_time.map(|at| at.as_millisecond()),
+                end_ms: info.buffer_end_time.map(|at| at.as_millisecond()),
             }
         })
     }

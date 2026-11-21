@@ -8,7 +8,8 @@ publish.workspace = true
 
 # Pure Rust only: no TLS, no HTTP, no C. `scripts/check-core-boundary.py` enforces it.
 [dependencies]
-chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
+# Timestamps: RFC 3339 in and out, the same text the type it replaces wrote.
+jiff = { version = "0.2", default-features = false, features = ["serde", "std"] }
 regress = "0.12"
 serde = { workspace = true }
 serde_json = { workspace = true }
