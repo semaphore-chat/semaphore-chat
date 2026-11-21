@@ -33,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import uniffi.semaphore.ConnectionState
 import uniffi.semaphore.CoreException
@@ -44,8 +43,9 @@ import uniffi.semaphore.SessionState
  * D3's one screen: sign in to a server and see the session, the connection and the communities,
  * read from the networked core. The real screens come with the design-system rows.
  *
- * Lifecycle: going to the background suspends the core (the socket closes) and flushes its
- * secrets, since Android may end the process there without another word; coming back resumes it.
+ * Lifecycle: going to the background suspends the core (the socket closes) and waits briefly for
+ * its secrets to be written, since Android may end the process there without another word; coming
+ * back resumes it. Both are recorded even before the core has started (SemaphoreHost).
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,25 +65,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        val host = SemaphoreHost.current() ?: return
-        if (SemaphoreHost.backgrounded) {
-            SemaphoreHost.backgrounded = false
-            host.core().resume()
-        }
+        SemaphoreHost.foregrounded()
     }
 
     override fun onStop() {
         super.onStop()
         // A rotation stops and starts the activity at once: not a trip to the background.
         if (isChangingConfigurations) return
-        val host = SemaphoreHost.current() ?: return
-        host.core().suspend()
-        SemaphoreHost.backgrounded = true
-        SemaphoreHost.scope.launch(Dispatchers.IO) { host.flush(FLUSH_TIMEOUT_MS) }
-    }
-
-    private companion object {
-        val FLUSH_TIMEOUT_MS = 2_000u
+        SemaphoreHost.backgroundedNow()
     }
 }
 

@@ -11,6 +11,6 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
 semaphore-core.workspace = true
-# The host's runtime handle only: no runtime of its own and no C (`rt` is pure Rust).
-tokio = { workspace = true, features = ["rt"] }
+# The host's runtime handle only: no runtime of its own and no C (`rt` and `time` are pure Rust).
+tokio = { workspace = true, features = ["rt", "time"] }
 uniffi = "0.32"

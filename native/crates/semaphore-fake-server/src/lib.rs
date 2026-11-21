@@ -87,6 +87,13 @@ pub(crate) struct Faults {
     pub fail_routes: HashMap<String, RouteFault>,
     /// How long a named operation's handler waits after its request arrives.
     pub delay_routes: HashMap<String, Duration>,
+    /// How long a named operation's response is held after its handler has run: the server has
+    /// acted, the client hasn't heard yet.
+    pub hold_responses: HashMap<String, Duration>,
+    /// `rotate_refresh_tokens`: every refresh rotates, and unknown refresh tokens are refused.
+    pub rotate_refresh: bool,
+    /// Refresh tokens rotated so far, under `rotate_refresh`.
+    pub rotations: u64,
     /// Set by `expire_access_token`: the only access token the server still accepts.
     pub required_token: Option<String>,
     pub token_generation: u64,
@@ -379,6 +386,16 @@ impl Inner {
         lock(&self.faults)
             .delay_routes
             .insert(operation.to_owned(), delay);
+    }
+
+    /// How long this operation's responses are held after the handler ran.
+    pub fn response_hold(&self, operation: Option<&str>) -> Option<Duration> {
+        let operation = operation?;
+        lock(&self.faults).hold_responses.get(operation).copied()
+    }
+
+    pub fn refresh_rotates(&self) -> bool {
+        lock(&self.faults).rotate_refresh
     }
 
     pub fn acks_delayed(&self) -> Option<Duration> {
@@ -677,6 +694,28 @@ impl FakeServer {
     /// Make the next request with this operation id fail with `status` and `code`.
     pub fn fail_route(&self, operation: &str, status: u16, code: &str) {
         self.inner.fail_route(operation, status, code);
+    }
+
+    /// Rotate the refresh token on every refresh, and refuse (401) a refresh token this server
+    /// never issued or has already rotated away, as the real backend's rotation and reuse
+    /// detection do. Off by default: a refresh then answers any token, and returns the same one.
+    pub fn rotate_refresh_tokens(&self, on: bool) {
+        lock(&self.inner.faults).rotate_refresh = on;
+    }
+
+    /// How many refresh tokens `rotate_refresh_tokens` has rotated so far.
+    pub fn refresh_rotations(&self) -> u64 {
+        lock(&self.inner.faults).rotations
+    }
+
+    /// Hold this operation's responses for `delay` after its handler has run (`None` stops): a
+    /// request the server has acted on whose answer the client hasn't had yet.
+    pub fn hold_responses(&self, operation: &str, delay: Option<Duration>) {
+        let mut faults = lock(&self.inner.faults);
+        match delay {
+            Some(delay) => faults.hold_responses.insert(operation.to_owned(), delay),
+            None => faults.hold_responses.remove(operation),
+        };
     }
 
     /// Expire every access token handed out so far: calls and socket handshakes carrying one get

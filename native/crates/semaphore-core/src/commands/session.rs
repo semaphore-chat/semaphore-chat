@@ -1,6 +1,7 @@
 //! Sign-in, session restore and sign-out, and token refresh.
 
 use super::{REAUTHENTICATE_TIMEOUT_MS, jwt_expiry_ms};
+use crate::ConnectionState;
 use crate::cache::{CacheValue, keys};
 use crate::client::{Core, user_view};
 use crate::model::{
@@ -97,7 +98,7 @@ impl Core {
         access_token: &str,
         profile: wire::UserEntity,
     ) {
-        self.write(|state, now| {
+        let suspended = self.write(|state, now| {
             let me = user_view(&profile);
             state.me = Some(me.clone());
             state.session = SessionState::SignedIn { me };
@@ -111,8 +112,15 @@ impl Core {
             state.ensure_query(keys::op(keys::UNREAD));
             state.w2_signed_in();
             state.ensure_query(keys::op(keys::APPEARANCE));
+            // Suspended (the app went to the background while this signed in): the socket waits
+            // for `resume`, as one already open would have, and connects then.
+            let suspended = state.connection == ConnectionState::Suspended;
+            state.connect_on_resume = suspended;
+            suspended
         });
-        services.realtime.connect();
+        if !suspended {
+            services.realtime.connect();
+        }
     }
 
     /// Resumes the session stored for `server_url` at an earlier run, with no password: the

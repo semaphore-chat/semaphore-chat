@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -55,6 +56,13 @@ class MobileCoreJvmTest {
         override fun delete(key: String) {
             values.remove(key)
         }
+    }
+
+    /** Throws what Kotlin code throws by accident: nothing the trait declares. */
+    private class BrokenSecrets : SecretStore {
+        override fun load(key: String): String? = throw IllegalStateException("broken load")
+        override fun save(key: String, value: String) = throw IllegalStateException("broken save")
+        override fun delete(key: String) = throw IllegalStateException("broken delete")
     }
 
     private class Recorder : CoreListener {
@@ -160,6 +168,30 @@ class MobileCoreJvmTest {
         val outcome = runBlocking { second.core().restoreSession(url) }
         assertEquals(RestoreOutcome.SignedIn, outcome)
         signedInAndConnected(second.core())
+        second.shutdown()
+    }
+
+    @Test
+    fun aStoreThatThrowsCostsPersistenceNotTheSession() {
+        assumeTrue("android.sh passes the fake server", server != null)
+        val url = server!!
+        val dir = Files.createTempDirectory("semaphore-jvm-broken").toFile()
+
+        val first = launch(dir, BrokenSecrets(), Recorder())
+        // The device id's read threw at start: reported, and the core started anyway.
+        val failure = first.secretStoreFailure()
+        assertNotNull(failure)
+        assertTrue(failure!!, failure.contains("broken load"))
+        val core = first.core()
+        runBlocking { core.signIn(url, "me", "pw") }
+        signedInAndConnected(core)
+        until("the server to be remembered") { java.io.File(dir, "last-server").exists() }
+        first.shutdown()
+
+        val second = launch(dir, BrokenSecrets(), Recorder())
+        assertEquals(url, second.lastServer())
+        val outcome = runBlocking { second.core().restoreSession(url) }
+        assertEquals(RestoreOutcome.NoSession, outcome)
         second.shutdown()
     }
 }

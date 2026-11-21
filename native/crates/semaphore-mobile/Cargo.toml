@@ -23,6 +23,8 @@ uniffi = "0.32"
 [target.'cfg(target_os = "android")'.dependencies]
 # `NativeLib.init` below hands rustls-platform-verifier the JVM through semaphore-net.
 jni = { version = "0.22", default-features = false }
+# `log` records and panics to logcat, installed by `NativeLib.init` (Apache-2.0 OR MIT).
+android_logger = { version = "0.15", default-features = false }
 
 [dev-dependencies]
 semaphore-fake-server = { path = "../semaphore-fake-server" }

@@ -33,34 +33,6 @@ impl semaphore_core::platform::KeepAwake for ForeignKeepAwake {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use semaphore_core::platform::KeepAwake;
-    use std::sync::{Arc, Mutex};
-
-    #[derive(Default)]
-    struct Host(Mutex<Vec<bool>>, bool);
-
-    impl KeepAwakeHost for Host {
-        fn set(&self, on: bool) -> bool {
-            self.0.lock().unwrap().push(on);
-            self.1
-        }
-    }
-
-    #[test]
-    fn keep_awake_reaches_the_foreign_host_and_its_refusal_comes_back() {
-        let host = Arc::new(Host(Mutex::new(Vec::new()), true));
-        let adapter = ForeignKeepAwake(host.clone());
-        adapter.set(true).unwrap();
-        adapter.set(false).unwrap();
-        assert_eq!(*host.0.lock().unwrap(), vec![true, false]);
-        let refusing = ForeignKeepAwake(Arc::new(Host(Mutex::new(Vec::new()), false)));
-        assert!(refusing.set(true).is_err());
-    }
-}
-
 #[uniffi::remote(Enum)]
 pub enum VoiceJoinMode {
     None,
@@ -429,5 +401,33 @@ impl SemaphoreCore {
             core.refresh_voice_diagnostics().await;
         })
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use semaphore_core::platform::KeepAwake;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct Host(Mutex<Vec<bool>>, bool);
+
+    impl KeepAwakeHost for Host {
+        fn set(&self, on: bool) -> bool {
+            self.0.lock().unwrap().push(on);
+            self.1
+        }
+    }
+
+    #[test]
+    fn keep_awake_reaches_the_foreign_host_and_its_refusal_comes_back() {
+        let host = Arc::new(Host(Mutex::new(Vec::new()), true));
+        let adapter = ForeignKeepAwake(host.clone());
+        adapter.set(true).unwrap();
+        adapter.set(false).unwrap();
+        assert_eq!(*host.0.lock().unwrap(), vec![true, false]);
+        let refusing = ForeignKeepAwake(Arc::new(Host(Mutex::new(Vec::new()), false)));
+        assert!(refusing.set(true).is_err());
     }
 }

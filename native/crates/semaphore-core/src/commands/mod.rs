@@ -204,6 +204,7 @@ impl State {
         self.media = None;
         self.call_ended_early = None;
         self.had_connection = false;
+        self.connect_on_resume = false;
         self.token_expires_at_ms = None;
         self.view_changed(ViewKey::Session);
         self.view_changed(ViewKey::Voice);

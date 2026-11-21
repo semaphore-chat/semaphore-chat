@@ -209,6 +209,12 @@ struct Inner {
     refresh_gate: Arc<tokio::sync::Mutex<()>>,
 }
 
+/// From [`HttpBackend::pause_refreshes`]: no refresh starts while this lives.
+pub struct RefreshesPaused(
+    // Held for its drop, which lets refreshes run again.
+    #[allow(dead_code)] tokio::sync::OwnedMutexGuard<()>,
+);
+
 /// Cheap to clone: clones share one session.
 #[derive(Clone)]
 pub struct HttpBackend {
@@ -634,6 +640,18 @@ impl HttpBackend {
             return true;
         }
         done.recv_timeout(limit).is_ok()
+    }
+
+    /// Waits up to `limit` for a refresh (or a sign-out) in flight to finish, then holds off any
+    /// new one for as long as the returned guard lives. `None` if `limit` passed first. For
+    /// shutdown: a refresh the server has answered queues its new token's write before it lets
+    /// go, so after this a [`flush`](Self::flush) writes the newest token, and stopping the
+    /// runtime can no longer cut a rotation in half.
+    pub async fn pause_refreshes(&self, limit: std::time::Duration) -> Option<RefreshesPaused> {
+        timeout(limit, self.inner.refresh_gate.clone().lock_owned())
+            .await
+            .ok()
+            .map(RefreshesPaused)
     }
 
     /// The server requests go to now.

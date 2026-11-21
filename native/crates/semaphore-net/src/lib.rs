@@ -5,7 +5,7 @@ pub mod ed25519;
 pub mod realtime;
 pub mod socket;
 
-pub use backend::{ClientInfo, ClientKind, HttpBackend};
+pub use backend::{ClientInfo, ClientKind, HttpBackend, RefreshesPaused};
 pub use realtime::SocketRealtime;
 
 use std::sync::atomic::{AtomicBool, Ordering};

@@ -75,12 +75,18 @@ stacks, and the core's requests go through rustls and reqwest in Rust.
   session on the server signed in to last (semaphore-mobile remembers it in `data_dir`).
 - Every core event bumps a counter the screen re-reads its views on. Events arrive on whatever
   thread changed core state, so the listener does nothing else.
-- Lifecycle: `MainActivity.onStop` (not for a rotation) suspends the core and flushes the secret
-  store; `onStart` resumes it. A default-network callback maps onto `network_changed`.
+- Lifecycle: `MainActivity.onStop` (not for a rotation) suspends the core, then waits up to
+  300 ms for the secret store to finish its queued writes, while Android still counts the app as
+  visible; `onStart` resumes it. Both are recorded before the core exists, so a core that finishes
+  starting in the background starts suspended. A default-network callback maps onto
+  `network_changed`.
+- `NativeLib.init` sends the library's log records and panics to logcat (tag `semaphore`). A secret
+  store that fails is logged there at error level once, and `MobileHost.secretStoreFailure()`
+  says so: the session then won't survive a restart.
 - `KeystoreSecretStore` keeps secrets as AES-256-GCM files under `noBackupFilesDir`, sealed with
   a non-exportable Android Keystore key; `save` is durable when it returns (temp file, fsync,
   rename, fsync of the directory), because a rotated refresh token lost to a crash ends the
-  session. It needs a device, so the JVM test uses an in-memory store and the Keystore store gets
+  session. A Keystore key that stops working is replaced (its secrets are lost: one new sign-in). It needs a device, so the JVM test uses an in-memory store and the Keystore store gets
   its device test with D6.
 - Permissions: `INTERNET` and `ACCESS_NETWORK_STATE`, both granted at install.
 

@@ -858,10 +858,26 @@ impl SemaphoreCore {
     /// driver on `runtime` at once, so the exported `drive` does nothing for this core; and every
     /// command runs there from now on (see the module docs).
     ///
+    /// Also runs the retry timer desktop runs next to its driver (`semaphore-app`'s
+    /// `services.rs`): failed queries a view shows come back when their wait is over, re-read or
+    /// not (`semaphore_core::retry`). Both tasks end with the runtime.
+    ///
     /// Not exported: a foreign caller can't hold a `Core` or a runtime.
     pub fn with_runtime(core: Core, runtime: tokio::runtime::Handle) -> Arc<Self> {
         let driver = core.clone();
         runtime.spawn(async move { driver.drive().await });
+        let retrying = core.clone();
+        runtime.spawn(async move {
+            loop {
+                // Never longer than `MAX_TIMER_MS`, so a failure recorded meanwhile is seen in
+                // time; with nothing failed it only looks.
+                let due_in = retrying
+                    .retry_due_queries()
+                    .unwrap_or(semaphore_core::retry::MAX_TIMER_MS)
+                    .clamp(1, semaphore_core::retry::MAX_TIMER_MS);
+                tokio::time::sleep(std::time::Duration::from_millis(due_in)).await;
+            }
+        });
         Arc::new(Self {
             core,
             runtime: Some(runtime),
@@ -1003,10 +1019,19 @@ impl SemaphoreCore {
         }
     }
 
-    pub fn shutdown(&self) {
+    /// Ends `drive`. A networked core (`semaphore-mobile`'s) belongs to its host, whose own
+    /// `shutdown` stops the driver, the socket and the runtime in order: here it is refused, so
+    /// nothing is left half running.
+    pub fn shutdown(&self) -> Result<(), CoreError> {
+        if self.runtime.is_some() {
+            return Err(CoreError::Unavailable {
+                what: "shutting down a networked core: its host does (MobileHost.shutdown)".into(),
+            });
+        }
         self.sync(move |core| {
             core.shutdown();
-        })
+        });
+        Ok(())
     }
 
     pub async fn sign_in(
@@ -1220,10 +1245,17 @@ mod tests {
             .count();
         assert_eq!(listed, parts.len(), "a new part file must be listed here");
         let needle = ["self", ".core"].concat();
-        let (mut asyncs, mut runs) = (0, 0);
+        // Split, so this file's own test doesn't match itself.
+        let export = ["#[uniffi", "::export"].concat();
+        let (mut asyncs, mut runs, mut syncs) = (0, 0, 0);
         for (name, source) in parts {
-            // The tests below this line build cores of their own.
-            let source = source.split("#[cfg(test)]").next().unwrap();
+            // The tests below this line build cores of their own. Each file keeps them at its end,
+            // so nothing exported is cut off with them.
+            let (source, tests) = source.split_once("#[cfg(test)]").unwrap_or((source, ""));
+            assert!(
+                !tests.contains(export.as_str()),
+                "{name}: an export after the test module is never checked; keep the tests last"
+            );
             let direct = source.matches(needle.as_str()).count();
             // lib.rs: `run`'s clone, `sync`'s call and the `core()` accessor, all outside the
             // exported blocks.
@@ -1231,9 +1263,12 @@ mod tests {
             assert_eq!(direct, allowed, "{name} reaches the core directly");
             asyncs += source.matches("pub async fn ").count();
             runs += source.matches("self.run(").count();
+            syncs += source.matches("self.sync(").count();
         }
         assert_eq!(asyncs, runs, "every async export awaits `self.run`");
-        assert!(asyncs > 100, "the check found the exports ({asyncs})");
+        // Exact, so an export the check stops seeing fails here: change these with the exports.
+        assert_eq!(asyncs, 132, "async exports found");
+        assert_eq!(syncs, 98, "sync exports found");
     }
 
     #[test]

@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import uniffi.semaphore.CoreEvent
@@ -41,7 +42,7 @@ object SemaphoreHost {
     @Volatile
     private var host: MobileHost? = null
 
-    /** Background work that outlives any one screen: restoring the session, flushing secrets. */
+    /** Background work that outlives any one screen: restoring the session. */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val changes = MutableStateFlow(0L)
@@ -49,12 +50,15 @@ object SemaphoreHost {
     /** Bumped on every core event: a screen re-reads the views it shows when it changes. */
     val changed: StateFlow<Long> = changes
 
+    /** Guards [backgrounded] together with [host] being set, so a change is applied exactly once. */
+    private val lifecycle = Any()
+
     /**
-     * Whether the app went to the background and suspended the core. Process-wide, so an activity
-     * recreated while in the background still resumes it.
+     * Whether the app is in the background. Recorded whether or not the host exists yet, so one
+     * that finishes starting in the background starts suspended, and is resumed on return.
+     * Process-wide, so an activity recreated while in the background still resumes it.
      */
-    @Volatile
-    var backgrounded = false
+    private var backgrounded = false
 
     /** Started already, or null. */
     fun current(): MobileHost? = host
@@ -62,8 +66,36 @@ object SemaphoreHost {
     /** The host, started on first call. */
     suspend fun get(context: Context): MobileHost {
         host?.let { return it }
-        return lock.withLock { host ?: create(context.applicationContext).also { host = it } }
+        return lock.withLock { host ?: create(context.applicationContext) }
     }
+
+    /** The app came to the foreground (`onStart`): resumes the core if it was suspended. */
+    fun foregrounded() {
+        val resume = synchronized(lifecycle) {
+            val was = backgrounded
+            backgrounded = false
+            host.takeIf { was }
+        }
+        resume?.core()?.resume()
+    }
+
+    /**
+     * The app went to the background (`onStop`, not for a rotation): suspends the core, then
+     * waits up to [FLUSH_BOUND_MS] for the secret store, on an IO thread. Waiting here, while
+     * Android still counts the app as visible, is what lets a just-rotated refresh token land
+     * before the process becomes one the OS may end at once.
+     */
+    fun backgroundedNow() {
+        val started = synchronized(lifecycle) {
+            backgrounded = true
+            host
+        } ?: return
+        started.core().suspend()
+        runBlocking(Dispatchers.IO) { started.flush(FLUSH_BOUND_MS) }
+    }
+
+    /** Short: `onStop` runs on the main thread. */
+    private val FLUSH_BOUND_MS = 300u
 
     private suspend fun create(app: Context): MobileHost {
         NativeLib.init(app)
@@ -80,7 +112,16 @@ object SemaphoreHost {
             SystemClock,
             Listener,
         )
+        // Published with whatever the activity recorded meanwhile: a start that finished in the
+        // background is suspended now, and `foregrounded` resumes it.
+        val suspend = synchronized(lifecycle) {
+            host = started
+            backgrounded
+        }
+        if (suspend) started.core().suspend()
         watchNetwork(app, started.core())
+        // Restored while suspended, core waits for `resume` to connect the socket. What a restore
+        // that can't reach the server shows, and its retry, come with D5.
         started.lastServer()?.let { server ->
             scope.launch { runCatching { started.core().restoreSession(server) } }
         }
