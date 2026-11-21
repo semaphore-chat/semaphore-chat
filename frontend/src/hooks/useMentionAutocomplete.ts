@@ -26,12 +26,18 @@ interface UseMentionAutocompleteProps {
   communityId: string;
   text: string;
   cursorPosition: number;
+  /** When a Set: user suggestions only include these user ids (a private channel's members). Null/undefined: no filter. */
+  allowedUserIds?: ReadonlySet<string> | null;
+  /** True while `allowedUserIds` is still loading (OR-ed into the state's isLoading). */
+  allowedLoading?: boolean;
 }
 
 export function useMentionAutocomplete({
   communityId,
   text,
   cursorPosition,
+  allowedUserIds,
+  allowedLoading = false,
 }: UseMentionAutocompleteProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -126,6 +132,7 @@ export function useMentionAutocomplete({
       const userMatches = allMembers
         .filter(member => {
           if (!member.user) return false;
+          if (allowedUserIds && !allowedUserIds.has(member.user.id)) return false;
           const username = member.user.username.toLowerCase();
           const displayName = (member.user.displayName || '').toLowerCase();
           
@@ -177,7 +184,7 @@ export function useMentionAutocomplete({
     }
 
     return results.slice(0, 10); // Total limit of 10 results
-  }, [currentMention, allMembers, aliasGroups]);
+  }, [currentMention, allMembers, aliasGroups, allowedUserIds]);
 
   // Update open state based on suggestions
   useEffect(() => {
@@ -204,8 +211,9 @@ export function useMentionAutocomplete({
   const isLoading = useMemo(() => {
     if (!currentMention) return false;
     return (isLoadingMembers && allMembers.length === 0) ||
-           (isLoadingAliasGroups && aliasGroups.length === 0);
-  }, [currentMention, isLoadingMembers, allMembers.length, isLoadingAliasGroups, aliasGroups.length]);
+           (isLoadingAliasGroups && aliasGroups.length === 0) ||
+           allowedLoading;
+  }, [currentMention, isLoadingMembers, allMembers.length, isLoadingAliasGroups, aliasGroups.length, allowedLoading]);
 
   // Navigation functions
   const selectNext = useCallback(() => {

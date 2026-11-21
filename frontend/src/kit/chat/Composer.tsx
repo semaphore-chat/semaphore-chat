@@ -1,4 +1,4 @@
-import { useRef, type ChangeEvent, type JSX, type KeyboardEvent, type KeyboardEventHandler, type ReactNode, type Ref } from 'react';
+import { useRef, type ChangeEvent, type ClipboardEvent, type JSX, type KeyboardEvent, type KeyboardEventHandler, type ReactNode, type Ref } from 'react';
 import { styled } from '@mui/material/styles';
 import InputBase from '@mui/material/InputBase';
 import { tokens } from '../../theme/generated/tokens';
@@ -7,6 +7,7 @@ import { focusRing } from '../theme/states';
 import { SurfaceContext, standOutFill, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 import { useToastClearance } from '../behaviour/hosts/toasts';
+import { Button } from '../controls/Button';
 import { IconButton } from '../controls/IconButton';
 import { Icon } from '../display/Icon';
 import type { IconName } from '../icons/generated';
@@ -52,6 +53,24 @@ export interface ComposerNotice {
   icon?: IconName;
 }
 
+/** Files are being dragged over the conversation: the composer shows where they go. */
+export interface ComposerDropTarget {
+  active: boolean;
+  /** "Drop files to attach them" */
+  label: string;
+}
+
+/** The files among what was pasted (pictures, copied files); none for plain text. */
+function pastedFiles(data: DataTransfer | null): File[] {
+  const files: File[] = [];
+  for (const item of Array.from(data?.items ?? [])) {
+    if (item.kind !== 'file') continue;
+    const file = item.getAsFile();
+    if (file !== null) files.push(file);
+  }
+  return files;
+}
+
 /** The field is a combobox's input while a suggestion list (mentions) is open. */
 export interface ComposerPopup {
   /** The id of the open list. */
@@ -68,8 +87,17 @@ export interface ComposerProps {
   onChange: (value: string) => void;
   /** Send (or save): the trailing button, or Enter when `submitOnEnter`. Not called while it cannot send or is sending. */
   onSubmit: () => void;
-  /** `send` (default): "Send message" with the Send icon. `save`: editing a message, "Save changes" with a check. */
+  /**
+   * `send` (default): "Send message" with the Send icon. `save`: editing a message, "Save changes" with a check;
+   * `inline` in save mode has no trailing button but a small line under the field instead, "escape to cancel •
+   * enter to save" (with `submitOnEnter`; plain "Cancel • Save" without), whose words are the buttons.
+   */
   mode?: ComposerMode;
+  /**
+   * Leaves the edit unchanged: the hint's "cancel" (inline save mode; without it the hint offers only "save").
+   * Escape is the screen's (`onKeyDown`).
+   */
+  onCancel?: () => void;
   /**
    * Drawn inside a message row (editing in place): no outer padding, and it does not keep toasts clear of itself
    * (a row mid-list, or scrolled out of view, must not move the toasts). Default false: the conversation's composer.
@@ -104,8 +132,15 @@ export interface ComposerProps {
   attachUnavailable?: boolean;
   /** The unavailable attach button was pressed: say why ("You can't attach files in #announcements"). */
   onAttachUnavailablePress?: () => void;
-  /** The trailing slot inside the field, before Send: the emoji button. */
+  /** The trailing slot inside the field, before Send: the emoji and GIF buttons. */
   emoji?: ReactNode;
+  /**
+   * Files were pasted into the field (a picture, copied files): the composer reads them from the clipboard. Text
+   * pastes as usual.
+   */
+  onPasteFiles?: (files: File[]) => void;
+  /** Files are dragged over the conversation (the screen's drop zone): the composer is drawn as the drop target. */
+  dropTarget?: ComposerDropTarget;
   /** Replying or editing: a strip above the field with a cancel button. */
   banner?: ComposerBanner;
   /** The reader cannot write: the notice takes the place of the field and its buttons. */
@@ -243,6 +278,48 @@ const Above = styled('div', { shouldForwardProp: transientProps })<{ $inline: bo
   zIndex: 1,
 }));
 
+/** Over the composer while files are dragged over the conversation: where they go. */
+const Drop = styled('div')(({ theme }) => {
+  const { palette } = kitTheme(theme);
+  const type = tokens.text.bodyStrong;
+  return {
+    position: 'absolute',
+    inset: 0,
+    zIndex: 2,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: `${tokens.space.sm}px`,
+    borderRadius: `${tokens.radius.island}px`,
+    border: `${tokens.border.selected}px dashed ${palette.accent}`,
+    background: palette.surface,
+    color: palette.text,
+    fontFamily: theme.typography.fontFamily,
+    fontSize: `${type.size}px`,
+    lineHeight: `${type.line}px`,
+    fontWeight: type.weight,
+    pointerEvents: 'none',
+  };
+});
+
+/** Under an inline editor: "escape to cancel • enter to save". */
+const Hint = styled('div')(({ theme }) => {
+  const { palette } = kitTheme(theme);
+  const type = tokens.text.small;
+  return {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: `${tokens.space.xs}px`,
+    minWidth: 0,
+    color: palette.textSecondary,
+    fontFamily: theme.typography.fontFamily,
+    fontSize: `${type.size}px`,
+    lineHeight: `${type.line}px`,
+    fontWeight: type.weight,
+  };
+});
+
 const Tray = styled('div')({
   display: 'flex',
   flexWrap: 'wrap',
@@ -263,6 +340,7 @@ export function Composer({
   onChange,
   onSubmit,
   mode = 'send',
+  onCancel,
   inline = false,
   canSend,
   onSendUnavailablePress,
@@ -275,6 +353,8 @@ export function Composer({
   attachUnavailable = false,
   onAttachUnavailablePress,
   emoji,
+  onPasteFiles,
+  dropTarget,
   banner,
   notice,
   attachments,
@@ -303,6 +383,8 @@ export function Composer({
     }
   };
   const inside = on === 'fill' ? 'surface' : 'fill';
+  // An edit in place has no Save button: the hint under the field saves and cancels.
+  const hinted = inline && mode === 'save';
 
   return (
     <Root ref={rootRef} $inline={inline}>
@@ -355,22 +437,61 @@ export function Composer({
                   'aria-activedescendant': popup?.activeId,
                   onKeyDown: handleKeyDown,
                   onSelect: onCaretMove,
+                  onPaste:
+                    onPasteFiles === undefined
+                      ? undefined
+                      : (event: ClipboardEvent<HTMLTextAreaElement>) => {
+                          const files = pastedFiles(event.clipboardData);
+                          if (files.length > 0) onPasteFiles(files);
+                        },
                 }}
               />
               {emoji}
             </SurfaceContext>
           </FieldBox>
-          <IconButton
-            icon={SUBMIT[mode].icon}
-            variant="primary"
-            size="lg"
-            label={SUBMIT[mode].label}
-            aria-disabled={!sendable}
-            onUnavailablePress={onSendUnavailablePress}
-            loading={sending}
-            onClick={submit}
-          />
+          {!hinted && (
+            <IconButton
+              icon={SUBMIT[mode].icon}
+              variant="primary"
+              size="lg"
+              label={SUBMIT[mode].label}
+              aria-disabled={!sendable}
+              onUnavailablePress={onSendUnavailablePress}
+              loading={sending}
+              onClick={submit}
+            />
+          )}
         </Row>
+      )}
+      {hinted && notice === undefined && (
+        <Hint>
+          {onCancel !== undefined && (
+            <>
+              {submitOnEnter && <span>escape to</span>}
+              <Button variant="text" size="sm" aria-label="Cancel editing" onClick={onCancel}>
+                {submitOnEnter ? 'cancel' : 'Cancel'}
+              </Button>
+              <span aria-hidden>•</span>
+            </>
+          )}
+          {submitOnEnter && <span>enter to</span>}
+          <Button
+            variant="text"
+            size="sm"
+            loading={sending}
+            aria-disabled={!sendable || undefined}
+            aria-label={SUBMIT.save.label}
+            onClick={submit}
+          >
+            {submitOnEnter ? 'save' : 'Save'}
+          </Button>
+        </Hint>
+      )}
+      {dropTarget?.active === true && notice === undefined && (
+        <Drop>
+          <Icon name="Paperclip" size="md" tone="secondary" />
+          <span>{dropTarget.label}</span>
+        </Drop>
       )}
     </Root>
   );

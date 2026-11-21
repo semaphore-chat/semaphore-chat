@@ -17,8 +17,8 @@ import { downloadBlob } from '../../utils/format';
 import { logger } from '../../utils/logger';
 import { viewerImages } from './messageRowModel';
 
-/** The picture types a tab may show. Anything else (SVG, HTML, PDF, unknown) is downloaded. */
-export const VIEWABLE_IMAGE_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'];
+/** The picture types a tab may show (raster only, as the old chat draws BMP too). Anything else (SVG, HTML, PDF, unknown) is downloaded. */
+export const VIEWABLE_IMAGE_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp'];
 
 /** What pressing a file does, from the type the server reported: show it in a tab, or download it. */
 export function attachmentAction(mimeType: string | null | undefined): 'open' | 'download' {

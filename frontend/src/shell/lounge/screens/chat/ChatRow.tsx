@@ -389,8 +389,10 @@ function Uploads({ message }: { message: Message }): JSX.Element | null {
 
 /**
  * The message's words, edited in place (the old chat's phone behaviour): the kit composer inline, in save mode,
- * on the shared edit state. Enter saves, Shift+Enter starts a line, Escape (or Cancel) leaves it unchanged. When
- * the edit ends, focus goes back to the row.
+ * on the shared edit state. Enter saves (also on touch, as the old chat's phone edit), Shift+Enter starts a line,
+ * Escape leaves it unchanged. A small line under the field says so, Discord's "escape to cancel • enter to save",
+ * and its words "cancel" and "save" are the buttons, in place of a Save button. When the edit ends, focus goes back
+ * to the row.
  */
 function InlineEdit({ message, row }: { message: Message; row: { current: HTMLDivElement | null } }): JSX.Element {
   const shared = useShared();
@@ -433,6 +435,7 @@ function InlineEdit({ message, row }: { message: Message; row: { current: HTMLDi
         editing.setDraft(message.id, text);
       }}
       sending={saving}
+      onCancel={handleEditCancel}
       canSend={editText.trim() !== '' || message.attachments.length > 0}
       onSubmit={() => {
         setSaving(true);
@@ -444,7 +447,6 @@ function InlineEdit({ message, row }: { message: Message; row: { current: HTMLDi
           handleEditCancel();
         }
       }}
-      banner={{ kind: 'editing', title: 'Editing message', detail: 'Escape to cancel, Enter to save', cancelLabel: 'Cancel editing', onCancel: handleEditCancel }}
     />
   );
 }
