@@ -823,7 +823,7 @@ impl State {
             }
             ServerEvent::UserTyping(event) => self.on_typing(event, now),
             ServerEvent::TokenExpiring(event) => {
-                self.token_expires_at_ms = Some(event.expires_at.timestamp_millis().max(0) as u64);
+                self.token_expires_at_ms = Some(event.expires_at.as_millisecond().max(0) as u64);
                 self.push_effect(Effect::RefreshToken);
             }
             ServerEvent::UserOnline(event) => self.on_presence(&event.user_id, true),
@@ -844,7 +844,7 @@ impl State {
             ServerEvent::DesktopSignIn(event) => {
                 self.push_event(crate::platform::CoreEvent::DesktopSignedIn {
                     ip_address: event.ip_address.clone().filter(|ip| !ip.is_empty()),
-                    at_ms: event.signed_in_at.timestamp_millis(),
+                    at_ms: event.signed_in_at.as_millisecond(),
                 });
                 self.invalidate(&keys::op(keys::SESSIONS));
             }
@@ -964,8 +964,7 @@ impl State {
                         expires_at: Some(expires_at),
                         ..
                     }) => {
-                        self.token_expires_at_ms =
-                            Some(expires_at.timestamp_millis().max(0) as u64);
+                        self.token_expires_at_ms = Some(expires_at.as_millisecond().max(0) as u64);
                     }
                     Ok(result) => log::warn!("reauthentication refused: {:?}", result.error),
                     Err(error) => log::warn!("unreadable reauthentication result: {error}"),

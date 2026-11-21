@@ -343,7 +343,7 @@ async fn handle_event(
         "reauthenticate" => {
             let result = ReauthenticateResultDto {
                 error: None,
-                expires_at: Some(inner.now() + chrono::Duration::hours(1)),
+                expires_at: Some(inner.now() + jiff::SignedDuration::from_hours(1)),
                 ok: true,
             };
             ack_value(

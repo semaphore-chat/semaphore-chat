@@ -58,7 +58,7 @@ fn timeout_sentence_uses_the_display_clock() {
     );
     // Another display zone moves the time, never the wall clock.
     let east = TimeFormat {
-        zone: chrono::FixedOffset::east_opt(2 * 3600),
+        zone: Some(jiff::tz::Offset::constant(2)),
         ..TimeFormat::fixed(NOW_MS)
     };
     assert_eq!(until_label(&east, NOW_MS + 2 * 3_600_000), "8:12 PM");

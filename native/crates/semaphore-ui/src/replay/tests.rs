@@ -98,7 +98,6 @@ fn clocks_are_minutes_then_hours() {
 #[test]
 fn capture_times_are_written_in_the_users_zone() {
     use crate::messages::TimeFormat;
-    use chrono::FixedOffset;
 
     // Zone minutes east of UTC, the instant, the local time, and the UTC time.
     let cases = [
@@ -149,7 +148,7 @@ fn capture_times_are_written_in_the_users_zone() {
         ),
     ];
     for (minutes, ms, local, utc) in cases {
-        let zone = FixedOffset::east_opt(minutes * 60).expect("a zone");
+        let zone = jiff::tz::Offset::from_seconds(minutes * 60).expect("a zone");
         let time = TimeFormat {
             zone: Some(zone),
             now: PanelClock::fixed(ms),

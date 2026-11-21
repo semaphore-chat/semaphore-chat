@@ -437,9 +437,10 @@ async fn a_row_carries_its_reply_pin_webhook_last_reply_and_previews() {
     assert_eq!(
         row.last_reply_at_ms,
         Some(
-            chrono::DateTime::parse_from_rfc3339("2026-09-22T19:00:00.000Z")
+            "2026-09-22T19:00:00.000Z"
+                .parse::<jiff::Timestamp>()
                 .unwrap()
-                .timestamp_millis()
+                .as_millisecond()
         )
     );
     assert_eq!(row.link_previews.len(), 1);

@@ -331,7 +331,7 @@ async fn an_expired_used_up_or_disabled_invite_does_not_register_or_show() {
     type Change = fn(&mut InviteSeed);
     let seeds: [(&str, Change); 3] = [
         ("EXPIRED", |seed: &mut InviteSeed| {
-            seed.valid_until = Some(chrono::DateTime::<chrono::Utc>::MIN_UTC);
+            seed.valid_until = Some(jiff::Timestamp::MIN);
         }),
         ("USEDUP", |seed: &mut InviteSeed| {
             seed.max_uses = Some(1);
@@ -377,11 +377,7 @@ async fn an_expired_used_up_or_disabled_invite_does_not_register_or_show() {
     limited.max_uses = Some(1);
     api.server.seed_invite(limited);
     let mut dated = InviteSeed::new("DATED");
-    dated.valid_until = Some(
-        chrono::DateTime::parse_from_rfc3339("2100-01-01T00:00:00Z")
-            .unwrap()
-            .with_timezone(&chrono::Utc),
-    );
+    dated.valid_until = Some("2100-01-01T00:00:00Z".parse().expect("a timestamp"));
     api.server.seed_invite(dated);
     let register = |name: &'static str, code: &'static str| {
         api.public_post(

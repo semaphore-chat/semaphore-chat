@@ -15,5 +15,7 @@ openapiv3 = "2"
 prettyplease = "0.2"
 progenitor = "0.15.1"
 quote = "1"
+# The same `schemars` typify uses: `GenerationSettings::with_conversion` takes its `SchemaObject`.
+schemars = "0.8.22"
 serde_json = { version = "1", features = ["preserve_order"] }
 syn = { version = "2", features = ["full", "printing"] }

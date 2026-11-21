@@ -410,17 +410,13 @@ fn ban_by(
         may_moderate(inner, &actor, &community_id, &user_id, "ban")?;
         let reason = text(body, "reason");
         let expires_at = match text(body, "expiresAt") {
-            Some(at) => Some(
-                chrono::DateTime::parse_from_rfc3339(&at)
-                    .map_err(|_| {
-                        rbac::refuse(
-                            400,
-                            "BAD_REQUEST",
-                            "expiresAt must be a valid ISO 8601 date string",
-                        )
-                    })?
-                    .with_timezone(&chrono::Utc),
-            ),
+            Some(at) => Some(at.parse::<jiff::Timestamp>().map_err(|_| {
+                rbac::refuse(
+                    400,
+                    "BAD_REQUEST",
+                    "expiresAt must be a valid ISO 8601 date string",
+                )
+            })?),
             None => None,
         };
         let now = inner.now();
@@ -599,7 +595,7 @@ fn timeout_by(
         may_moderate(inner, &actor, &community_id, &user_id, "timeout")?;
         let reason = text(body, "reason");
         let now = inner.now();
-        let expires_at = now + chrono::Duration::seconds(seconds);
+        let expires_at = now + jiff::SignedDuration::from_secs(seconds);
         rbac::community(inner, &community_id, |state, _| {
             state.timeouts.insert(
                 user_id.clone(),

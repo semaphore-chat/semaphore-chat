@@ -715,7 +715,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub banned_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub banned_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(
             rename = "bannedById",
             deserialize_with = "::std::option::Option::deserialize",
@@ -731,7 +731,7 @@ pub mod types {
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub bio: ::std::option::Option<::std::string::String>,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(
             rename = "displayName",
             deserialize_with = "::std::option::Option::deserialize",
@@ -746,7 +746,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub last_seen: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub last_seen: ::std::option::Option<::jiff::Timestamp>,
         pub role: semaphore_wire::enums::InstanceRole,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub status: ::std::option::Option<::std::string::String>,
@@ -755,7 +755,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub status_updated_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub status_updated_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(rename = "storageQuotaBytes")]
         pub storage_quota_bytes: i64,
         #[serde(rename = "storageUsedBytes")]
@@ -808,7 +808,7 @@ pub mod types {
         #[serde(rename = "communityId")]
         pub community_id: ::std::string::String,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         pub id: ::std::string::String,
         #[serde(rename = "memberCount")]
         pub member_count: i64,
@@ -1451,7 +1451,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub timed_out_until: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub timed_out_until: ::std::option::Option<::jiff::Timestamp>,
         ///Publish the camera.
         pub video: bool,
         ///Can see the channel at all (name, messages).
@@ -1478,7 +1478,7 @@ pub mod types {
         #[serde(rename = "communityId")]
         pub community_id: ::std::string::String,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         pub id: ::std::string::String,
         #[serde(rename = "isPrivate")]
         pub is_private: bool,
@@ -1504,7 +1504,7 @@ pub mod types {
         pub channel_id: ::std::string::String,
         pub id: ::std::string::String,
         #[serde(rename = "joinedAt")]
-        pub joined_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub joined_at: ::jiff::Timestamp,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub user: ::std::option::Option<UserEntity>,
         #[serde(rename = "userId")]
@@ -1516,11 +1516,11 @@ pub mod types {
         #[serde(rename = "channelId")]
         pub channel_id: ::std::string::String,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         pub id: ::std::string::String,
         pub level: ::std::string::String,
         #[serde(rename = "updatedAt")]
-        pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub updated_at: ::jiff::Timestamp,
         #[serde(rename = "userId")]
         pub user_id: ::std::string::String,
     }
@@ -1601,7 +1601,7 @@ pub mod types {
         pub is_server_muted: bool,
         ///ISO-8601 timestamp, as sent on the socket.
         #[serde(rename = "joinedAt")]
-        pub joined_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub joined_at: ::jiff::Timestamp,
         pub username: ::std::string::String,
     }
     ///`ChannelWebhookPayloadDto`
@@ -1637,7 +1637,7 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct ClipResponseDto {
         #[serde(rename = "capturedAt")]
-        pub captured_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub captured_at: ::jiff::Timestamp,
         #[serde(
             rename = "channelId",
             deserialize_with = "::std::option::Option::deserialize",
@@ -1672,13 +1672,13 @@ pub mod types {
         #[serde(rename = "communityId")]
         pub community_id: ::std::string::String,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(
             rename = "expiresAt",
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub expires_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub expires_at: ::std::option::Option<::jiff::Timestamp>,
         pub id: ::std::string::String,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub moderator: ::std::option::Option<ModerationUserDto>,
@@ -1735,7 +1735,7 @@ pub mod types {
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub banner: ::std::option::Option<::std::string::String>,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub description: ::std::option::Option<::std::string::String>,
         pub id: ::std::string::String,
@@ -1779,7 +1779,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub deleted_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub deleted_at: ::std::option::Option<::jiff::Timestamp>,
         ///Who removed the message. Null unless the reader may see removed messages.
         #[serde(
             rename = "deletedBy",
@@ -1805,14 +1805,14 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub edited_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub edited_at: ::std::option::Option<::jiff::Timestamp>,
         pub id: ::std::string::String,
         #[serde(
             rename = "lastReplyAt",
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub last_reply_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub last_reply_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(
             rename = "linkPreviews",
             deserialize_with = "::std::option::Option::deserialize",
@@ -1837,7 +1837,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub pinned_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub pinned_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(
             rename = "pinnedBy",
             deserialize_with = "::std::option::Option::deserialize",
@@ -1860,7 +1860,7 @@ pub mod types {
         )]
         pub reply_to_id: ::std::option::Option<::std::string::String>,
         #[serde(rename = "sentAt")]
-        pub sent_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub sent_at: ::jiff::Timestamp,
         pub spans: ::std::vec::Vec<SpanDto>,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub webhook: ::std::option::Option<WebhookInfoDto>,
@@ -1883,7 +1883,7 @@ pub mod types {
         #[serde(rename = "channelCount")]
         pub channel_count: i64,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub description: ::std::option::Option<::std::string::String>,
         pub id: ::std::string::String,
@@ -1903,7 +1903,7 @@ pub mod types {
         #[serde(rename = "channelCount")]
         pub channel_count: i64,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub description: ::std::option::Option<::std::string::String>,
         pub id: ::std::string::String,
@@ -1928,9 +1928,9 @@ pub mod types {
         #[serde(rename = "communityId")]
         pub community_id: ::std::string::String,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(rename = "expiresAt")]
-        pub expires_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub expires_at: ::jiff::Timestamp,
         pub id: ::std::string::String,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub moderator: ::std::option::Option<ModerationUserDto>,
@@ -2313,7 +2313,7 @@ pub mod types {
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
-        pub valid_until: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub valid_until: ::std::option::Option<::jiff::Timestamp>,
     }
     ///`CreateMembershipDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -2829,7 +2829,7 @@ pub mod types {
         #[serde(rename = "channelId")]
         pub channel_id: ::std::string::String,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         pub id: ::std::string::String,
         pub name: ::std::string::String,
         pub url: ::std::string::String,
@@ -2840,7 +2840,7 @@ pub mod types {
         #[serde(rename = "communityId")]
         pub community_id: ::std::string::String,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(
             rename = "createdBy",
             deserialize_with = "::std::option::Option::deserialize",
@@ -2863,7 +2863,7 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct DebugPushSubscriptionDto {
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         pub endpoint: ::std::string::String,
         pub id: ::std::string::String,
         #[serde(
@@ -3045,7 +3045,7 @@ pub mod types {
         pub ip_address: ::std::option::Option<::std::string::String>,
         ///When the desktop app signed in.
         #[serde(rename = "signedInAt")]
-        pub signed_in_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub signed_in_at: ::jiff::Timestamp,
     }
     ///`DmGroupCreatedPayloadDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -3066,7 +3066,7 @@ pub mod types {
         pub author_id: ::std::option::Option<::std::string::String>,
         pub id: ::std::string::String,
         #[serde(rename = "sentAt")]
-        pub sent_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub sent_at: ::jiff::Timestamp,
         pub spans: ::std::vec::Vec<SpanDto>,
     }
     ///`DmGroupMemberAddedPayloadDto`
@@ -3082,7 +3082,7 @@ pub mod types {
     pub struct DmGroupMemberDto {
         pub id: ::std::string::String,
         #[serde(rename = "joinedAt")]
-        pub joined_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub joined_at: ::jiff::Timestamp,
         pub user: DmGroupMemberUserDto,
         #[serde(rename = "userId")]
         pub user_id: ::std::string::String,
@@ -3117,7 +3117,7 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct DmGroupResponseDto {
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         pub id: ::std::string::String,
         #[serde(rename = "isGroup")]
         pub is_group: bool,
@@ -3135,7 +3135,7 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct DmPeerReadDto {
         #[serde(rename = "lastReadAt")]
-        pub last_read_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub last_read_at: ::jiff::Timestamp,
         #[serde(rename = "userId")]
         pub user_id: ::std::string::String,
     }
@@ -3344,7 +3344,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub deleted_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub deleted_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(
             rename = "fileCommunityId",
             deserialize_with = "::std::option::Option::deserialize",
@@ -3390,7 +3390,7 @@ pub mod types {
         )]
         pub thumbnail_path: ::std::option::Option<::std::string::String>,
         #[serde(rename = "uploadedAt")]
-        pub uploaded_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub uploaded_at: ::jiff::Timestamp,
         #[serde(
             rename = "uploadedById",
             deserialize_with = "::std::option::Option::deserialize",
@@ -3442,7 +3442,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub last_seen: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub last_seen: ::std::option::Option<::jiff::Timestamp>,
         pub role: semaphore_wire::enums::InstanceRole,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub status: ::std::option::Option<::std::string::String>,
@@ -3452,7 +3452,7 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct FriendshipDto {
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         pub id: ::std::string::String,
         pub status: semaphore_wire::enums::FriendshipStatus,
         #[serde(rename = "userAId")]
@@ -3490,7 +3490,7 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct FriendshipWithUsersDto {
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         pub id: ::std::string::String,
         pub status: semaphore_wire::enums::FriendshipStatus,
         #[serde(rename = "userA")]
@@ -3881,7 +3881,7 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct InstanceSettingsResponseDto {
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(rename = "defaultStorageQuotaBytes")]
         pub default_storage_quota_bytes: i64,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
@@ -3893,7 +3893,7 @@ pub mod types {
         #[serde(rename = "registrationMode")]
         pub registration_mode: semaphore_wire::enums::RegistrationMode,
         #[serde(rename = "updatedAt")]
-        pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub updated_at: ::jiff::Timestamp,
         #[serde(
             rename = "vapidPublicKey",
             deserialize_with = "::std::option::Option::deserialize",
@@ -3978,7 +3978,7 @@ pub mod types {
     pub struct InviteResponseDto {
         pub code: ::std::string::String,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(
             rename = "createdBy",
             skip_serializing_if = "::std::option::Option::is_none",
@@ -4008,14 +4008,14 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub valid_until: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub valid_until: ::std::option::Option<::jiff::Timestamp>,
     }
     ///`InviteUsageDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct InviteUsageDto {
         pub id: ::std::string::String,
         #[serde(rename = "usedAt")]
-        pub used_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub used_at: ::jiff::Timestamp,
         #[serde(rename = "userId")]
         pub user_id: ::std::string::String,
     }
@@ -4244,7 +4244,7 @@ pub mod types {
         pub community_id: ::std::string::String,
         pub id: ::std::string::String,
         #[serde(rename = "joinedAt")]
-        pub joined_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub joined_at: ::jiff::Timestamp,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub roles: ::std::vec::Vec<RoleDto>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
@@ -4281,7 +4281,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub deleted_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub deleted_at: ::std::option::Option<::jiff::Timestamp>,
         ///Who removed the message. Null unless the reader may see removed messages.
         #[serde(
             rename = "deletedBy",
@@ -4307,14 +4307,14 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub edited_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub edited_at: ::std::option::Option<::jiff::Timestamp>,
         pub id: ::std::string::String,
         #[serde(
             rename = "lastReplyAt",
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub last_reply_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub last_reply_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(
             rename = "linkPreviews",
             deserialize_with = "::std::option::Option::deserialize",
@@ -4339,7 +4339,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub pinned_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub pinned_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(
             rename = "pinnedBy",
             deserialize_with = "::std::option::Option::deserialize",
@@ -4362,7 +4362,7 @@ pub mod types {
         )]
         pub reply_to_id: ::std::option::Option<::std::string::String>,
         #[serde(rename = "sentAt")]
-        pub sent_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub sent_at: ::jiff::Timestamp,
         pub spans: ::std::vec::Vec<SpanDto>,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub webhook: ::std::option::Option<WebhookInfoDto>,
@@ -4375,7 +4375,7 @@ pub mod types {
         #[serde(rename = "messageId")]
         pub message_id: ::std::string::String,
         #[serde(rename = "pinnedAt")]
-        pub pinned_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub pinned_at: ::jiff::Timestamp,
         #[serde(rename = "pinnedBy")]
         pub pinned_by: ::std::string::String,
     }
@@ -4393,7 +4393,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub deleted_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub deleted_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(
             rename = "directMessageGroupId",
             deserialize_with = "::std::option::Option::deserialize",
@@ -4425,7 +4425,7 @@ pub mod types {
         )]
         pub display_name: ::std::option::Option<::std::string::String>,
         #[serde(rename = "readAt")]
-        pub read_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub read_at: ::jiff::Timestamp,
         #[serde(rename = "userId")]
         pub user_id: ::std::string::String,
         pub username: ::std::string::String,
@@ -4459,7 +4459,7 @@ pub mod types {
         #[serde(rename = "communityId")]
         pub community_id: ::std::string::String,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         pub id: ::std::string::String,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub metadata:
@@ -4529,7 +4529,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub last_seen: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub last_seen: ::std::option::Option<::jiff::Timestamp>,
         pub role: semaphore_wire::enums::InstanceRole,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub status: ::std::option::Option<::std::string::String>,
@@ -4579,7 +4579,7 @@ pub mod types {
         )]
         pub community_id: ::std::option::Option<::std::string::String>,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(
             rename = "directMessageGroupId",
             deserialize_with = "::std::option::Option::deserialize",
@@ -4665,7 +4665,7 @@ pub mod types {
         )]
         pub community_id: ::std::option::Option<::std::string::String>,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(
             rename = "directMessageGroupId",
             deserialize_with = "::std::option::Option::deserialize",
@@ -4826,7 +4826,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub deleted_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub deleted_at: ::std::option::Option<::jiff::Timestamp>,
         ///Who removed the message. Null unless the reader may see removed messages.
         #[serde(
             rename = "deletedBy",
@@ -4852,14 +4852,14 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub edited_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub edited_at: ::std::option::Option<::jiff::Timestamp>,
         pub id: ::std::string::String,
         #[serde(
             rename = "lastReplyAt",
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub last_reply_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub last_reply_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(
             rename = "linkPreviews",
             deserialize_with = "::std::option::Option::deserialize",
@@ -4884,7 +4884,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub pinned_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub pinned_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(
             rename = "pinnedBy",
             deserialize_with = "::std::option::Option::deserialize",
@@ -4907,7 +4907,7 @@ pub mod types {
         )]
         pub reply_to_id: ::std::option::Option<::std::string::String>,
         #[serde(rename = "sentAt")]
-        pub sent_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub sent_at: ::jiff::Timestamp,
         pub spans: ::std::vec::Vec<SpanDto>,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub webhook: ::std::option::Option<WebhookInfoDto>,
@@ -4954,7 +4954,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub valid_until: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub valid_until: ::std::option::Option<::jiff::Timestamp>,
     }
     ///`PublicSettingsResponseDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -4992,7 +4992,7 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct PushSubscriptionInfoDto {
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         ///Host of the push service; the full endpoint URL is never returned.
         #[serde(
             rename = "endpointHost",
@@ -5002,7 +5002,7 @@ pub mod types {
         pub endpoint_host: ::std::option::Option<::std::string::String>,
         pub id: ::std::string::String,
         #[serde(rename = "updatedAt")]
-        pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub updated_at: ::jiff::Timestamp,
         #[serde(
             rename = "userAgent",
             deserialize_with = "::std::option::Option::deserialize",
@@ -5091,7 +5091,7 @@ pub mod types {
         pub direct_message_group_id: ::std::option::Option<::std::string::String>,
         pub id: ::std::string::String,
         #[serde(rename = "lastReadAt")]
-        pub last_read_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub last_read_at: ::jiff::Timestamp,
         #[serde(rename = "lastReadMessageId")]
         pub last_read_message_id: ::std::string::String,
         #[serde(rename = "userId")]
@@ -5125,7 +5125,7 @@ pub mod types {
         )]
         pub display_name: ::std::option::Option<::std::string::String>,
         #[serde(rename = "lastReadAt")]
-        pub last_read_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub last_read_at: ::jiff::Timestamp,
         #[serde(rename = "lastReadMessageId")]
         pub last_read_message_id: ::std::string::String,
         ///The reader's details are set on the DM room broadcast, not on self-sync.
@@ -5206,7 +5206,7 @@ pub mod types {
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
-        pub expires_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub expires_at: ::std::option::Option<::jiff::Timestamp>,
         pub ok: bool,
     }
     ///`RefreshDmPresenceResponseDto`
@@ -5368,10 +5368,10 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub deleted_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub deleted_at: ::std::option::Option<::jiff::Timestamp>,
         pub id: ::std::string::String,
         #[serde(rename = "sentAt")]
-        pub sent_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub sent_at: ::jiff::Timestamp,
         pub spans: ::std::vec::Vec<SpanDto>,
     }
     ///`ReportJoinFailureDto`
@@ -5767,7 +5767,7 @@ pub mod types {
     pub struct RoleDto {
         pub actions: ::std::vec::Vec<semaphore_wire::enums::RbacAction>,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         pub id: ::std::string::String,
         #[serde(rename = "isDefault")]
         pub is_default: bool,
@@ -5903,11 +5903,11 @@ pub mod types {
     pub struct SessionInfoDto {
         ///When the session started (its oldest refresh token still stored)
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(rename = "deviceName")]
         pub device_name: ::std::string::String,
         #[serde(rename = "expiresAt")]
-        pub expires_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub expires_at: ::jiff::Timestamp,
         /**The session id: stable for the whole session (refresh token rotations
         don't change it). Pass it to DELETE /auth/sessions/{sessionId}.*/
         pub id: ::std::string::String,
@@ -5921,7 +5921,7 @@ pub mod types {
         pub is_current: bool,
         ///Last activity, delayed by about a minute
         #[serde(rename = "lastUsedAt")]
-        pub last_used_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub last_used_at: ::jiff::Timestamp,
     }
     ///`SessionInfoResponseDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -5932,14 +5932,14 @@ pub mod types {
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
-        pub buffer_end_time: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub buffer_end_time: ::std::option::Option<::jiff::Timestamp>,
         ///Oldest segment timestamp (when buffer started)
         #[serde(
             rename = "bufferStartTime",
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
-        pub buffer_start_time: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub buffer_start_time: ::std::option::Option<::jiff::Timestamp>,
         ///Whether there's an active replay buffer session
         #[serde(rename = "hasActiveSession")]
         pub has_active_session: bool,
@@ -6404,7 +6404,7 @@ pub mod types {
         #[serde(rename = "communityId")]
         pub community_id: ::std::string::String,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(
             rename = "createdBy",
             deserialize_with = "::std::option::Option::deserialize",
@@ -6580,7 +6580,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub last_reply_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub last_reply_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(rename = "parentMessageId")]
         pub parent_message_id: ::std::string::String,
         #[serde(rename = "replyCount")]
@@ -6623,7 +6623,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub last_reply_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub last_reply_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(rename = "parentMessageId")]
         pub parent_message_id: ::std::string::String,
         #[serde(rename = "replyCount")]
@@ -6659,7 +6659,7 @@ pub mod types {
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
-        pub expires_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub expires_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(rename = "isTimedOut")]
         pub is_timed_out: bool,
     }
@@ -6676,7 +6676,7 @@ pub mod types {
     pub struct TokenExpiringPayloadDto {
         ///When the socket's current access token expires.
         #[serde(rename = "expiresAt")]
-        pub expires_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub expires_at: ::jiff::Timestamp,
     }
     ///`TokenResponseDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -6686,7 +6686,7 @@ pub mod types {
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
-        pub expires_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub expires_at: ::std::option::Option<::jiff::Timestamp>,
         pub identity: ::std::string::String,
         #[serde(rename = "roomId")]
         pub room_id: ::std::string::String,
@@ -6742,7 +6742,7 @@ pub mod types {
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
-        pub last_read_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub last_read_at: ::std::option::Option<::jiff::Timestamp>,
         #[serde(
             rename = "lastReadMessageId",
             skip_serializing_if = "::std::option::Option::is_none",
@@ -7774,7 +7774,7 @@ pub mod types {
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
-        pub expires_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub expires_at: ::std::option::Option<::jiff::Timestamp>,
         /**Who acted: sent only to the target (the community room gets the event
         without it; the moderation log has it for those who may read it).*/
         #[serde(
@@ -7817,7 +7817,7 @@ pub mod types {
             deserialize_with = "::std::option::Option::deserialize",
             default
         )]
-        pub last_seen: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub last_seen: ::std::option::Option<::jiff::Timestamp>,
         pub role: semaphore_wire::enums::InstanceRole,
         #[serde(deserialize_with = "::std::option::Option::deserialize", default)]
         pub status: ::std::option::Option<::std::string::String>,
@@ -7856,7 +7856,7 @@ pub mod types {
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct UserNotificationSettingsDto {
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         #[serde(rename = "defaultChannelLevel")]
         pub default_channel_level: ::std::string::String,
         #[serde(rename = "desktopEnabled")]
@@ -7889,7 +7889,7 @@ pub mod types {
         #[serde(rename = "soundType")]
         pub sound_type: ::std::string::String,
         #[serde(rename = "updatedAt")]
-        pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub updated_at: ::jiff::Timestamp,
         #[serde(rename = "userId")]
         pub user_id: ::std::string::String,
     }
@@ -7995,7 +7995,7 @@ pub mod types {
         #[serde(rename = "durationSeconds")]
         pub duration_seconds: i64,
         #[serde(rename = "expiresAt")]
-        pub expires_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub expires_at: ::jiff::Timestamp,
         /**Who acted: sent only to the target (the community room gets the event
         without it; the moderation log has it for those who may read it).*/
         #[serde(
@@ -8111,7 +8111,7 @@ pub mod types {
         pub is_server_muted: bool,
         ///ISO-8601 timestamp, as sent on the socket.
         #[serde(rename = "joinedAt")]
-        pub joined_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub joined_at: ::jiff::Timestamp,
         pub username: ::std::string::String,
     }
     ///`WebhookDto`
@@ -8126,7 +8126,7 @@ pub mod types {
         #[serde(rename = "channelId")]
         pub channel_id: ::std::string::String,
         #[serde(rename = "createdAt")]
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_at: ::jiff::Timestamp,
         pub id: ::std::string::String,
         pub name: ::std::string::String,
     }

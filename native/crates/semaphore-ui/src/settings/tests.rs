@@ -317,7 +317,6 @@ fn session_lines_read_against_the_clock() {
 #[test]
 fn session_dates_are_written_in_the_users_zone() {
     use crate::messages::TimeFormat;
-    use chrono::FixedOffset;
 
     // Zone minutes east of UTC, the instant, the local date, and the UTC date.
     let cases = [
@@ -333,7 +332,7 @@ fn session_dates_are_written_in_the_users_zone() {
         (5 * 60 + 45, 1_793_902_560_000, "Nov 6, 2026", "Nov 5, 2026"),
     ];
     for (minutes, ms, local, utc_date) in cases {
-        let zone = FixedOffset::east_opt(minutes * 60).expect("a zone");
+        let zone = jiff::tz::Offset::from_seconds(minutes * 60).expect("a zone");
         let zone_time = TimeFormat {
             zone: Some(zone),
             now: PanelClock::fixed(NOW),

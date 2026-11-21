@@ -25,7 +25,7 @@ pub(crate) struct AliasGroup {
     pub id: String,
     pub community_id: String,
     pub name: String,
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: jiff::Timestamp,
     pub members: Vec<String>,
 }
 

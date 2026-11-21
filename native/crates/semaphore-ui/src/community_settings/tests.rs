@@ -397,7 +397,6 @@ fn an_invite_is_expired_used_up_disabled_or_active() {
 #[test]
 fn dates_are_written_in_the_users_zone() {
     use crate::messages::TimeFormat;
-    use chrono::FixedOffset;
 
     // Zone minutes east of UTC, the instant, the local date, and the UTC date.
     let cases = [
@@ -417,7 +416,7 @@ fn dates_are_written_in_the_users_zone() {
         (5 * 60 + 45, 1_793_902_560_000, "Nov 6, 2026", "Nov 5, 2026"),
     ];
     for (minutes, ms, local, utc) in cases {
-        let zone = FixedOffset::east_opt(minutes * 60).expect("a zone");
+        let zone = jiff::tz::Offset::from_seconds(minutes * 60).expect("a zone");
         let time = TimeFormat {
             zone: Some(zone),
             now: PanelClock::fixed(ms),

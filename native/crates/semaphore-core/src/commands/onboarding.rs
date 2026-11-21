@@ -84,7 +84,7 @@ fn preview(invite: wire::PublicInviteDto) -> InvitePreview {
             .max_uses
             .filter(|max| *max > 0)
             .map(|max| u32::try_from(max).unwrap_or(u32::MAX)),
-        valid_until_ms: invite.valid_until.map(|at| at.timestamp_millis()),
+        valid_until_ms: invite.valid_until.map(|at| at.as_millisecond()),
     }
 }
 

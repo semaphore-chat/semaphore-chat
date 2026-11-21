@@ -139,7 +139,7 @@ impl State {
         &mut self,
         parent_message_id: &str,
         reply_count: i64,
-        last_reply_at: Option<chrono::DateTime<chrono::Utc>>,
+        last_reply_at: Option<jiff::Timestamp>,
     ) {
         let key = meta_key(parent_message_id);
         self.note_direct_update(&key);
@@ -158,7 +158,7 @@ impl State {
         &mut self,
         parent_message_id: &str,
         reply_count: i64,
-        last_reply_at: Option<chrono::DateTime<chrono::Utc>>,
+        last_reply_at: Option<jiff::Timestamp>,
     ) {
         let differs = self.find_message(parent_message_id).is_some_and(|dto| {
             dto.reply_count != reply_count || dto.last_reply_at != last_reply_at
@@ -269,7 +269,7 @@ impl Core {
                 reply_count: meta.map_or(0, |meta| meta.reply_count.max(0) as u32),
                 last_reply_at_ms: meta
                     .and_then(|meta| meta.last_reply_at)
-                    .map(|at| at.timestamp_millis()),
+                    .map(|at| at.as_millisecond()),
             }
         })
     }
@@ -593,7 +593,7 @@ impl Core {
                     .into_iter()
                     .map(|peer| PeerReadView {
                         user: state.user_or_stub(&peer.user_id),
-                        last_read_at_ms: peer.last_read_at.timestamp_millis(),
+                        last_read_at_ms: peer.last_read_at.as_millisecond(),
                     })
                     .collect(),
             }
@@ -618,7 +618,7 @@ impl Core {
                     let load = state.load_of(&key);
                     let Some(sent_at_ms) = state
                         .find_message(&message_id)
-                        .map(|dto| dto.sent_at.timestamp_millis())
+                        .map(|dto| dto.sent_at.as_millisecond())
                     else {
                         // Not loaded: there is no sent time to compare a watermark with.
                         return SeenByView {
@@ -629,8 +629,8 @@ impl Core {
                     let peers = state.cache.dm_peer_reads(&key).cloned().unwrap_or_default();
                     let mut readers: Vec<(String, i64)> = peers
                         .into_iter()
-                        .filter(|peer| peer.last_read_at.timestamp_millis() >= sent_at_ms)
-                        .map(|peer| (peer.user_id, peer.last_read_at.timestamp_millis()))
+                        .filter(|peer| peer.last_read_at.as_millisecond() >= sent_at_ms)
+                        .map(|peer| (peer.user_id, peer.last_read_at.as_millisecond()))
                         .collect();
                     // Earliest reader first, so the list grows with who saw it first.
                     readers.sort_by_key(|(_, read_at)| *read_at);

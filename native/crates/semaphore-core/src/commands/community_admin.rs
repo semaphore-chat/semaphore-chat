@@ -1419,7 +1419,7 @@ impl Core {
                                     .as_ref()
                                     .map(user_view)
                                     .unwrap_or_else(|| state.user_or_stub(&member.user_id)),
-                                joined_at_ms: member.joined_at.timestamp_millis(),
+                                joined_at_ms: member.joined_at.as_millisecond(),
                                 added_by: member.added_by.clone(),
                             })
                             .collect()

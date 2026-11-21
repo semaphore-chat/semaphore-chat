@@ -204,7 +204,7 @@ impl Core {
                 mode,
                 timed_out_until_ms: capability
                     .and_then(|capability| capability.timed_out_until)
-                    .map(|at| at.timestamp_millis()),
+                    .map(|at| at.as_millisecond()),
                 connected_elsewhere,
                 muted: state.voice.muted,
                 deafened: state.voice.deafened,

@@ -15,7 +15,7 @@
 
 use crate::{Inner, lock};
 use axum::response::{IntoResponse, Response};
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use semaphore_wire::enums::{ChannelPreset, InstanceRole, RbacAction};
 use semaphore_wire::types::{ChannelOverwriteDto, RoleDto};
 use serde_json::{Value, json};
@@ -41,16 +41,16 @@ pub(crate) fn respond(inner: &Inner, (status, code, message): Refusal) -> Respon
 pub(crate) struct Ban {
     pub moderator_id: String,
     pub reason: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub expires_at: Option<DateTime<Utc>>,
+    pub created_at: Timestamp,
+    pub expires_at: Option<Timestamp>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct Timeout {
     pub moderator_id: String,
     pub reason: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub expires_at: DateTime<Utc>,
+    pub created_at: Timestamp,
+    pub expires_at: Timestamp,
 }
 
 #[derive(Debug, Clone)]
@@ -63,7 +63,7 @@ pub(crate) struct LogEntry {
     pub target_user_id: Option<String>,
     pub reason: Option<String>,
     pub metadata: Value,
-    pub created_at: DateTime<Utc>,
+    pub created_at: Timestamp,
 }
 
 /// One community's roles, holders, bans and timeouts.
@@ -137,13 +137,13 @@ impl CommunityRbac {
             .max_by_key(|role| role.position)
     }
 
-    pub fn active_ban(&self, user_id: &str, now: DateTime<Utc>) -> Option<&Ban> {
+    pub fn active_ban(&self, user_id: &str, now: Timestamp) -> Option<&Ban> {
         self.bans
             .get(user_id)
             .filter(|ban| ban.expires_at.is_none_or(|at| at > now))
     }
 
-    pub fn active_timeout(&self, user_id: &str, now: DateTime<Utc>) -> Option<&Timeout> {
+    pub fn active_timeout(&self, user_id: &str, now: Timestamp) -> Option<&Timeout> {
         self.timeouts
             .get(user_id)
             .filter(|timeout| timeout.expires_at > now)
@@ -367,7 +367,7 @@ pub(crate) fn timed_out_until(
     inner: &Inner,
     community_id: &str,
     user_id: &str,
-) -> Option<DateTime<Utc>> {
+) -> Option<Timestamp> {
     let now = inner.now();
     community(inner, community_id, |state, _| {
         state.active_timeout(user_id, now).map(|t| t.expires_at)

@@ -12,7 +12,7 @@ use crate::scenario::{Community, entity_uuid};
 use crate::{Inner, lock};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use chrono::{DateTime, Duration, Utc};
+use jiff::{SignedDuration, Timestamp};
 use semaphore_wire::enums::{ChannelPreset, ChannelType, InstanceRole};
 use semaphore_wire::types::{
     AppearanceSettingsResponseDto, ChannelDto, MembershipResponseDto, UserEntity,
@@ -22,9 +22,9 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 
 /// How long an approved desktop sign-in grant can be redeemed (`APPROVED_GRANT_TTL_SECONDS`).
-pub(crate) const GRANT_TTL: Duration = Duration::seconds(60);
+pub(crate) const GRANT_TTL: SignedDuration = SignedDuration::from_secs(60);
 /// How long a session lasts, from its start.
-const SESSION_LIFETIME: Duration = Duration::days(30);
+const SESSION_LIFETIME: SignedDuration = SignedDuration::from_hours(30 * 24);
 /// The tokens the first sign-in gets: what the fake has always handed out.
 const LEGACY_ACCESS: &str = "fake-access-token";
 const LEGACY_REFRESH: &str = "fake-refresh-token";
@@ -39,7 +39,7 @@ pub struct InviteSeed {
     pub code: String,
     pub uses: i64,
     pub max_uses: Option<i64>,
-    pub valid_until: Option<DateTime<Utc>>,
+    pub valid_until: Option<Timestamp>,
     pub disabled: bool,
     /// The username shown as who created it.
     pub created_by: Option<String>,
@@ -99,9 +99,9 @@ pub(crate) struct Session {
     pub refresh: String,
     pub device_name: String,
     pub ip: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub last_used_at: DateTime<Utc>,
-    pub expires_at: DateTime<Utc>,
+    pub created_at: Timestamp,
+    pub last_used_at: Timestamp,
+    pub expires_at: Timestamp,
     pub revoked: bool,
 }
 
@@ -110,7 +110,7 @@ pub(crate) struct Invite {
     pub code: String,
     pub uses: i64,
     pub max_uses: Option<i64>,
-    pub valid_until: Option<DateTime<Utc>>,
+    pub valid_until: Option<Timestamp>,
     pub disabled: bool,
     pub created_by: Option<String>,
     /// The communities an existing account joins when it accepts this invite.
@@ -119,7 +119,7 @@ pub(crate) struct Invite {
 
 impl Invite {
     /// `validateInviteCode` / `getPublicInvite`: not disabled, not expired, not used up.
-    pub fn usable(&self, now: DateTime<Utc>) -> bool {
+    pub fn usable(&self, now: Timestamp) -> bool {
         !self.disabled
             && self.valid_until.is_none_or(|until| now <= until)
             && self.max_uses.is_none_or(|max| self.uses < max)
@@ -131,14 +131,14 @@ impl Invite {
 pub(crate) struct PasswordReset {
     pub token: String,
     pub user_id: String,
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: Timestamp,
     pub used: bool,
 }
 
 pub(crate) struct Grant {
     pub challenge: String,
     pub user_id: String,
-    pub approved_at: DateTime<Utc>,
+    pub approved_at: Timestamp,
     pub approver_revoked: bool,
 }
 
@@ -225,7 +225,7 @@ impl Accounts {
         user_id: &str,
         device_name: Option<&str>,
         ip: Option<&str>,
-        now: DateTime<Utc>,
+        now: Timestamp,
         required: Option<String>,
         claims_legacy: bool,
     ) -> usize {
@@ -255,7 +255,7 @@ impl Accounts {
         refresh: String,
         device_name: Option<&str>,
         ip: Option<&str>,
-        now: DateTime<Utc>,
+        now: Timestamp,
     ) -> usize {
         self.sessions.push(Session {
             id,
@@ -277,7 +277,7 @@ impl Accounts {
     }
 
     /// The session this bearer is, adopting an unknown token as a session of `me`.
-    pub fn resolve_or_adopt(&mut self, token: &str, me: &str, now: DateTime<Utc>) -> usize {
+    pub fn resolve_or_adopt(&mut self, token: &str, me: &str, now: Timestamp) -> usize {
         if let Some(index) = self.session_of_token(token) {
             return index;
         }
@@ -291,7 +291,7 @@ impl Accounts {
         self.sessions[index].revoked = true;
     }
 
-    pub fn live_sessions_of(&self, user_id: &str, now: DateTime<Utc>) -> Vec<usize> {
+    pub fn live_sessions_of(&self, user_id: &str, now: Timestamp) -> Vec<usize> {
         let mut live: Vec<usize> = (0..self.sessions.len())
             .filter(|&index| {
                 let session = &self.sessions[index];
@@ -307,7 +307,7 @@ impl Accounts {
     pub fn appearance_for(
         &mut self,
         user_id: &str,
-        now: DateTime<Utc>,
+        now: Timestamp,
     ) -> &mut AppearanceSettingsResponseDto {
         if !self.appearance.contains_key(user_id) {
             let id = self.new_id("appearance");
@@ -341,7 +341,7 @@ impl Accounts {
         &mut self,
         challenge: &str,
         user_id: &str,
-        now: DateTime<Utc>,
+        now: Timestamp,
         approver_revoked: bool,
     ) -> String {
         self.next += 1;

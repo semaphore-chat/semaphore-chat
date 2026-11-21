@@ -651,7 +651,7 @@ impl State {
                         .as_ref()
                         .map(|message| spans_text(&message.spans))
                         .unwrap_or_default(),
-                    created_at_ms: row.created_at.timestamp_millis(),
+                    created_at_ms: row.created_at.as_millisecond(),
                     read: self.notification_read_shown(row),
                 })
             })

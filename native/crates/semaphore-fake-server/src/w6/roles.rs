@@ -5,7 +5,7 @@
 
 use crate::{Inner, lock};
 use axum::response::Response;
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use semaphore_wire::enums::RbacAction;
 use semaphore_wire::types::RoleDto;
 use serde_json::{Value, json};
@@ -246,7 +246,7 @@ pub(crate) fn create(
     inner: &Inner,
     name: String,
     actions: Vec<RbacAction>,
-    at: DateTime<Utc>,
+    at: Timestamp,
 ) -> RoleDto {
     with_roles(inner, |state| {
         state.next += 1;

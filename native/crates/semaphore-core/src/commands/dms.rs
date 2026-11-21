@@ -70,7 +70,7 @@ impl State {
                 DmPreview {
                     author_id: message.author_id.clone().unwrap_or_default(),
                     text: spans_to_text(&spans, None),
-                    sent_at_ms: message.sent_at.timestamp_millis(),
+                    sent_at_ms: message.sent_at.as_millisecond(),
                 }
             }),
             unread,

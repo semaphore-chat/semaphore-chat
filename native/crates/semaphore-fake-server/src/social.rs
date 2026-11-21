@@ -6,7 +6,7 @@
 
 use crate::scenario::{Scenario, entity_uuid};
 use crate::{Data, Inner};
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use semaphore_wire::enums::{NotificationType, SpanType};
 use semaphore_wire::types::{
     ChannelNotificationOverrideDto, DmGroupLastMessageDto, DmGroupMemberDto, DmGroupMemberUserDto,
@@ -64,7 +64,7 @@ impl Social {
     pub fn settings_for(
         &mut self,
         user_id: &str,
-        now: DateTime<Utc>,
+        now: Timestamp,
     ) -> &mut UserNotificationSettingsDto {
         if !self.settings.contains_key(user_id) {
             let id = self.new_id("settings");
@@ -77,7 +77,7 @@ impl Social {
     }
 
     /// `override ?? defaultChannelLevel`, as `shouldNotify` resolves it.
-    pub fn channel_level(&mut self, user_id: &str, channel_id: &str, now: DateTime<Utc>) -> String {
+    pub fn channel_level(&mut self, user_id: &str, channel_id: &str, now: Timestamp) -> String {
         let default = self
             .settings_for(user_id, now)
             .default_channel_level
@@ -93,7 +93,7 @@ impl Social {
 pub(crate) fn default_settings(
     id: String,
     user_id: &str,
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> UserNotificationSettingsDto {
     UserNotificationSettingsDto {
         created_at: now,
@@ -140,7 +140,7 @@ fn author_of(user: &UserEntity) -> NotificationAuthorDto {
 pub(crate) fn new_member(
     social: &mut Social,
     user: &UserEntity,
-    now: DateTime<Utc>,
+    now: Timestamp,
 ) -> DmGroupMemberDto {
     DmGroupMemberDto {
         id: social.new_id("dmm"),

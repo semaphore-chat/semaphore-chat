@@ -8285,7 +8285,6 @@ name = "semaphore-core"
 version = "0.0.0"
 dependencies = [
  "async-trait",
- "chrono",
  "getrandom 0.4.3",
  "jiff",
  "log",
@@ -8310,10 +8309,10 @@ version = "0.0.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
- "chrono",
  "futures-util",
  "hmac",
  "image",
+ "jiff",
  "jsonschema",
  "reqwest 0.13.5",
  "rustls",
@@ -8445,9 +8444,9 @@ dependencies = [
 name = "semaphore-ui"
 version = "0.0.0"
 dependencies = [
- "chrono",
  "gpui-kit",
  "image",
+ "jiff",
  "libc",
  "proptest",
  "semaphore-core",
@@ -8460,7 +8459,7 @@ dependencies = [
 name = "semaphore-wire"
 version = "0.0.0"
 dependencies = [
- "chrono",
+ "jiff",
  "regress",
  "serde",
  "serde_json",

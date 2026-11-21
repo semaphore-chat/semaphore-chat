@@ -761,7 +761,7 @@ impl Core {
                                 id: webhook.id.clone(),
                                 name: webhook.name.clone(),
                                 avatar_url: webhook.avatar_url.clone(),
-                                created_at_ms: webhook.created_at.timestamp_millis(),
+                                created_at_ms: webhook.created_at.as_millisecond(),
                             })
                             .collect()
                     })
@@ -907,9 +907,9 @@ impl Core {
                                 max_uses: invite
                                     .max_uses
                                     .map(|max| max.clamp(0, i64::from(u32::MAX)) as u32),
-                                valid_until_ms: invite.valid_until.map(|at| at.timestamp_millis()),
+                                valid_until_ms: invite.valid_until.map(|at| at.as_millisecond()),
                                 disabled: invite.disabled,
-                                created_at_ms: invite.created_at.timestamp_millis(),
+                                created_at_ms: invite.created_at.as_millisecond(),
                             })
                             .collect()
                     })
@@ -933,9 +933,9 @@ impl Core {
         };
         let valid_until = match draft.valid_until_ms {
             None => None,
-            Some(ms) => match chrono::DateTime::from_timestamp_millis(ms) {
-                Some(at) => Some(at),
-                None => return self.w5a_refuse(&view, invalid("expiry")),
+            Some(ms) => match jiff::Timestamp::from_millisecond(ms) {
+                Ok(at) => Some(at),
+                Err(_) => return self.w5a_refuse(&view, invalid("expiry")),
             },
         };
         let body = wire::CreateInviteDto {

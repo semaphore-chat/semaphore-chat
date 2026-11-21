@@ -267,7 +267,7 @@ impl PanelClock {
 
     pub fn now_ms(&self) -> i64 {
         self.fixed_now_ms
-            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis())
+            .unwrap_or_else(|| jiff::Timestamp::now().as_millisecond())
     }
 
     /// Whether this is the real clock. Anything that must keep moving with real time (a timeout
@@ -330,7 +330,7 @@ mod tests {
     fn the_default_clock_is_the_real_one() {
         let clock = PanelClock::default();
         assert!(clock.is_real(), "unpinned means the real clock");
-        let real = chrono::Utc::now().timestamp_millis();
+        let real = jiff::Timestamp::now().as_millisecond();
         assert!(
             (clock.now_ms() - real).abs() < 5_000,
             "{} is not now ({real})",
