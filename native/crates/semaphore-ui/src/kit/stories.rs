@@ -450,7 +450,7 @@ impl Render for Gallery {
                 let view = view.clone();
                 let close = view.clone();
                 gallery.child(
-                    Dialog::new("Leave this community?")
+                    Dialog::new("leave-this-community-dialog", "Leave this community?")
                         .body(text(
                             Variant::Body1,
                             "You'll lose access to its channels until someone invites you back.",

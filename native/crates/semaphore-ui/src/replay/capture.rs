@@ -494,7 +494,7 @@ impl Render for CaptureReplayDialog {
             (true, _) => "Capturing...",
             _ => "Capture",
         };
-        Dialog::new("Capture Replay")
+        Dialog::new("capture-replay-dialog", "Capture Replay")
             .width(width)
             .on_close({
                 let close = close.clone();

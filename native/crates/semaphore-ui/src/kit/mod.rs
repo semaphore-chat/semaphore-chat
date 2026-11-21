@@ -18,17 +18,24 @@ mod keyboard_tests;
 mod lists;
 mod live;
 mod look;
+mod lounge;
+mod modal;
 mod overlays;
+mod sheet;
 #[cfg(feature = "stories")]
 mod stories;
 #[cfg(feature = "stories")]
 mod stories_controls;
 #[cfg(feature = "stories")]
 mod stories_lists_overlays;
+#[cfg(feature = "stories")]
+mod stories_lounge;
 mod surface;
 mod tabs;
 #[cfg(test)]
 mod tests_lists_overlays;
+#[cfg(test)]
+mod tests_lounge;
 mod typography;
 
 pub use assets::{UiAssets, icon_path, lounge_icon_path};
@@ -48,12 +55,17 @@ pub(crate) use fields::{floating_label, notched};
 pub use lists::{Align, ListRow, RowSize, Table, TableColumn, TableRow};
 pub use live::{HIDDEN_SIZE, LiveElement, Said, Speaker, live_node};
 pub use look::{ButtonVariant, ControlSize};
+pub use lounge::{
+    Card, DOCK_FADE, Dock, DockDivider, DockEntry, DockItem, Island, Landmark, Padding, card_name,
+    dock_fades, dock_item_name, reveal_scroll,
+};
 pub use overlays::{
     ANCHOR_GAP, Dialog, DialogCloseReason, DialogSize, Menu, MenuCloseReason, MenuEntry, MenuItem,
     MenuTone, Paper, Placement, Popover, PopoverExt, PopoverPadding, PopoverPanel, SecondaryTone,
     Tip, with_tip,
 };
-pub use surface::Surface;
+pub use sheet::{Sheet, SheetCloseReason, SheetSize, sheet_is_bottom};
+pub use surface::{Surface, SurfaceScope};
 pub use tabs::{TabItem, Tabs, TabsVariant};
 pub use typography::{Variant, link, text};
 
@@ -73,5 +85,6 @@ pub fn stories() -> Vec<crate::stories::Story> {
     all.extend(display_stories::stories());
     all.extend(stories_lists_overlays::stories());
     all.extend(stories_controls::stories());
+    all.extend(stories_lounge::stories());
     all
 }

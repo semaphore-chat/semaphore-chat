@@ -88,7 +88,7 @@ impl Render for RemovedNotice {
         };
         let ok = cx.listener(|notice, _, _, cx| notice.acknowledge(cx));
         let close = cx.entity().downgrade();
-        let dialog = Dialog::new(removed_title(&shown.name, &shown.cause))
+        let dialog = Dialog::new("removed-dialog", removed_title(&shown.name, &shown.cause))
             .width(440.)
             .body(
                 div()

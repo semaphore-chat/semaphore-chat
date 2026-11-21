@@ -1494,7 +1494,7 @@ impl AppRoot {
         let profile = close.clone();
         let settings = close.clone();
         let about = close.clone();
-        let dialog = Dialog::new(format!("Signed in as {name}"))
+        let dialog = Dialog::new("signed-in-as-dialog", format!("Signed in as {name}"))
             .body(text(
                 Variant::Body2,
                 "Signing out forgets this session on this computer.",
@@ -1686,7 +1686,7 @@ impl AppRoot {
             root.more_open = false;
             cx.notify();
         };
-        Dialog::new("Call options")
+        Dialog::new("call-options-dialog", "Call options")
             .width(320.)
             .body(
                 Menu::new(

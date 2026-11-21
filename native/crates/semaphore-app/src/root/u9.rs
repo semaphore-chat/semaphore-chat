@@ -1013,7 +1013,7 @@ fn add_people_dialog(add: &AddPeople, cx: &mut Context<AppRoot>) -> AnyElement {
         );
     let cancel = cx.entity().downgrade();
     let close = cx.entity().downgrade();
-    Dialog::new("Add people")
+    Dialog::new("add-people-dialog", "Add people")
         .body(body)
         .action(
             Button::new("add-people-cancel", "Cancel")

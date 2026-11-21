@@ -143,7 +143,7 @@ pub struct Tabs {
     selected: usize,
     variant: TabsVariant,
     full_width: bool,
-    on: Surface,
+    on: Option<Surface>,
     on_select: Option<ValueAction<usize>>,
 }
 
@@ -160,7 +160,7 @@ impl Tabs {
             selected,
             variant: TabsVariant::default(),
             full_width: false,
-            on: Surface::default(),
+            on: None,
             on_select: None,
         }
     }
@@ -182,7 +182,7 @@ impl Tabs {
     }
 
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 
@@ -195,8 +195,12 @@ impl Tabs {
 impl RenderOnce for Tabs {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = cx.sem().roles;
-        let (count, selected_index, variant, on) =
-            (self.items.len(), self.selected, self.variant, self.on);
+        let (count, selected_index, variant, on) = (
+            self.items.len(),
+            self.selected,
+            self.variant,
+            Surface::or_current(self.on, cx),
+        );
         let segmented = variant == TabsVariant::Segmented;
         let full_width = self.full_width;
         let on_select = self.on_select;

@@ -96,7 +96,7 @@ pub struct Button {
     disabled: bool,
     loading: bool,
     unavailable: bool,
-    on: Surface,
+    on: Option<Surface>,
     on_click: Option<ClickHandler>,
 }
 
@@ -113,7 +113,7 @@ impl Button {
             disabled: false,
             loading: false,
             unavailable: false,
-            on: Surface::default(),
+            on: None,
             on_click: None,
         }
     }
@@ -195,7 +195,7 @@ impl Button {
 
     /// The layer the button sits on, for a kit composite that knows it (a card is `Fill`).
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 
@@ -250,7 +250,7 @@ impl RenderOnce for Button {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = cx.sem().roles;
         let state = Availability::of(self.disabled, self.loading, self.unavailable);
-        let look = button_look(&p, self.variant, self.on);
+        let look = button_look(&p, self.variant, Surface::or_current(self.on, cx));
         let label_color = c(look.label);
         let mut button = pill(self.id, self.focus, look, &p, state, window, cx)
             .accessibility_label(self.label.clone())
@@ -402,7 +402,8 @@ pub struct IconButton {
     disabled: bool,
     loading: bool,
     unavailable: bool,
-    on: Surface,
+    on: Option<Surface>,
+    tab_stop: Option<bool>,
     on_click: Option<ClickHandler>,
 }
 
@@ -420,7 +421,8 @@ impl IconButton {
             disabled: false,
             loading: false,
             unavailable: false,
-            on: Surface::default(),
+            on: None,
+            tab_stop: None,
             on_click: None,
         }
     }
@@ -459,6 +461,17 @@ impl IconButton {
         self
     }
 
+    /// Whether Tab reaches it: off for all but one control of a keyboard list (the Dock).
+    pub fn tab_stop(mut self, tab_stop: bool) -> Self {
+        self.tab_stop = Some(tab_stop);
+        self
+    }
+
+    /// Disabled: a keyboard list (the Dock) skips it.
+    pub fn is_disabled(&self) -> bool {
+        self.disabled
+    }
+
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
@@ -477,7 +490,7 @@ impl IconButton {
     }
 
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 
@@ -494,7 +507,12 @@ impl RenderOnce for IconButton {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = cx.sem().roles;
         let state = Availability::of(self.disabled, self.loading, self.unavailable);
-        let look = icon_button_look(&p, self.variant, self.selected, self.on);
+        let look = icon_button_look(
+            &p,
+            self.variant,
+            self.selected,
+            Surface::or_current(self.on, cx),
+        );
         let ink = self
             .color
             .filter(|_| !self.selected)
@@ -503,6 +521,7 @@ impl RenderOnce for IconButton {
         let mut button = pill(self.id, self.focus, look, &p, state, window, cx)
             .selected(self.selected)
             .accessibility_label(self.label)
+            .when_some(self.tab_stop, |button, stop| button.tab_stop(stop))
             .size(px(self.size.height()));
         if let Some(handler) = self.on_click.filter(|_| state.acts()) {
             button = button.on_click(move |event, window, cx| handler(event, window, cx));
@@ -523,19 +542,19 @@ impl RenderOnce for IconButton {
 #[derive(IntoElement)]
 pub struct KeyCap {
     key: SharedString,
-    on: Surface,
+    on: Option<Surface>,
 }
 
 impl KeyCap {
     pub fn new(key: impl Into<SharedString>) -> Self {
         Self {
             key: key.into(),
-            on: Surface::default(),
+            on: None,
         }
     }
 
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 }
@@ -551,7 +570,7 @@ impl RenderOnce for KeyCap {
             .border(px(BORDER_HAIRLINE))
             .border_color(c(p.hairline))
             .rounded(px(RADIUS_SM))
-            .bg(c(stand_out_fill(&p, self.on)))
+            .bg(c(stand_out_fill(&p, Surface::or_current(self.on, cx))))
             .text_color(c(p.text_secondary))
     }
 }
@@ -856,7 +875,7 @@ pub struct Checkbox {
     description: Option<SharedString>,
     label_hidden: bool,
     disabled: bool,
-    on: Surface,
+    on: Option<Surface>,
     on_change: Option<StateHandler>,
     base: Div,
 }
@@ -871,7 +890,7 @@ impl Checkbox {
             description: None,
             label_hidden: false,
             disabled: false,
-            on: Surface::default(),
+            on: None,
             on_change: None,
             base: div(),
         }
@@ -907,7 +926,7 @@ impl Checkbox {
     }
 
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 
@@ -938,7 +957,7 @@ impl Styled for Checkbox {
 impl RenderOnce for Checkbox {
     fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = cx.sem().roles;
-        let paint = checkbox_paint(&p, self.state.is_on(), self.on);
+        let paint = checkbox_paint(&p, self.state.is_on(), Surface::or_current(self.on, cx));
         let hover = c(paint.look.hover(&p));
         let focus = self
             .focus
@@ -995,7 +1014,7 @@ pub struct Radio {
     description: Option<SharedString>,
     checked: bool,
     disabled: bool,
-    on: Surface,
+    on: Option<Surface>,
     focus: Option<FocusHandle>,
     tab_stop: bool,
     position: Option<(usize, usize)>,
@@ -1010,7 +1029,7 @@ impl Radio {
             description: None,
             checked,
             disabled: false,
-            on: Surface::default(),
+            on: None,
             focus: None,
             tab_stop: true,
             position: None,
@@ -1037,7 +1056,7 @@ impl Radio {
 impl RenderOnce for Radio {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = cx.sem().roles;
-        let paint = radio_paint(&p, self.checked, self.on);
+        let paint = radio_paint(&p, self.checked, Surface::or_current(self.on, cx));
         let hover = c(paint.look.hover(&p));
         let focus = self
             .focus
@@ -1162,7 +1181,7 @@ pub struct RadioGroup {
     selected: Option<usize>,
     orientation: Orientation,
     disabled: bool,
-    on: Surface,
+    on: Option<Surface>,
     focus: Option<FocusHandle>,
     on_change: Option<ValueAction<usize>>,
 }
@@ -1182,7 +1201,7 @@ impl RadioGroup {
             selected,
             orientation: Orientation::default(),
             disabled: false,
-            on: Surface::default(),
+            on: None,
             focus: None,
             on_change: None,
         }

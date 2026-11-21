@@ -167,101 +167,106 @@ impl UsersPage {
                 let busy = self.busy(AdminActionKind::SetUserPassword);
                 let sem = cx.sem().clone();
                 let save = press(cx, Press::Reset);
-                Dialog::new(format!("Reset Password for {name}"))
-                    .width(480.)
-                    .body(
-                        div()
-                            .pt(spacing(1.))
-                            .flex()
-                            .flex_col()
-                            .gap(spacing(2.))
-                            .children(
-                                (!busy)
-                                    .then(|| self.refusal(AdminActionKind::SetUserPassword))
-                                    .flatten()
-                                    .map(|error| {
-                                        Alert::new(
-                                            "admin-users-dialogs-alert-1",
-                                            Severity::Danger,
-                                            error,
-                                        )
-                                    }),
+                Dialog::new(
+                    "reset-password-for-dialog",
+                    format!("Reset Password for {name}"),
+                )
+                .width(480.)
+                .body(
+                    div()
+                        .pt(spacing(1.))
+                        .flex()
+                        .flex_col()
+                        .gap(spacing(2.))
+                        .children(
+                            (!busy)
+                                .then(|| self.refusal(AdminActionKind::SetUserPassword))
+                                .flatten()
+                                .map(|error| {
+                                    Alert::new(
+                                        "admin-users-dialogs-alert-1",
+                                        Severity::Danger,
+                                        error,
+                                    )
+                                }),
+                        )
+                        .child(
+                            text(Variant::Body2, "Their sessions end.")
+                                .text_color(sem.text_secondary),
+                        )
+                        .child(
+                            TextField::new(
+                                "admin-reset-password-field",
+                                &self.password,
+                                "New password",
                             )
-                            .child(
-                                text(Variant::Body2, "Their sessions end.")
-                                    .text_color(sem.text_secondary),
-                            )
-                            .child(
-                                TextField::new(
-                                    "admin-reset-password-field",
-                                    &self.password,
-                                    "New password",
-                                )
-                                .disabled(busy)
-                                .error(invalid.is_some()),
-                            )
-                            .children(invalid.map(|message| {
-                                inline_error("admin-reset-password-error", message, cx)
-                            })),
-                    )
-                    .action(
-                        Button::new("admin-reset-password-cancel", "Cancel")
-                            .ghost()
                             .disabled(busy)
-                            .on_click(as_click(cancel.clone())),
-                    )
-                    .action(
-                        Button::new("admin-reset-password-save", "Reset Password")
-                            .primary()
-                            .loading(busy)
-                            .disabled(invalid.is_some() || typed.is_empty())
-                            .on_click(as_click(save.clone())),
-                    )
-                    .on_close(move |window, cx| cancel(window, cx))
-                    .into_any_element()
+                            .error(invalid.is_some()),
+                        )
+                        .children(invalid.map(|message| {
+                            inline_error("admin-reset-password-error", message, cx)
+                        })),
+                )
+                .action(
+                    Button::new("admin-reset-password-cancel", "Cancel")
+                        .ghost()
+                        .disabled(busy)
+                        .on_click(as_click(cancel.clone())),
+                )
+                .action(
+                    Button::new("admin-reset-password-save", "Reset Password")
+                        .primary()
+                        .loading(busy)
+                        .disabled(invalid.is_some() || typed.is_empty())
+                        .on_click(as_click(save.clone())),
+                )
+                .on_close(move |window, cx| cancel(window, cx))
+                .into_any_element()
             }
             Panel::Quota => {
                 let typed = self.quota.read(cx).value().to_string();
                 let invalid = quota_error(&typed);
                 let sem = cx.sem().clone();
                 let save = press(cx, Press::Quota);
-                Dialog::new(format!("Storage Quota for {name}"))
-                    .width(480.)
-                    .body(
-                        div()
-                            .pt(spacing(1.))
-                            .flex()
-                            .flex_col()
-                            .gap(spacing(2.))
-                            .child(
-                                text(
-                                    Variant::Body2,
-                                    "The most this user's files may take, in GB. 0 sets no quota.",
-                                )
-                                .text_color(sem.text_secondary),
+                Dialog::new(
+                    "storage-quota-for-dialog",
+                    format!("Storage Quota for {name}"),
+                )
+                .width(480.)
+                .body(
+                    div()
+                        .pt(spacing(1.))
+                        .flex()
+                        .flex_col()
+                        .gap(spacing(2.))
+                        .child(
+                            text(
+                                Variant::Body2,
+                                "The most this user's files may take, in GB. 0 sets no quota.",
                             )
-                            .child(
-                                TextField::new("admin-quota-field", &self.quota, "Quota (GB)")
-                                    .error(invalid.is_some()),
-                            )
-                            .children(
-                                invalid
-                                    .map(|message| inline_error("admin-quota-error", message, cx)),
-                            ),
-                    )
-                    .action(
-                        Button::new("admin-quota-cancel", "Cancel")
-                            .ghost()
-                            .on_click(as_click(cancel.clone())),
-                    )
-                    .action(
-                        Button::new("admin-quota-save", "Save")
-                            .primary()
-                            .disabled(invalid.is_some() || typed.trim().is_empty())
-                            .on_click(as_click(save.clone())),
-                    )
-                    .on_close(move |window, cx| cancel(window, cx))
-                    .into_any_element()
+                            .text_color(sem.text_secondary),
+                        )
+                        .child(
+                            TextField::new("admin-quota-field", &self.quota, "Quota (GB)")
+                                .error(invalid.is_some()),
+                        )
+                        .children(
+                            invalid.map(|message| inline_error("admin-quota-error", message, cx)),
+                        ),
+                )
+                .action(
+                    Button::new("admin-quota-cancel", "Cancel")
+                        .ghost()
+                        .on_click(as_click(cancel.clone())),
+                )
+                .action(
+                    Button::new("admin-quota-save", "Save")
+                        .primary()
+                        .disabled(invalid.is_some() || typed.trim().is_empty())
+                        .on_click(as_click(save.clone())),
+                )
+                .on_close(move |window, cx| cancel(window, cx))
+                .into_any_element()
             }
             Panel::Roles => self.roles_dialog(&row, cancel, cx),
         })
@@ -294,7 +299,7 @@ impl UsersPage {
             action = action.danger();
         }
         let refusal = (!busy).then(|| self.refusal(kind)).flatten();
-        Dialog::new(title)
+        Dialog::new(SharedString::from(format!("{id}-dialog")), title)
             .width(480.)
             .body(
                 div()
@@ -391,15 +396,18 @@ impl UsersPage {
                 }
             },
         };
-        let dialog = Dialog::new(format!("Manage Instance Roles for {name}"))
-            .width(520.)
-            .body(div().pt(spacing(1.)).child(body))
-            .action(
-                Button::new("admin-user-roles-close", "Close")
-                    .ghost()
-                    .on_click(as_click(cancel.clone())),
-            )
-            .on_close(move |window, cx| cancel(window, cx));
+        let dialog = Dialog::new(
+            "manage-instance-roles-for-dialog",
+            format!("Manage Instance Roles for {name}"),
+        )
+        .width(520.)
+        .body(div().pt(spacing(1.)).child(body))
+        .action(
+            Button::new("admin-user-roles-close", "Close")
+                .ghost()
+                .on_click(as_click(cancel.clone())),
+        )
+        .on_close(move |window, cx| cancel(window, cx));
         div()
             .id("admin-user-roles-dialog")
             .test_support()

@@ -686,7 +686,7 @@ impl MessageList {
         let (seq, reason) = self.remove.clone()?;
         let confirm_reason = reason.clone();
         Some(
-            Dialog::new("Remove message")
+            Dialog::new("remove-message-dialog", "Remove message")
                 .width(400.)
                 .on_close({
                     let view = cx.weak_entity();

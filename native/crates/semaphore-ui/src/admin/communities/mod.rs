@@ -531,7 +531,7 @@ impl CommunitiesPage {
         let close = cx.weak_entity();
         let confirm = cx.weak_entity();
         Some(
-            Dialog::new("Delete Community")
+            Dialog::new("delete-community-dialog", "Delete Community")
                 .width(480.)
                 .body(
                     div()

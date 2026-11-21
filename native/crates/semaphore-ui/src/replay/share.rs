@@ -230,7 +230,7 @@ impl Render for ShareClipDialog {
                 cx,
             )),
         };
-        Dialog::new("Share Clip")
+        Dialog::new("share-clip-dialog", "Share Clip")
             .width(width)
             .on_close({
                 let close = close.clone();

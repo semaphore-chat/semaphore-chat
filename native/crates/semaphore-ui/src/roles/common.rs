@@ -203,7 +203,7 @@ impl Confirm {
             )
             .primary()
         };
-        Dialog::new(self.title)
+        Dialog::new("confirm-dialog", self.title)
             .body(
                 div()
                     .flex()

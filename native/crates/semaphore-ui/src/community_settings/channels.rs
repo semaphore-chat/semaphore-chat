@@ -651,7 +651,7 @@ impl ChannelsTab {
         let close = cx.weak_entity();
         let cancel = cx.weak_entity();
         let submit = cx.weak_entity();
-        Dialog::new("Create New Channel")
+        Dialog::new("create-new-channel-dialog", "Create New Channel")
             .width(480.)
             .body(
                 div()
@@ -933,7 +933,11 @@ impl ChannelsTab {
         let cancel = cx.weak_entity();
         let submit = cx.weak_entity();
         let narrow = phone(window);
-        let mut dialog = Dialog::new(format!("Edit Channel: {}", channel.name)).width(600.);
+        let mut dialog = Dialog::new(
+            "edit-channel-dialog",
+            format!("Edit Channel: {}", channel.name),
+        )
+        .width(600.);
         let body = div()
             .id("channel-edit-body")
             .max_h(px(if narrow { 520. } else { 600. }))
@@ -1010,7 +1014,7 @@ impl ChannelsTab {
         let close = cx.weak_entity();
         let copy = cx.weak_entity();
         Some(
-            Dialog::new("Webhook Created")
+            Dialog::new("webhook-created-dialog", "Webhook Created")
                 .width(520.)
                 .body(
                     div()

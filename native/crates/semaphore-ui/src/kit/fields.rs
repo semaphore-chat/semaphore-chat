@@ -202,7 +202,7 @@ pub struct TextField {
     disabled: bool,
     shape: FieldShape,
     start_icon: Option<LoungeIcon>,
-    on: Surface,
+    on: Option<Surface>,
 }
 
 impl TextField {
@@ -223,7 +223,7 @@ impl TextField {
             disabled: false,
             shape: FieldShape::default(),
             start_icon: None,
-            on: Surface::default(),
+            on: None,
         }
     }
 
@@ -273,7 +273,7 @@ impl TextField {
     }
 
     pub fn on_surface(mut self, on: Surface) -> Self {
-        self.on = on;
+        self.on = Some(on);
         self
     }
 }
@@ -288,37 +288,43 @@ impl RenderOnce for TextField {
             )
         };
         let p = cx.sem().roles;
-        let field = field_box(&p, self.on, self.error, self.shape, focused)
-            .children(
-                self.start_icon
-                    .map(|icon| Icon::lounge(icon).size(ICON_MD).color(c(p.text_secondary))),
-            )
-            .child(
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_w_0()
-                    .child(
-                        Input::new(&self.state)
-                            .id(self.id.clone())
-                            .aria_label(self.label.clone())
-                            .appearance(false)
-                            .disabled(self.disabled)
-                            .px_0()
-                            .text_size(px(TEXT_BODY.size)),
-                    )
-                    .children(self.placeholder.filter(|_| empty).map(|shown| {
-                        div()
-                            .absolute()
-                            .left_0()
-                            .top_0()
-                            .bottom_0()
-                            .flex()
-                            .items_center()
-                            .text_color(c(p.text_dim))
-                            .child(styled_text(TEXT_BODY, shown))
-                    })),
-            );
+        let field = field_box(
+            &p,
+            Surface::or_current(self.on, cx),
+            self.error,
+            self.shape,
+            focused,
+        )
+        .children(
+            self.start_icon
+                .map(|icon| Icon::lounge(icon).size(ICON_MD).color(c(p.text_secondary))),
+        )
+        .child(
+            div()
+                .relative()
+                .flex_1()
+                .min_w_0()
+                .child(
+                    Input::new(&self.state)
+                        .id(self.id.clone())
+                        .aria_label(self.label.clone())
+                        .appearance(false)
+                        .disabled(self.disabled)
+                        .px_0()
+                        .text_size(px(TEXT_BODY.size)),
+                )
+                .children(self.placeholder.filter(|_| empty).map(|shown| {
+                    div()
+                        .absolute()
+                        .left_0()
+                        .top_0()
+                        .bottom_0()
+                        .flex()
+                        .items_center()
+                        .text_color(c(p.text_dim))
+                        .child(styled_text(TEXT_BODY, shown))
+                })),
+        );
         shell(
             ElementId::NamedChild(std::sync::Arc::new(self.id), "shell".into()),
             (!self.label_hidden).then(|| label_row(self.label, self.required, &p)),
@@ -341,7 +347,7 @@ pub struct SelectField {
     helper: Option<SharedString>,
     error: bool,
     disabled: bool,
-    on: Surface,
+    on: Option<Surface>,
 }
 
 impl SelectField {
@@ -359,7 +365,7 @@ impl SelectField {
             helper: None,
             error: false,
             disabled: false,
-            on: Surface::default(),
+            on: None,
         }
     }
 
@@ -398,22 +404,28 @@ impl RenderOnce for SelectField {
             .focus_handle(cx)
             .contains_focused(window, cx);
         let p = cx.sem().roles;
-        let field = field_box(&p, self.on, self.error, FieldShape::Field, focused)
-            .px_0()
-            .child(
-                div().size_full().flex().items_center().child(
-                    Select::new(&self.state)
-                        .id(self.id.clone())
-                        .accessibility_label(self.label.clone())
-                        .placeholder(self.placeholder.unwrap_or_default())
-                        .appearance(false)
-                        .disabled(self.disabled)
-                        .h(px(CONTROL_LG - 2. * BORDER_SELECTED))
-                        .pl(px(SPACE_LG - BORDER_SELECTED))
-                        .pr(px(SPACE_SM))
-                        .text_size(px(TEXT_BODY.size)),
-                ),
-            );
+        let field = field_box(
+            &p,
+            Surface::or_current(self.on, cx),
+            self.error,
+            FieldShape::Field,
+            focused,
+        )
+        .px_0()
+        .child(
+            div().size_full().flex().items_center().child(
+                Select::new(&self.state)
+                    .id(self.id.clone())
+                    .accessibility_label(self.label.clone())
+                    .placeholder(self.placeholder.unwrap_or_default())
+                    .appearance(false)
+                    .disabled(self.disabled)
+                    .h(px(CONTROL_LG - 2. * BORDER_SELECTED))
+                    .pl(px(SPACE_LG - BORDER_SELECTED))
+                    .pr(px(SPACE_SM))
+                    .text_size(px(TEXT_BODY.size)),
+            ),
+        );
         shell(
             ElementId::NamedChild(std::sync::Arc::new(self.id), "shell".into()),
             (!self.label_hidden).then(|| label_row(self.label, false, &p)),
