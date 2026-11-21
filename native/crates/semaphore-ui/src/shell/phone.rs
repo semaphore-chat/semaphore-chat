@@ -326,6 +326,7 @@ impl Shell {
             .child(
                 Badge::new(count_words(badge, CountMeaning::Unread))
                     .count(badge)
+                    .decorative(true)
                     .on(Icon::new(icon).color(color)),
             )
             .child(text(Variant::Xs, label).font_weight(FontWeight(500.)))

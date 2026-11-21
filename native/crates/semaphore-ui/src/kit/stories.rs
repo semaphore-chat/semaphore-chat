@@ -374,10 +374,10 @@ impl Render for Gallery {
                     .flex()
                     .flex_col()
                     .gap(px(8.))
-                    .child(Alert::new(Severity::Danger, "Login failed. Please try again."))
-                    .child(Alert::new(Severity::Warning, "Your session expires soon."))
-                    .child(Alert::new(Severity::Info, "You've been signed out."))
-                    .child(Alert::new(Severity::Success, "Saved.")),
+                    .child(Alert::new("kit-stories-alert-1", Severity::Danger, "Login failed. Please try again."))
+                    .child(Alert::new("kit-stories-alert-2", Severity::Warning, "Your session expires soon."))
+                    .child(Alert::new("kit-stories-alert-3", Severity::Info, "You've been signed out."))
+                    .child(Alert::new("kit-stories-alert-4", Severity::Success, "Saved.")),
             ))
             .child(section(
                 "Table",

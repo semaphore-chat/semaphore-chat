@@ -364,8 +364,8 @@ impl Render for PrivateChannelsTab {
             .cloned();
         let body: AnyElement = match (&self.state, channel) {
             (LoadState::Loading, _) => loading_rows("private-loading", "Loading channels", 3),
-            (LoadState::Failed { .. }, _) => Alert::new(Severity::Danger, "Failed to load channels. Please try again.").into_any_element(),
-            (LoadState::Ready, _) if self.channels.is_empty() => Alert::new(
+            (LoadState::Failed { .. }, _) => Alert::new("community-settings-private-alert-1", Severity::Danger, "Failed to load channels. Please try again.").into_any_element(),
+            (LoadState::Ready, _) if self.channels.is_empty() => Alert::new("community-settings-private-alert-2", 
                 Severity::Info,
                 "No private channels found. Create a private channel first to manage its membership.",
             )

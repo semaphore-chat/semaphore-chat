@@ -231,7 +231,7 @@ pub fn source_picker(model: &PickerModel, actions: PickerActions) -> impl IntoEl
             .flex()
             .items_center()
             .justify_center()
-            .child(Spinner::new("picker-loading"))
+            .child(Spinner::new("picker-loading").size(40.).label("Loading"))
             .into_any_element(),
         PickerState::Failed(why) => div()
             .h(px(120.))

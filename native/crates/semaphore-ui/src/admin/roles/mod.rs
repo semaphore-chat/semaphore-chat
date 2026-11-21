@@ -320,6 +320,7 @@ impl InstanceRolesPage {
                     3,
                 ),
                 LoadState::Failed { error } => Alert::new(
+                    "admin-roles-alert",
                     Severity::Danger,
                     format!("Failed to load this role's users: {}", error.message),
                 )

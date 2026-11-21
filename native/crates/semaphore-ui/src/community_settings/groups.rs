@@ -463,12 +463,18 @@ impl MentionGroupsTab {
                 .collect();
             if community.members.is_empty() {
                 Alert::new(
+                    "community-settings-groups-alert-1",
                     Severity::Info,
                     "No members in this community yet. Add members to the community first.",
                 )
                 .into_any_element()
             } else if shown.is_empty() {
-                Alert::new(Severity::Info, "No members match your search.").into_any_element()
+                Alert::new(
+                    "community-settings-groups-alert-2",
+                    Severity::Info,
+                    "No members match your search.",
+                )
+                .into_any_element()
             } else {
                 let all = shown.iter().all(|user| editor.selected.contains(&user.id));
                 let ids: Vec<String> = shown.iter().map(|user| user.id.clone()).collect();

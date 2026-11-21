@@ -264,7 +264,7 @@ fn a_refused_save_shows_the_servers_message_under_save(cx: &mut TestAppContext) 
         page.preset(None, None, None, None, Some("1024"), window, cx)
     });
     let message = rig.with(cx, |_, window, _| {
-        window.find("alert").label().map(str::to_owned)
+        window.find("server-error").label().map(str::to_owned)
     });
     assert_eq!(
         message.as_deref(),

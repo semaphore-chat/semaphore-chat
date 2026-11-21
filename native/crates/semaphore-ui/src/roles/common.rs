@@ -162,7 +162,13 @@ pub(super) fn locked_button(
 
 /// The server's message for the last change.
 pub(super) fn server_error(error: Option<&ErrorView>) -> Option<Alert> {
-    error.map(|error| Alert::new(Severity::Danger, error.message.clone()))
+    error.map(|error| {
+        Alert::new(
+            "roles-common-alert",
+            Severity::Danger,
+            error.message.clone(),
+        )
+    })
 }
 
 /// The web's `ConfirmDialog`: a sentence, Cancel, and the action (red when `danger`).

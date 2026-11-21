@@ -279,7 +279,7 @@ impl Render for SessionsSettings {
             .children(
                 self.notice
                     .as_ref()
-                    .map(|(severity, message)| Alert::new(*severity, message.clone())),
+                    .map(|(severity, message)| Alert::new("settings-sessions-alert", *severity, message.clone())),
             )
             .child(self.list(cx))
             .children(sign_out_all);

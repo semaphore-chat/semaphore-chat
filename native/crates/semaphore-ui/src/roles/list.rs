@@ -406,9 +406,11 @@ impl RolesPanel {
             ))
             .child(delete_button);
         let error = row_error.map(|error| {
-            div()
-                .w_full()
-                .child(Alert::new(Severity::Danger, error.message))
+            div().w_full().child(Alert::new(
+                "roles-list-alert-1",
+                Severity::Danger,
+                error.message,
+            ))
         });
         let base = row(
             SharedString::from(format!("role-{id}")),
@@ -457,6 +459,7 @@ impl RolesPanel {
         if !self.view.can_read && self.view.state != LoadState::Loading {
             {
                 return Alert::new(
+                    "roles-list-alert-2",
                     Severity::Info,
                     "You don't have permission to view roles in this community.",
                 )
@@ -467,6 +470,7 @@ impl RolesPanel {
             LoadState::Loading => return loading_rows("roles-loading", "Loading roles", 4),
             LoadState::Failed { error } => {
                 return Alert::new(
+                    "roles-list-alert-3",
                     Severity::Danger,
                     format!("Failed to load roles: {}", error.message),
                 )
@@ -503,7 +507,13 @@ impl RolesPanel {
         ]
         .into_iter()
         .flatten()
-        .map(|error| Alert::new(Severity::Danger, error.message.clone()))
+        .map(|error| {
+            Alert::new(
+                "roles-list-alert-4",
+                Severity::Danger,
+                error.message.clone(),
+            )
+        })
         .collect();
         let resetting = running(&self.view.op, &reset());
         div()
@@ -513,6 +523,7 @@ impl RolesPanel {
             .children(errors)
             .when(resetting, |body| {
                 body.child(Alert::new(
+                    "roles-list-alert-5",
                     Severity::Info,
                     "Resetting the default roles\u{2026}",
                 ))
@@ -585,6 +596,7 @@ impl RolesPanel {
             Some(view) => match &view.state {
                 LoadState::Loading => loading_rows("role-members-loading", "Loading members", 3),
                 LoadState::Failed { error } => Alert::new(
+                    "roles-list-alert-6",
                     Severity::Danger,
                     format!("Failed to load the role's members: {}", error.message),
                 )

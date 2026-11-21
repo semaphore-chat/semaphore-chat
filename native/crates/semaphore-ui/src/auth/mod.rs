@@ -238,7 +238,7 @@ impl AuthScreen {
                     ),
                 )
                 .child(
-                    div().w_full().mb(spacing(2.)).child(Alert::new(
+                    div().w_full().mb(spacing(2.)).child(Alert::new("auth-alert-1", 
                         Severity::Info,
                         "This server isn't set up yet. Set it up in a browser first, then sign in here.",
                     )),
@@ -437,17 +437,17 @@ impl AuthScreen {
                 .child(text(Variant::H5, "Login").mb(spacing(2.)))
                 .when(failed, |form| {
                     form.child(div().w_full().mb(spacing(2.)).child(Alert::new(
+                        "auth-alert-2",
                         Severity::Danger,
                         "Login failed. Please try again.",
                     )))
                 })
                 .when_some(notice.filter(|_| !failed), |form, notice| {
-                    form.child(
-                        div()
-                            .w_full()
-                            .mb(spacing(2.))
-                            .child(Alert::new(Severity::Info, notice)),
-                    )
+                    form.child(div().w_full().mb(spacing(2.)).child(Alert::new(
+                        "auth-alert-3",
+                        Severity::Info,
+                        notice,
+                    )))
                 })
                 .child(div().mb(spacing(2.)).child(server_line))
                 .when(browser_available, |form| {
@@ -679,7 +679,7 @@ fn browser_panel(
         .flex()
         .flex_col()
         .gap(spacing(1.))
-        .children(error.map(|(severity, message)| Alert::new(severity, message)))
+        .children(error.map(|(severity, message)| Alert::new("auth-alert-4", severity, message)))
         .child(
             Button::new("auth-browser", "Sign in with browser")
                 .contained()

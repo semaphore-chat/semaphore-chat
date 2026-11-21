@@ -286,7 +286,9 @@ impl StoragePage {
                         .children(
                             (!busy)
                                 .then(|| {
-                                    refusal.map(|message| Alert::new(Severity::Danger, message))
+                                    refusal.map(|message| {
+                                        Alert::new("admin-storage-alert", Severity::Danger, message)
+                                    })
                                 })
                                 .flatten(),
                         )

@@ -225,7 +225,7 @@ pub(crate) fn locked_button(
 
 /// The server's message for the last change, over the tab.
 pub(crate) fn server_error(error: Option<&ErrorView>) -> Option<Alert> {
-    error.map(|error| Alert::new(Severity::Danger, error.message.clone()))
+    error.map(|error| Alert::new("server-error", Severity::Danger, error.message.clone()))
 }
 
 /// A file on its way up: its name and a bar.

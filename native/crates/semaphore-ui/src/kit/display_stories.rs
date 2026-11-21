@@ -624,8 +624,11 @@ fn severities_body(cx: &App) -> Vec<AnyElement> {
         Severity::ALL
             .into_iter()
             .map(|severity| {
-                let alert = Alert::new(severity, BODY)
-                    .id(SharedString::from(format!("{}-{titled}", severity.name())));
+                let alert = Alert::new(
+                    SharedString::from(format!("{}-{titled}", severity.name())),
+                    severity,
+                    BODY,
+                );
                 any(if titled {
                     alert.title(format!("A {} title", severity.name()))
                 } else {
@@ -644,20 +647,22 @@ fn with_actions_body(_: &App) -> Vec<AnyElement> {
     vec![column(
         None,
         vec![
-            any(
-                Alert::new(Severity::Warning, "We could not reach the voice server.")
-                    .id("lost")
-                    .title("Connection lost")
-                    .action("Reconnect", |_, _| {}),
-            ),
-            any(Alert::new(Severity::Info, "A new version is available.")
-                .id("update")
-                .on_close(|_, _| {})),
             any(Alert::new(
+                "lost",
+                Severity::Warning,
+                "We could not reach the voice server.",
+            )
+            .title("Connection lost")
+            .action("Reconnect", |_, _| {})),
+            any(
+                Alert::new("update", Severity::Info, "A new version is available.")
+                    .on_close(|_, _| {}),
+            ),
+            any(Alert::new(
+                "upload",
                 Severity::Danger,
                 "The file is larger than the community allows.",
             )
-            .id("upload")
             .title("Upload failed")
             .action("Try again", |_, _| {})
             .on_close(|_, _| {})),
@@ -669,6 +674,7 @@ fn long_text_body(_: &App) -> Vec<AnyElement> {
     vec![column(
         Some(320.),
         vec![any(Alert::new(
+            "long",
             Severity::Danger,
             "This message keeps going so that it wraps, with an unbroken token \
              https://example.com/a/very/long/path/that/never/ends/and/never/breaks/at/all",
@@ -681,21 +687,24 @@ fn long_text_body(_: &App) -> Vec<AnyElement> {
 
 fn call_alerts() -> Vec<AnyElement> {
     vec![
+        any(Alert::new(
+            "call",
+            Severity::Info,
+            "dropbear is calling you in Squad Up.",
+        )
+        .title("Incoming call")
+        .action("Join", |_, _| {})
+        .secondary_action("Decline", |_, _| {})),
         any(
-            Alert::new(Severity::Info, "dropbear is calling you in Squad Up.")
-                .id("call")
-                .title("Incoming call")
-                .action("Join", |_, _| {})
-                .secondary_action("Decline", |_, _| {}),
+            Alert::new("ready", Severity::Warning, "A new version is ready.")
+                .secondary_action("Not now", |_, _| {})
+                .on_close(|_, _| {}),
         ),
-        any(Alert::new(Severity::Warning, "A new version is ready.")
-            .id("ready")
-            .secondary_action("Not now", |_, _| {})
-            .on_close(|_, _| {})),
-        any(Alert::new(Severity::Danger, "We could not reach Hangout.")
-            .id("hangout")
-            .action("Retry", |_, _| {})
-            .secondary_action("Dismiss for today", |_, _| {})),
+        any(
+            Alert::new("hangout", Severity::Danger, "We could not reach Hangout.")
+                .action("Retry", |_, _| {})
+                .secondary_action("Dismiss for today", |_, _| {}),
+        ),
     ]
 }
 
@@ -706,13 +715,14 @@ fn secondary_body(_: &App) -> Vec<AnyElement> {
 fn secondary_long_body(_: &App) -> Vec<AnyElement> {
     vec![column(
         Some(260.),
-        vec![any(Alert::new(Severity::Info, "dropbear is calling you.")
-            .title("Incoming call")
-            .action("Join the call in Squad Up", |_, _| {})
-            .secondary_action(
-                "Decline and let dropbear know",
-                |_, _| {},
-            ))],
+        vec![any(Alert::new(
+            "call-long",
+            Severity::Info,
+            "dropbear is calling you.",
+        )
+        .title("Incoming call")
+        .action("Join the call in Squad Up", |_, _| {})
+        .secondary_action("Decline and let dropbear know", |_, _| {}))],
     )]
 }
 
@@ -720,6 +730,7 @@ fn secondary_one_long_body(_: &App) -> Vec<AnyElement> {
     vec![column(
         Some(220.),
         vec![any(Alert::new(
+            "one-long",
             Severity::Warning,
             "dropbear is calling you.",
         )

@@ -502,9 +502,12 @@ impl CommunitiesPage {
             LoadState::Loading => {
                 loading_rows("admin-community-detail-loading", "Loading community", 2)
             }
-            LoadState::Failed { error } => {
-                Alert::new(Severity::Danger, error.message.clone()).into_any_element()
-            }
+            LoadState::Failed { error } => Alert::new(
+                "admin-communities-alert-1",
+                Severity::Danger,
+                error.message.clone(),
+            )
+            .into_any_element(),
             LoadState::Ready => match &detail.community {
                 Some(community) => self.detail_body(community, &detail, cx),
                 None => empty_line("This community is no longer there", cx).into_any_element(),
@@ -520,8 +523,13 @@ impl CommunitiesPage {
         let action = Self::delete_action(&community.id);
         let busy = running(&detail.op, &action);
         let matched = confirms_name(&self.delete_typed.read(cx).value(), &community.name);
-        let error = failure(&detail.op, &action)
-            .map(|error| Alert::new(Severity::Danger, error.message.clone()));
+        let error = failure(&detail.op, &action).map(|error| {
+            Alert::new(
+                "admin-communities-alert-2",
+                Severity::Danger,
+                error.message.clone(),
+            )
+        });
         let cancel = cx.weak_entity();
         let close = cx.weak_entity();
         let confirm = cx.weak_entity();

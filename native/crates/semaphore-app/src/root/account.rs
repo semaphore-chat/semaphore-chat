@@ -1488,7 +1488,7 @@ impl AppRoot {
                     .rounded(px(8.))
                     .bg(cx.sem().paper)
                     .shadow_lg()
-                    .child(Alert::new(Severity::Warning, message))
+                    .child(Alert::new("root-account-alert", Severity::Warning, message))
                     .child(
                         div()
                             .flex()

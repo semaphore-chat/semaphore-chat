@@ -239,6 +239,8 @@ impl Shell {
             .child(
                 Badge::new(count_words(nav.badge, CountMeaning::Unread))
                     .count(nav.badge)
+                    // The button is named "Notifications, 3 unread" already.
+                    .decorative(true)
                     .on(icon),
             )
             .when(expanded, |this| {

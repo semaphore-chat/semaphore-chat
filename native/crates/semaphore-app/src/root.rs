@@ -864,7 +864,10 @@ impl AppRoot {
                 .size_full()
                 .object_fit(ObjectFit::Contain)
                 .into_any_element(),
-            MediaRef::Pending => Spinner::new("viewer-loading").into_any_element(),
+            MediaRef::Pending => Spinner::new("viewer-loading")
+                .size(40.)
+                .label("Loading")
+                .into_any_element(),
             _ => text(Variant::Body1, "This image can't be shown.").into_any_element(),
         };
         Some(
@@ -1978,7 +1981,7 @@ impl Render for AppRoot {
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(Spinner::new("app-restoring"))
+                .child(app_loader("app-restoring"))
                 .when_some(self.about.clone(), |root, about| root.child(about));
         }
         // Input anywhere in the window, for idle.
@@ -2034,7 +2037,55 @@ impl Render for AppRoot {
         root.flex()
             .items_center()
             .justify_center()
-            .child(Spinner::new("app-starting"))
+            .child(app_loader("app-starting"))
             .when_some(self.about.clone(), |root, about| root.child(about))
+    }
+}
+
+/// The full-window loader at start and while a session is restored: the old 40 px spinner, named
+/// "Loading" for a screen reader (the kit's spinner is decorative without a label).
+fn app_loader(id: &'static str) -> Spinner {
+    Spinner::new(id).size(40.).label("Loading")
+}
+
+#[cfg(test)]
+mod loader_tests {
+    use super::app_loader;
+    use core::prelude::v1::test;
+    use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
+    use gpui_kit::*;
+
+    struct Loader;
+
+    impl Render for Loader {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(app_loader("app-starting"))
+        }
+    }
+
+    #[gpui_kit::test]
+    fn the_app_start_loader_is_a_status_named_loading(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            semaphore_ui::theme::init(cx);
+            semaphore_ui::kit::set_reduced_motion(true, cx);
+        });
+        let window = cx.add_window(|_, _| Loader);
+        let found = cx
+            .update_window(window.into(), |_, window, cx| {
+                window.render_frame(cx);
+                window
+                    .find_all_by_role(Role::Status)
+                    .iter()
+                    .map(|node| {
+                        (
+                            node.label().unwrap_or_default().to_owned(),
+                            node.bounds().size,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .expect("window");
+        assert_eq!(found, [("Loading".to_owned(), size(px(40.), px(40.)))]);
     }
 }

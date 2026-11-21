@@ -397,12 +397,11 @@ impl TrimPreview {
                         .flex_wrap()
                         .items_center()
                         .gap(px(8.))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w(px(200.))
-                                .child(Alert::new(Severity::Danger, PREVIEW_ERROR)),
-                        )
+                        .child(div().flex_1().min_w(px(200.)).child(Alert::new(
+                            "replay-preview-alert",
+                            Severity::Danger,
+                            PREVIEW_ERROR,
+                        )))
                         .child(
                             Button::new("trim-preview-retry", "Retry")
                                 .size(ButtonSize::Small)

@@ -287,7 +287,7 @@ impl RegisterScreen {
                     .test_support()
                     .w_full()
                     .mb(spacing(2.))
-                    .child(Alert::new(
+                    .child(Alert::new("auth-register-alert-1", 
                         Severity::Info,
                         "This server isn't taking new accounts. Ask one of its admins to make one for you.",
                     )),
@@ -354,6 +354,7 @@ impl RegisterScreen {
                     .w_full()
                     .mb(spacing(2.))
                     .child(Alert::new(
+                        "auth-register-alert-2",
                         Severity::Danger,
                         if message.is_empty() {
                             "Registration failed. Please try again.".to_owned()

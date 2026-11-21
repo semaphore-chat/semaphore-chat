@@ -33,6 +33,11 @@ fn initials_follow_the_web_rule() {
         ("日本語の名前", "日本"),
         ("ßeta", "ßE"),
         ("- ana", "AN"),
+        // A flag is emoji but not a pictograph: the word goes, as on the web.
+        ("🇩🇪 Hans", "HA"),
+        // An arrow the property lists is an initial; one it does not list is not.
+        ("↔ Hans", "↔H"),
+        ("⇒ Hans", "HA"),
         ("", ""),
         ("   ", ""),
         ("?!", ""),
@@ -314,15 +319,11 @@ fn a_progress_bar_is_named(cx: &mut TestAppContext) {
 fn an_alerts_role_follows_its_severity_and_announce(cx: &mut TestAppContext) {
     let rig = host(cx, || {
         div()
-            .child(Alert::new(Severity::Danger, "Upload failed").id("a1"))
-            .child(Alert::new(Severity::Warning, "Slow").id("a2"))
-            .child(Alert::new(Severity::Info, "Saved").id("a3").title("Note"))
-            .child(Alert::new(Severity::Success, "Done").id("a4"))
-            .child(
-                Alert::new(Severity::Danger, "Already here")
-                    .id("a5")
-                    .announce(false),
-            )
+            .child(Alert::new("a1", Severity::Danger, "Upload failed"))
+            .child(Alert::new("a2", Severity::Warning, "Slow"))
+            .child(Alert::new("a3", Severity::Info, "Saved").title("Note"))
+            .child(Alert::new("a4", Severity::Success, "Done"))
+            .child(Alert::new("a5", Severity::Danger, "Already here").announce(false))
             .into_any_element()
     });
     assert_eq!(labels(&rig, cx, Role::Alert), ["Upload failed", "Slow"]);
@@ -342,8 +343,7 @@ fn press(name: &'static str) -> impl Fn(&mut Window, &mut App) + 'static {
 fn an_alerts_actions_and_dismiss_each_run_their_own(cx: &mut TestAppContext) {
     PRESSED.with(|pressed| pressed.borrow_mut().clear());
     let rig = host(cx, || {
-        Alert::new(Severity::Info, "dropbear is calling you.")
-            .id("call")
+        Alert::new("call", Severity::Info, "dropbear is calling you.")
             .title("Incoming call")
             .action("Join", press("join"))
             .secondary_action("Decline", press("decline"))
@@ -363,9 +363,7 @@ fn an_alerts_actions_and_dismiss_each_run_their_own(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn an_alert_without_actions_has_no_buttons(cx: &mut TestAppContext) {
     let rig = host(cx, || {
-        Alert::new(Severity::Info, "Saved")
-            .id("plain")
-            .into_any_element()
+        Alert::new("plain", Severity::Info, "Saved").into_any_element()
     });
     assert!(!rig.has(cx, "plain-action"));
     assert!(!rig.has(cx, "plain-secondary-action"));
@@ -384,4 +382,41 @@ fn a_danger_toast_interrupts_and_the_others_wait(cx: &mut TestAppContext) {
     assert_eq!(labels(&rig, cx, Role::Alert), ["Could not save"]);
     assert_eq!(labels(&rig, cx, Role::Status), ["Saved"]);
     assert_eq!(labels(&rig, cx, Role::Note), ["Old news"]);
+}
+
+#[gpui_kit::test]
+fn same_name_siblings_each_keep_their_node_and_their_buttons(cx: &mut TestAppContext) {
+    PRESSED.with(|pressed| pressed.borrow_mut().clear());
+    let rig = host(cx, || {
+        div()
+            .child(Avatar::new("Alex").id("alex-1"))
+            .child(Avatar::new("Alex").id("alex-2"))
+            .child(Badge::new("3 unread").count(3).id("badge-1"))
+            .child(Badge::new("3 unread").count(3).id("badge-2"))
+            .child(Alert::new("first", Severity::Info, "Same").action("Go", press("first")))
+            .child(Alert::new("second", Severity::Info, "Same").action("Go", press("second")))
+            .into_any_element()
+    });
+    assert_eq!(
+        labels(&rig, cx, Role::Image),
+        ["Alex", "Alex", "3 unread", "3 unread"]
+    );
+    rig.click(cx, "second-action");
+    rig.click(cx, "first-action");
+    assert_eq!(
+        PRESSED.with(|pressed| pressed.borrow().clone()),
+        ["second", "first"]
+    );
+}
+
+#[gpui_kit::test]
+fn a_decorative_badge_draws_but_is_not_named(cx: &mut TestAppContext) {
+    let rig = host(cx, || {
+        Badge::new("3 unread")
+            .count(3)
+            .decorative(true)
+            .into_any_element()
+    });
+    assert!(labels(&rig, cx, Role::Image).is_empty());
+    assert!(rig.has(cx, "badge-3 unread"));
 }

@@ -534,9 +534,11 @@ impl Render for ClipLibrary {
                     .map(|clip| self.card(clip, card_width, cx))
                     .collect();
                 let error = self.view.error.as_ref().map(|error| {
-                    div()
-                        .mb(px(16.))
-                        .child(Alert::new(Severity::Danger, error.message.clone()))
+                    div().mb(px(16.)).child(Alert::new(
+                        "replay-library-alert",
+                        Severity::Danger,
+                        error.message.clone(),
+                    ))
                 });
                 div()
                     .flex()

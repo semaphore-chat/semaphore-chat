@@ -181,7 +181,13 @@ impl UsersPage {
                                 (!busy)
                                     .then(|| self.refusal(AdminActionKind::SetUserPassword))
                                     .flatten()
-                                    .map(|error| Alert::new(Severity::Danger, error)),
+                                    .map(|error| {
+                                        Alert::new(
+                                            "admin-users-dialogs-alert-1",
+                                            Severity::Danger,
+                                            error,
+                                        )
+                                    }),
                             )
                             .child(
                                 text(Variant::Body2, "Their sessions end.")
@@ -296,7 +302,9 @@ impl UsersPage {
                     .flex()
                     .flex_col()
                     .gap(spacing(2.))
-                    .children(refusal.map(|error| Alert::new(Severity::Danger, error)))
+                    .children(refusal.map(|error| {
+                        Alert::new("admin-users-dialogs-alert-2", Severity::Danger, error)
+                    }))
                     .child(text(Variant::Body2, message)),
             )
             .action(
@@ -339,6 +347,7 @@ impl UsersPage {
                     let mut sections = div().flex().flex_col().gap(spacing(2.));
                     if row.is_owner {
                         sections = sections.child(Alert::new(
+                            "admin-users-dialogs-alert-3",
                             Severity::Info,
                             "This user is an instance owner and automatically has all permissions. \
                              Assigning roles gives them permissions if they are demoted.",

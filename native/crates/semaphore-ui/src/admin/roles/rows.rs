@@ -52,6 +52,7 @@ impl InstanceRolesPage {
                 .items_start()
                 .gap(spacing(1.5))
                 .child(Alert::new(
+                    "admin-roles-rows-alert-1",
                     Severity::Danger,
                     format!("Failed to load instance roles: {}", error.message),
                 ))
@@ -196,8 +197,13 @@ impl InstanceRolesPage {
                 cx.listener(move |page, _, window, cx| page.open_edit(&edit_id, window, cx)),
             ))
             .child(delete_button);
-        let error =
-            row_error.map(|message| div().w_full().child(Alert::new(Severity::Danger, message)));
+        let error = row_error.map(|message| {
+            div().w_full().child(Alert::new(
+                "admin-roles-rows-alert-2",
+                Severity::Danger,
+                message,
+            ))
+        });
         let base = row(
             SharedString::from(format!("admin-role-{id}")),
             role.name.clone(),

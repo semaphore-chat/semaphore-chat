@@ -228,7 +228,11 @@ impl Render for ResetPasswordScreen {
                     .test_support()
                     .w_full()
                     .mb(spacing(2.))
-                    .child(Alert::new(Severity::Danger, MISSING_TOKEN)),
+                    .child(Alert::new(
+                        "auth-reset-alert-1",
+                        Severity::Danger,
+                        MISSING_TOKEN,
+                    )),
             )
             .child(request_new(cx))
         } else if self.success {
@@ -240,7 +244,7 @@ impl Render for ResetPasswordScreen {
                     .aria_label(DONE)
                     .w_full()
                     .mb(spacing(2.))
-                    .child(Alert::new(Severity::Success, DONE)),
+                    .child(Alert::new("auth-reset-alert-2", Severity::Success, DONE)),
             )
             .child(
                 div().w_full().child(
@@ -286,6 +290,7 @@ impl Render for ResetPasswordScreen {
                     .w_full()
                     .mb(spacing(2.))
                     .child(Alert::new(
+                        "auth-reset-alert-3",
                         Severity::Danger,
                         if message.is_empty() {
                             "Failed to reset password. Please try again.".to_owned()

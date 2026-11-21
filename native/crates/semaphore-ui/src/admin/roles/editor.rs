@@ -388,9 +388,9 @@ impl InstanceRolesPage {
             .flex_col()
             .gap(spacing(2.))
             .child(heading)
-            .children(error.map(|error| Alert::new(Severity::Danger, error.message)))
+            .children(error.map(|error| Alert::new("admin-roles-editor-alert-1", Severity::Danger, error.message)))
             .when(editor.is_default, |body| {
-                body.child(Alert::new(
+                body.child(Alert::new("admin-roles-editor-alert-2", 
                     Severity::Info,
                     "You are editing a default role. You can modify permissions but cannot change the role name.",
                 ))
@@ -402,7 +402,7 @@ impl InstanceRolesPage {
                     div()
                         .id("admin-role-editor-actions-error")
                         .test_support()
-                        .child(Alert::new(
+                        .child(Alert::new("admin-roles-editor-alert-3", 
                             Severity::Warning,
                             "Role must have at least one permission",
                         )),

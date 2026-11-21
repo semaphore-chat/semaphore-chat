@@ -62,6 +62,7 @@ impl DmListView {
                 .into_any_element(),
             UnreadMark::Count(count) => Badge::new(count_words(count, CountMeaning::Unread))
                 .count(count)
+                .decorative(true)
                 .into_any_element(),
         });
         let id = row.id.clone();

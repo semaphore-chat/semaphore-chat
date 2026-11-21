@@ -496,9 +496,13 @@ impl Shell {
                 )
             })
             .when(mentions > 0, |row| {
-                row.child(div().ml_auto().pl(spacing(1.)).flex_shrink_0().child(
-                    Badge::new(count_words(mentions, CountMeaning::Mentions)).count(mentions),
-                ))
+                row.child(
+                    div().ml_auto().pl(spacing(1.)).flex_shrink_0().child(
+                        Badge::new(count_words(mentions, CountMeaning::Mentions))
+                            .count(mentions)
+                            .decorative(true),
+                    ),
+                )
             });
 
         let users = if is_voice {

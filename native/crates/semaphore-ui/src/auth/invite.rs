@@ -181,7 +181,7 @@ impl InviteScreen {
                     .test_support()
                     .w_full()
                     .mb(spacing(2.))
-                    .child(Alert::new(Severity::Danger, message))
+                    .child(Alert::new("auth-invite-alert-1", Severity::Danger, message))
             }))
             .child(
                 Button::new("invite-close", "Close")
@@ -317,12 +317,11 @@ impl InviteScreen {
                     .test_support()
                     .w_full()
                     .mb(spacing(2.))
-                    .child(
-                        div()
-                            .id("invite-reason")
-                            .test_support()
-                            .child(Alert::new(Severity::Danger, message)),
-                    ),
+                    .child(div().id("invite-reason").test_support().child(Alert::new(
+                        "auth-invite-alert-2",
+                        Severity::Danger,
+                        message,
+                    ))),
             )
             .child(self.leave_button(cx))
             .into_any_element()

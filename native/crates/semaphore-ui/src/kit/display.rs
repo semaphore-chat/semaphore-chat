@@ -318,12 +318,25 @@ fn can_be_initial(grapheme: &str) -> bool {
         .is_some_and(|c| c.is_alphanumeric() || is_pictographic(c))
 }
 
-/// `\p{Extended_Pictographic}`, by its blocks: emoji, dingbats, arrows, symbols.
+/// `\p{Extended_Pictographic}` (Unicode `emoji-data.txt`), as the web's initials regex reads it.
+/// Not the regional indicators (flags) or the skin-tone modifiers, which are emoji but not
+/// pictographs, and only the arrows the property lists.
 fn is_pictographic(c: char) -> bool {
     matches!(u32::from(c),
-        0xa9 | 0xae | 0x203c | 0x2049 | 0x2122 | 0x2139 | 0x2194..=0x21ff | 0x2300..=0x23ff
-        | 0x24c2 | 0x25a0..=0x27bf | 0x2900..=0x297f | 0x2b00..=0x2bff | 0x3030 | 0x303d
-        | 0x3297 | 0x3299 | 0x1f000..=0x1faff | 0x1fc00..=0x1fffd)
+        0xa9 | 0xae | 0x203c | 0x2049 | 0x2122 | 0x2139 | 0x2194..=0x2199 | 0x21a9..=0x21aa
+        | 0x231a..=0x231b | 0x2328 | 0x2388 | 0x23cf | 0x23e9..=0x23f3 | 0x23f8..=0x23fa
+        | 0x24c2 | 0x25aa..=0x25ab | 0x25b6 | 0x25c0 | 0x25fb..=0x25fe | 0x2600..=0x2605
+        | 0x2607..=0x2612 | 0x2614..=0x2685 | 0x2690..=0x2705 | 0x2708..=0x2712 | 0x2714
+        | 0x2716 | 0x271d | 0x2721 | 0x2728 | 0x2733..=0x2734 | 0x2744 | 0x2747 | 0x274c
+        | 0x274e | 0x2753..=0x2755 | 0x2757 | 0x2763..=0x2767 | 0x2795..=0x2797 | 0x27a1
+        | 0x27b0 | 0x27bf | 0x2934..=0x2935 | 0x2b05..=0x2b07 | 0x2b1b..=0x2b1c | 0x2b50
+        | 0x2b55 | 0x3030 | 0x303d | 0x3297 | 0x3299 | 0x1f000..=0x1f0ff | 0x1f10d..=0x1f10f
+        | 0x1f12f | 0x1f16c..=0x1f171 | 0x1f17e..=0x1f17f | 0x1f18e | 0x1f191..=0x1f19a
+        | 0x1f1ad..=0x1f1e5 | 0x1f201..=0x1f20f | 0x1f21a | 0x1f22f | 0x1f232..=0x1f23a
+        | 0x1f23c..=0x1f23f | 0x1f249..=0x1f3fa | 0x1f400..=0x1f53d | 0x1f546..=0x1f64f
+        | 0x1f680..=0x1f6ff | 0x1f774..=0x1f77f | 0x1f7d5..=0x1f7ff | 0x1f80c..=0x1f80f
+        | 0x1f848..=0x1f84f | 0x1f85a..=0x1f85f | 0x1f888..=0x1f88f | 0x1f8ae..=0x1f8ff
+        | 0x1f90c..=0x1f93a | 0x1f93c..=0x1f945 | 0x1f947..=0x1faff | 0x1fc00..=0x1fffd)
 }
 
 /// Upper-case one grapheme, keeping it as written if that would make it longer (`ß` is not `SS`).
@@ -362,32 +375,34 @@ pub fn avatar_label(name: &str, presence: Option<Presence>) -> String {
     }
 }
 
+/// A box `by` px outside its parent on every side, its corners `radius + by` so it stays
+/// concentric. GPUI grows a spread shadow's box but keeps the element's corner radii, so a ring
+/// drawn as one round a circle comes out a rounded square: rings are drawn as these instead.
+fn outset(by: f32, radius: f32) -> Div {
+    div()
+        .absolute()
+        .top(px(-by))
+        .left(px(-by))
+        .right(px(-by))
+        .bottom(px(-by))
+        .rounded(px(radius + by))
+}
+
 /// The speaking ring, shared by Avatar and the stack: a gap in the colour of the layer behind,
-/// then a ring in the positive colour, both outside the box.
-fn speaking_ring(sem: &Sem, behind: Hsla) -> Vec<BoxShadow> {
-    let ring = |color: Hsla, spread: f32| BoxShadow {
-        color,
-        offset: point(px(0.), px(0.)),
-        blur_radius: px(0.),
-        spread_radius: px(spread),
-        inset: false,
-    };
-    // GPUI paints a list's shadows in order, the first lowest: the ring under the gap.
-    vec![
-        ring(sem.role.positive, BORDER_SELECTED * 2.),
-        ring(behind, BORDER_SELECTED),
+/// then a ring in the positive colour, both outside the box. Drawn before the face, so it is
+/// under it.
+fn speaking_ring(sem: &Sem, behind: Hsla, radius: f32) -> [Div; 2] {
+    [
+        outset(BORDER_SELECTED * 2., radius)
+            .border(px(BORDER_SELECTED))
+            .border_color(sem.role.positive),
+        outset(BORDER_SELECTED, radius).bg(behind),
     ]
 }
 
-/// A ring of `width` in `color` around a box, outside it.
-fn outline(color: Hsla, width: f32) -> Vec<BoxShadow> {
-    vec![BoxShadow {
-        color,
-        offset: point(px(0.), px(0.)),
-        blur_radius: px(0.),
-        spread_radius: px(width),
-        inset: false,
-    }]
+/// A ring of `width` in `color` round a box with corners `radius`, outside it and under it.
+fn outline(color: Hsla, width: f32, radius: f32) -> Div {
+    outset(width, radius).bg(color)
 }
 
 /// The background and ink of a face with its own colour: the colour nudged until the initials
@@ -451,7 +466,8 @@ impl Avatar {
         }
     }
 
-    /// The element id its accessibility node hangs on; by default one made from the name.
+    /// The element id its accessibility node hangs on; by default one made from the name, so two
+    /// named (not decorative) avatars with the same name under one parent each need their own.
     pub fn id(mut self, id: impl Into<ElementId>) -> Self {
         self.id = Some(id.into());
         self
@@ -620,7 +636,9 @@ impl RenderOnce for Avatar {
             .flex_shrink_0()
             .size(px(side))
             .rounded(px(radius))
-            .when(speaking, |root| root.shadow(speaking_ring(&sem, behind)))
+            .when(speaking, |root| {
+                root.children(speaking_ring(&sem, behind, radius))
+            })
             .child(face)
             .children(dot);
         if self.decorative {
@@ -647,16 +665,12 @@ fn presence_dot(sem: &Sem, presence: Presence, size: AvatarSize, behind: Hsla) -
         SPACE_MD
     };
     let dot = div()
-        .absolute()
-        .right(px(-BORDER_HAIRLINE))
-        .bottom(px(-BORDER_HAIRLINE))
-        .size(px(diameter))
+        .size_full()
         .flex()
         .items_center()
         .justify_center()
-        .rounded_full()
-        .shadow(outline(behind, BORDER_SELECTED));
-    match presence {
+        .rounded_full();
+    let dot = match presence {
         Presence::Offline => dot
             .bg(behind)
             .border(px(BORDER_SELECTED))
@@ -668,7 +682,14 @@ fn presence_dot(sem: &Sem, presence: Presence, size: AvatarSize, behind: Hsla) -
                 .bg(behind),
         ),
         _ => dot.bg(sem.role.positive),
-    }
+    };
+    div()
+        .absolute()
+        .right(px(-BORDER_HAIRLINE))
+        .bottom(px(-BORDER_HAIRLINE))
+        .size(px(diameter))
+        .child(outline(behind, BORDER_SELECTED, RADIUS_FULL))
+        .child(dot)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -829,11 +850,12 @@ impl RenderOnce for AvatarStack {
         let slot = |index: usize, is_speaker: bool| {
             let after_speaker = index > 0 && speaking.get(index - 1) == Some(&true);
             div()
+                .relative()
                 .flex()
                 .flex_shrink_0()
                 .rounded_full()
                 .when(!after_speaker, |slot| {
-                    slot.shadow(outline(behind, BORDER_SELECTED))
+                    slot.child(outline(behind, BORDER_SELECTED, RADIUS_FULL))
                 })
                 .when(index > 0, |slot| {
                     if is_speaker || after_speaker {
@@ -940,6 +962,8 @@ pub struct Badge {
     dot: bool,
     tone: BadgeTone,
     on: Surface,
+    decorative: bool,
+    id: Option<ElementId>,
     child: Option<AnyElement>,
 }
 
@@ -953,6 +977,8 @@ impl Badge {
             dot: false,
             tone: BadgeTone::Danger,
             on: Surface::Ground,
+            decorative: false,
+            id: None,
             child: None,
         }
     }
@@ -984,6 +1010,20 @@ impl Badge {
         self
     }
 
+    /// Hides it from assistive technology, for a badge inside a control whose name already says
+    /// the count ("Notifications, 3 unread"), so the count is not read twice.
+    pub fn decorative(mut self, decorative: bool) -> Self {
+        self.decorative = decorative;
+        self
+    }
+
+    /// The element id its accessibility node hangs on; by default one made from the label, so
+    /// two badges with the same label under one parent each need their own.
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
     /// Overlaps this child, at its top right, as the wrapper around the web's badge does.
     pub fn on(mut self, child: impl IntoElement) -> Self {
         self.child = Some(child.into_any_element());
@@ -1006,13 +1046,17 @@ impl RenderOnce for Badge {
         } else {
             badge_text(self.count, self.max).map(Some)
         };
-        let id = ElementId::Name(format!("badge-{}", self.label).into());
+        let id = self
+            .id
+            .unwrap_or_else(|| ElementId::Name(format!("badge-{}", self.label).into()));
+        let (label, decorative) = (self.label.clone(), self.decorative);
         let badge = shown.map(|number| {
             let badge = div()
                 .id(id)
                 .test_support()
-                .role(Role::Image)
-                .aria_label(self.label.clone())
+                .when(!decorative, |badge| {
+                    badge.role(Role::Image).aria_label(label.clone())
+                })
                 .flex()
                 .flex_shrink_0()
                 .items_center()
@@ -1725,9 +1769,15 @@ pub struct Alert {
 }
 
 impl Alert {
-    pub fn new(severity: Severity, message: impl Into<SharedString>) -> Self {
+    /// `id` is required, as on Toast: its buttons' ids are made from it, so two alerts under one
+    /// parent never share theirs.
+    pub fn new(
+        id: impl Into<ElementId>,
+        severity: Severity,
+        message: impl Into<SharedString>,
+    ) -> Self {
         Self {
-            id: "alert".into(),
+            id: id.into(),
             severity,
             title: None,
             message: message.into(),
@@ -1737,12 +1787,6 @@ impl Alert {
             announce: true,
             on: Surface::Ground,
         }
-    }
-
-    /// Its element id (default `alert`); its buttons' ids are made from it.
-    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
-        self.id = id.into();
-        self
     }
 
     /// A bold first line.

@@ -435,6 +435,7 @@ impl Render for ChannelOverrides {
             LoadState::Failed { error } => {
                 return root
                     .child(Alert::new(
+                        "roles-overrides-alert-1",
                         Severity::Danger,
                         format!(
                             "Couldn't load this channel's permissions: {}",
@@ -485,8 +486,13 @@ impl Render for ChannelOverrides {
         });
         let posters = choice.card.has_posters().then(|| self.posters(&choice, cx));
         let custom = (choice.card == Card::Custom).then(|| self.custom_section(cx));
-        let error = failure(&self.view.op, &self.action())
-            .map(|error| Alert::new(Severity::Danger, error.message.clone()));
+        let error = failure(&self.view.op, &self.action()).map(|error| {
+            Alert::new(
+                "roles-overrides-alert-2",
+                Severity::Danger,
+                error.message.clone(),
+            )
+        });
         root.when(!self.view.editable, |root| {
             root.child(locked_note(
                 "overrides-locked",

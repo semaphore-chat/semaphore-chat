@@ -139,6 +139,7 @@ impl Render for CreateCommunityForm {
                 .test_support()
                 .w_full()
                 .child(Alert::new(
+                    "home-create-alert",
                     Severity::Danger,
                     if message.is_empty() {
                         "Failed to create community. Please try again.".to_owned()

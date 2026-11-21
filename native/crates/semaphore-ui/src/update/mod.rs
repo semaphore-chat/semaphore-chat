@@ -239,7 +239,7 @@ impl Render for UpdateBanner {
             .flex()
             .flex_col()
             .gap(px(8.))
-            .child(Alert::new(severity, message));
+            .child(Alert::new("update-alert", severity, message));
         match &status {
             UpdateStatus::Downloading { .. } => {
                 card = card.child(LinearProgress::new(

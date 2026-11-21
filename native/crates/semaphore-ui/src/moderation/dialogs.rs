@@ -548,7 +548,9 @@ impl Render for ModerationDialog {
                     .flex()
                     .flex_col()
                     .gap(spacing(2.))
-                    .children(error.map(|error| Alert::new(Severity::Danger, error)))
+                    .children(error.map(|error| {
+                        Alert::new("moderation-dialogs-alert", Severity::Danger, error)
+                    }))
                     .child(text(Variant::Body2, words.sentence).text_color(sem.text_secondary))
                     .child(reason_field(
                         "moderation-reason",
