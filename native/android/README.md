@@ -118,6 +118,14 @@ Once a minified release build type exists (R8 is off today), it needs the keep r
 README asks for, or the verifier's Kotlin classes are stripped:
 `-keep, includedescriptorclasses class org.rustls.platformverifier.** { *; }`
 
+## Design tokens and icons
+
+`app/src/main/java/app/semaphorechat/android/design/Tokens.kt` and `Icons.kt` are generated for
+this client the same way as the web and desktop clients' files: `python3
+design/gen/gen_tokens.py` renders them from `design/tokens.json`, `design/colour.json` and
+`design/icons/`. Do not edit them by hand; change the source or the generator and re-run it. CI
+runs the generator's `--check` and fails when a copy is stale.
+
 ## Where the APK lands
 
 `native/android/out/semaphore-android-debug.apk` (gitignored) for the default ABI set, arm64-v8a:
