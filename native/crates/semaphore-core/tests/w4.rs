@@ -1275,6 +1275,196 @@ async fn a_share_whose_audio_never_comes_records_its_video_after_two_seconds() {
     assert_eq!(rig.core.voice().replay_audio_wait_until_ms, None);
 }
 
+// --- Replay start retry (#848 A4): servers before #876 refuse starts with a 400 for up to a
+// minute after a share ends ("Could not stop the replay recorder").
+
+fn now_ms(rig: &Rig) -> u64 {
+    rig.clock.0.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+fn wedged() -> BackendError {
+    refusal(400, "BAD_REQUEST")
+}
+
+/// Moves the clock to the retry time and lets the host's timer fire.
+async fn retry_due(rig: &mut Rig) {
+    let at = rig.core.voice().replay_retry_at_ms.expect("a retry waits");
+    rig.clock.advance(at - now_ms(rig));
+    rig.core.retry_replay();
+    rig.settle().await;
+}
+
+#[tokio::test]
+async fn a_refused_replay_start_is_asked_again_until_the_server_takes_it() {
+    let mut rig = in_channel_call(&[ME]).await;
+    replay_answers(&rig);
+    rig.backend.w4.fail_next("replay_start", wedged());
+    share_published(&mut rig, false).await;
+    rig.settle().await;
+    assert_eq!(rig.backend.w4.count("replay_start"), 1);
+    assert_eq!(rig.core.voice().replay, ReplayState::Starting);
+    let first = semaphore_core::model::REPLAY_RETRY_DELAYS_MS[0];
+    assert_eq!(
+        rig.core.voice().replay_retry_at_ms,
+        Some(now_ms(&rig) + first)
+    );
+
+    // Early: nothing.
+    rig.clock.advance(first - 1);
+    rig.core.retry_replay();
+    rig.settle().await;
+    assert_eq!(rig.backend.w4.count("replay_start"), 1, "too early");
+
+    rig.backend.w4.fail_next("replay_start", wedged());
+    rig.clock.advance(1);
+    rig.core.retry_replay();
+    rig.settle().await;
+    assert_eq!(rig.backend.w4.count("replay_start"), 2);
+    assert_eq!(rig.core.voice().replay, ReplayState::Starting);
+    assert_eq!(
+        rig.core.voice().replay_retry_at_ms,
+        Some(now_ms(&rig) + semaphore_core::model::REPLAY_RETRY_DELAYS_MS[1])
+    );
+
+    retry_due(&mut rig).await;
+    assert_eq!(rig.backend.w4.count("replay_start"), 3);
+    assert_eq!(
+        rig.core.voice().replay,
+        ReplayState::Recording {
+            session_id: "sess".into()
+        }
+    );
+    assert_eq!(rig.core.voice().replay_retry_at_ms, None);
+    // A late or second timer does nothing.
+    rig.core.retry_replay();
+    rig.settle().await;
+    assert_eq!(rig.backend.w4.count("replay_start"), 3);
+}
+
+#[tokio::test]
+async fn a_replay_start_refused_through_every_retry_shows_the_failure() {
+    let mut rig = in_channel_call(&[ME]).await;
+    replay_answers(&rig);
+    rig.backend.w4.fail_next("replay_start", wedged());
+    share_published(&mut rig, false).await;
+    rig.settle().await;
+    let retries = semaphore_core::model::REPLAY_RETRY_DELAYS_MS.len();
+    for _ in 0..retries {
+        assert_eq!(rig.core.voice().replay, ReplayState::Starting);
+        rig.backend.w4.fail_next("replay_start", wedged());
+        retry_due(&mut rig).await;
+    }
+    assert_eq!(rig.backend.w4.count("replay_start"), 1 + retries);
+    assert!(
+        matches!(rig.core.voice().replay, ReplayState::Failed { .. }),
+        "{:?}",
+        rig.core.voice().replay
+    );
+    assert_eq!(rig.core.voice().replay_retry_at_ms, None);
+}
+
+#[tokio::test]
+async fn a_replay_start_failing_otherwise_is_not_asked_again() {
+    let mut rig = in_channel_call(&[ME]).await;
+    replay_answers(&rig);
+    rig.backend
+        .w4
+        .fail_next("replay_start", refusal(403, "FORBIDDEN"));
+    share_published(&mut rig, false).await;
+    rig.settle().await;
+    assert!(matches!(
+        rig.core.voice().replay,
+        ReplayState::Failed { .. }
+    ));
+    assert_eq!(rig.core.voice().replay_retry_at_ms, None);
+}
+
+#[tokio::test]
+async fn a_new_share_drops_the_replay_retry_for_the_one_before() {
+    let mut rig = in_channel_call(&[ME]).await;
+    replay_answers(&rig);
+    rig.backend.w4.fail_next("replay_start", wedged());
+    share_published(&mut rig, false).await;
+    rig.settle().await;
+    let old_retry = rig.core.voice().replay_retry_at_ms.unwrap();
+    // The share is replaced: a new video track.
+    rig.core
+        .ingest_media(1, sharing(tracks("TR_v2", None), false));
+    rig.settle().await;
+    assert!(
+        rig.backend
+            .w4
+            .calls()
+            .contains(&format!("replay_start {VOICE} TR_v2  {ME}"))
+    );
+    assert_eq!(rig.core.voice().replay_retry_at_ms, None);
+    assert_eq!(
+        rig.core.voice().replay,
+        ReplayState::Recording {
+            session_id: "sess".into()
+        }
+    );
+    rig.clock.advance(old_retry - now_ms(&rig));
+    rig.core.retry_replay();
+    rig.settle().await;
+    assert_eq!(rig.backend.w4.count("replay_start"), 2, "no start for TR_v");
+}
+
+#[tokio::test]
+async fn ending_the_share_or_the_call_drops_a_waiting_replay_retry() {
+    for end_call in [false, true] {
+        let mut rig = in_channel_call(&[ME]).await;
+        replay_answers(&rig);
+        rig.backend.w4.fail_next("replay_start", wedged());
+        share_published(&mut rig, false).await;
+        rig.settle().await;
+        let at = rig.core.voice().replay_retry_at_ms.unwrap();
+        if end_call {
+            rig.core.leave_voice().await.unwrap();
+        } else {
+            rig.core.stop_screen_share().await.unwrap();
+        }
+        rig.settle().await;
+        assert_eq!(
+            rig.core.voice().replay_retry_at_ms,
+            None,
+            "end_call={end_call}"
+        );
+        assert_eq!(rig.core.voice().replay, ReplayState::Off);
+        rig.clock.advance(at - now_ms(&rig));
+        rig.core.retry_replay();
+        rig.settle().await;
+        assert_eq!(
+            rig.backend.w4.count("replay_start"),
+            1,
+            "end_call={end_call}"
+        );
+        assert_eq!(
+            rig.backend.w4.count("replay_stop"),
+            0,
+            "nothing is recording: end_call={end_call}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_refused_replay_stop_changes_nothing_for_the_user() {
+    let mut rig = in_channel_call(&[ME]).await;
+    replay_answers(&rig);
+    share_published(&mut rig, false).await;
+    rig.settle().await;
+    assert!(matches!(
+        rig.core.voice().replay,
+        ReplayState::Recording { .. }
+    ));
+    rig.backend.w4.fail_next("replay_stop", wedged());
+    rig.core.stop_screen_share().await.unwrap();
+    rig.settle().await;
+    assert_eq!(rig.backend.w4.count("replay_stop"), 1);
+    assert_eq!(rig.core.voice().replay, ReplayState::Off);
+    assert_eq!(rig.core.voice().replay_retry_at_ms, None);
+}
+
 #[tokio::test]
 async fn an_engine_saying_the_share_audio_failed_starts_the_video_alone() {
     let mut rig = in_channel_call(&[ME]).await;

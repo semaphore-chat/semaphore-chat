@@ -389,6 +389,12 @@ impl SemaphoreCore {
         })
     }
 
+    pub fn retry_replay(&self) {
+        self.sync(move |core| {
+            core.retry_replay();
+        })
+    }
+
     /// The host's sleep inhibitor, held while a call runs.
     pub fn set_keep_awake(&self, host: std::sync::Arc<dyn KeepAwakeHost>) {
         self.sync(move |core| {

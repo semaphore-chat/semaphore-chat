@@ -24,6 +24,14 @@ const REPLAY_SEGMENTS: [&[u8]; 3] = [
 /// gets no "missed" stop or fail event.
 const STALE_NOTIFY_MAX_AGE: SignedDuration = SignedDuration::from_hours(24);
 
+/// `reconcileEgressStatus` runs each minute: by then a v0.8 zombie row (its egress ended, the row
+/// still active) is closed, with `replayBufferStopped`.
+pub(crate) const V08_RECONCILE_AFTER: SignedDuration = SignedDuration::from_secs(60);
+
+/// What servers before #876 answer when LiveKit refuses to stop an egress that is ending or ended
+/// ("egress with status EGRESS_<X> cannot be stopped"): `stopReplayBuffer`'s catch-all.
+const V08_STOP_FAILED: &str = "Could not stop the replay recorder. Please try again.";
+
 /// `JOIN_FAILURE_REPORT_LIMIT` reports per `JOIN_FAILURE_REPORT_WINDOW_MS`, per user.
 const JOIN_FAILURE_LIMIT: usize = 3;
 const JOIN_FAILURE_WINDOW: SignedDuration = SignedDuration::from_secs(60);
@@ -46,6 +54,9 @@ pub(crate) struct ReplaySession {
     pub status: SessionStatus,
     /// Complete segments on disk (10 s each), set by `emit_segments_ready`.
     pub segments: usize,
+    /// `replay_egress_ending` mode: when a stop found this session's egress already ending. The
+    /// row stays active (a v0.8 zombie) until the reconcile after [`V08_RECONCILE_AFTER`].
+    pub egress_ended_at: Option<Timestamp>,
 }
 
 /// One `ReplayClip` row, with its file.
@@ -75,6 +86,9 @@ pub(crate) struct Calls {
     pub kicked: BTreeSet<(String, String)>,
     /// The signed-in user's replay sessions, oldest first.
     pub sessions: Vec<ReplaySession>,
+    /// The `replay_egress_ending` control: replay stops and restarts answer as servers before
+    /// #876 do once LiveKit's egress is ending (see [`stop_replay`]).
+    pub egress_ending: bool,
     pub clips: Vec<Clip>,
     /// Valid join-failure reports, as the backend logs them.
     pub join_failures: Vec<Value>,
@@ -508,8 +522,16 @@ pub(crate) fn start_replay(inner: &Inner, channel_id: &str) -> Result<Value, Ref
             "You can only record your own tracks",
         ));
     }
+    reconcile_v08_zombies(inner);
     let now = inner.now();
     let mut calls = lock(&inner.calls);
+    // v0.8: the start stops the previous session first, and that stop fails the start.
+    if calls
+        .active_session_mut()
+        .is_some_and(|active| active.egress_ended_at.is_some())
+    {
+        return Err(refuse(400, "BAD_REQUEST", V08_STOP_FAILED));
+    }
     if let Some(active) = calls.active_session_mut() {
         active.status = SessionStatus::Stopped;
         active.ended_at = Some(now);
@@ -525,14 +547,21 @@ pub(crate) fn start_replay(inner: &Inner, channel_id: &str) -> Result<Value, Ref
         ended_at: None,
         status: SessionStatus::Active,
         segments: 0,
+        egress_ended_at: None,
     });
     Ok(json!({ "sessionId": id, "egressId": egress_id, "status": "active" }))
 }
 
 /// `stopReplayBuffer`: no event (LiveKit's later `egress_ended` finds the row stopped).
+///
+/// In `replay_egress_ending` mode it answers as servers before #876 do when the stop finds the
+/// egress already ending (a share that just ended): 400 [`V08_STOP_FAILED`], the row left active,
+/// and every start answering the same until the reconcile closes the row.
 pub(crate) fn stop_replay(inner: &Inner) -> Result<Value, Refusal> {
+    reconcile_v08_zombies(inner);
     let now = inner.now();
     let mut calls = lock(&inner.calls);
+    let ending = calls.egress_ending;
     let Some(session) = calls.active_session_mut() else {
         return Err(refuse(
             404,
@@ -540,10 +569,43 @@ pub(crate) fn stop_replay(inner: &Inner) -> Result<Value, Refusal> {
             "No active replay found. Start screen sharing to record a replay.",
         ));
     };
+    if ending || session.egress_ended_at.is_some() {
+        session.egress_ended_at.get_or_insert(now);
+        return Err(refuse(400, "BAD_REQUEST", V08_STOP_FAILED));
+    }
     session.status = SessionStatus::Stopped;
     session.ended_at = Some(now);
     session.segments = 0;
     Ok(json!({ "sessionId": session.id, "egressId": session.egress_id, "status": "stopped" }))
+}
+
+/// The v0.8 reconcile cron, run when a replay route is asked: a zombie row whose egress ended a
+/// minute ago or more is closed, and its user hears `replayBufferStopped`.
+fn reconcile_v08_zombies(inner: &Inner) {
+    let now = inner.now();
+    let closed: Vec<Value> = {
+        let mut calls = lock(&inner.calls);
+        calls
+            .sessions
+            .iter_mut()
+            .filter(|session| {
+                session.status == SessionStatus::Active
+                    && session
+                        .egress_ended_at
+                        .is_some_and(|at| now.duration_since(at) >= V08_RECONCILE_AFTER)
+            })
+            .map(|session| {
+                session.status = SessionStatus::Stopped;
+                session.ended_at = Some(now);
+                session.segments = 0;
+                session_ids(session)
+            })
+            .collect()
+    };
+    let me = inner.scenario.me.id.clone();
+    for payload in closed {
+        inner.emit_to_user(&me, "replayBufferStopped", payload);
+    }
 }
 
 /// `recoverStaleSession` without LiveKit (whose egress is never running here): with no session

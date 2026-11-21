@@ -665,6 +665,58 @@ async fn recording(segments: usize) -> (FakeServer, reqwest::Client, String, Soc
     (server, client, base, me)
 }
 
+/// Servers before #876, once LiveKit's egress is ending (a share that just ended): the stop
+/// answers 400 and leaves the row active, every start answers the same 400 (it stops the old row
+/// first), and the minute's reconcile closes the row with `replayBufferStopped`.
+#[tokio::test]
+async fn the_v08_egress_ending_mode_wedges_stop_and_start_until_the_reconcile() {
+    let (server, client, base, mut me) = recording(0).await;
+    let squad = id("vc-squad");
+    let (status, _) = control(
+        &client,
+        &base,
+        "replay_egress_ending",
+        json!({ "on": true }),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let wedged = "Could not stop the replay recorder. Please try again.";
+
+    let (status, body) = post(&client, &base, "/api/livekit/replay/stop", json!({})).await;
+    assert_eq!((status, body["message"].as_str()), (400, Some(wedged)));
+    let start = || {
+        post(
+            &client,
+            &base,
+            "/api/livekit/replay/start",
+            json!({ "channelId": squad, "videoTrackId": "TR_v2" }),
+        )
+    };
+    let (status, body) = start().await;
+    assert_eq!((status, body["message"].as_str()), (400, Some(wedged)));
+    // Still wedged just before the reconcile.
+    control(&client, &base, "advance_clock", json!({ "ms": 59_999 })).await;
+    let (status, _) = start().await;
+    assert_eq!(status, 400);
+    assert!(names(&settle(&server, &mut [&mut me]).await.remove(0)).is_empty());
+
+    control(&client, &base, "advance_clock", json!({ "ms": 1 })).await;
+    control(
+        &client,
+        &base,
+        "replay_egress_ending",
+        json!({ "on": false }),
+    )
+    .await;
+    let (status, body) = start().await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(body["status"], "active");
+    let heard = settle(&server, &mut [&mut me]).await.remove(0);
+    assert_eq!(names(&heard), ["replayBufferStopped"]);
+    let (status, _) = post(&client, &base, "/api/livekit/replay/stop", json!({})).await;
+    assert_eq!(status, 201);
+}
+
 #[tokio::test]
 async fn starting_needs_the_call_and_a_restart_replaces_the_session() {
     let (_server, client, base) = showcase().await;

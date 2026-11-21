@@ -12,7 +12,8 @@ use crate::client::{Core, State};
 use crate::commands::calls::ReplayOp;
 use crate::model::{
     CaptureRequest, CapturedClip, Clip, ClipDestination, ClipsView, ErrorView, PreviewSegment,
-    ReplayMinutes, ReplaySessionView, ReplayState, SegmentFailure, ViewKey, VoiceRoom,
+    REPLAY_RETRY_DELAYS_MS, ReplayMinutes, ReplaySessionView, ReplayState, SegmentFailure, ViewKey,
+    VoiceRoom,
 };
 use crate::platform::CoreError;
 use crate::resync::unavailable;
@@ -182,10 +183,15 @@ impl Core {
                     participant_identity: Some(me),
                 })
                 .await
-                .map_err(|error| self.backend_failed(error)),
-            Err(error) => Err(error),
+                .map_err(|error| {
+                    // A 400 may pass: servers before #876 refuse every start for up to a minute
+                    // after a share ends ("Could not stop the replay recorder").
+                    let retry = error.status == 400;
+                    (self.backend_failed(error), retry)
+                }),
+            Err(error) => Err((error, false)),
         };
-        self.write(|state, _| {
+        self.write(|state, now| {
             state.w4_replay_op_done();
             let current = state.call == call
                 && state.w4.replay_live
@@ -211,12 +217,24 @@ impl Core {
                     state.view_changed(ViewKey::Voice);
                 }
                 Err(_) if !current => {}
-                Err(error) => {
-                    log::warn!("starting the replay buffer failed: {error}");
+                Err((error, retry)) => {
                     state.w4.replay_live = false;
-                    state.voice.replay = ReplayState::Failed {
-                        message: error.to_string(),
-                    };
+                    let delay = retry
+                        .then(|| REPLAY_RETRY_DELAYS_MS.get(state.w4.replay_retries).copied())
+                        .flatten();
+                    if let Some(delay) = delay {
+                        // Still `Starting`: `retry_replay` asks again at `replay_retry_at_ms`.
+                        log::info!(
+                            "starting the replay buffer failed: {error}; asking again in {delay} ms"
+                        );
+                        state.w4.replay_retries += 1;
+                        state.w4_replay_retry(Some((tracks.video_sid.clone(), now + delay)));
+                    } else {
+                        log::warn!("starting the replay buffer failed: {error}");
+                        state.voice.replay = ReplayState::Failed {
+                            message: error.to_string(),
+                        };
+                    }
                     state.view_changed(ViewKey::Voice);
                 }
             }
@@ -233,6 +251,30 @@ impl Core {
             log::warn!("stopping the replay buffer failed: {error}");
         }
         self.write(|state, _| state.w4_replay_op_done());
+    }
+
+    /// The host calls this at `VoiceView::replay_retry_at_ms`: the start the server refused is
+    /// asked again, for the same share in the same call. Harmless early or twice.
+    pub fn retry_replay(&self) {
+        self.write(|state, now| {
+            let Some((video, at)) = state.w4.replay_retry.clone() else {
+                return;
+            };
+            if now < at {
+                return;
+            }
+            state.w4_replay_retry(None);
+            // `w4_replay` drops the retry when the share or the call ends; this is the backstop.
+            if state.w4.replay_done_for.as_deref() != Some(video.as_str()) {
+                return;
+            }
+            state.w4.replay_live = true;
+            state.w4.replay_ended.clear();
+            state.voice.replay = ReplayState::Starting;
+            state.view_changed(ViewKey::Voice);
+            let call = state.call;
+            state.w4_replay_op(ReplayOp::Start(call));
+        });
     }
 
     /// The host calls this at `VoiceView::replay_audio_wait_until_ms`: past it, the buffer starts

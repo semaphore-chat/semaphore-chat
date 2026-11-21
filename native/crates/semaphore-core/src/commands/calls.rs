@@ -115,6 +115,10 @@ pub struct W4State {
     pub(crate) replay_audio_wait: Option<(String, u64)>,
     /// The video track whose audio wait ran out: it records without.
     pub(crate) replay_audio_waived: Option<String>,
+    /// The share's video track whose start the server refused (400), and when it's asked again.
+    pub(crate) replay_retry: Option<(String, u64)>,
+    /// How many times this share's start has been asked again (`REPLAY_RETRY_DELAYS_MS`).
+    pub(crate) replay_retries: usize,
     pub(crate) clips_busy: Vec<String>,
     /// Participant volumes set this session, by identity.
     pub(crate) volumes: HashMap<String, u32>,
@@ -578,6 +582,8 @@ impl State {
             self.w4.replay_done_for = None;
             self.w4.replay_audio_waived = None;
             self.w4_audio_wait(None);
+            self.w4_replay_retry(None);
+            self.w4.replay_retries = 0;
             if self.w4.replay_live {
                 self.w4.replay_live = false;
                 self.w4_replay_op(ReplayOp::Stop);
@@ -592,6 +598,9 @@ impl State {
             self.w4_audio_wait(None);
             return;
         }
+        // Another share: a retry waiting for the one before is dropped.
+        self.w4_replay_retry(None);
+        self.w4.replay_retries = 0;
         let audio_pending = self.voice.local.screen_audio == LocalShare::On
             && tracks.audio_sid.is_none()
             && !audio_failed
@@ -615,6 +624,17 @@ impl State {
         self.voice.replay = ReplayState::Starting;
         self.view_changed(ViewKey::Voice);
         self.w4_replay_op(ReplayOp::Start(self.call));
+    }
+
+    /// Sets (or clears) the start the server refused and when it's asked again, as
+    /// `VoiceView::replay_retry_at_ms` shows it.
+    pub(crate) fn w4_replay_retry(&mut self, retry: Option<(String, u64)>) {
+        let at = retry.as_ref().map(|(_, at)| *at);
+        self.w4.replay_retry = retry;
+        if self.voice.replay_retry_at_ms != at {
+            self.voice.replay_retry_at_ms = at;
+            self.view_changed(ViewKey::Voice);
+        }
     }
 
     fn w4_audio_wait(&mut self, wait: Option<(String, u64)>) {
