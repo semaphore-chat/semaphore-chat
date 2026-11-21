@@ -41,13 +41,13 @@ mod android {
     use jni::errors::ThrowRuntimeExAndDefault;
     use jni::objects::JObject;
 
-    /// `MainActivity.initSemaphoreNative(applicationContext)`: gives rustls-platform-verifier the
+    /// `SemaphoreApp.initSemaphoreNative(applicationContext)`: gives rustls-platform-verifier the
     /// JVM and the application `Context` it needs to read the system trust store. Call it before
     /// anything builds a TLS client; calling it again does nothing.
     ///
     /// A JNI failure throws a `RuntimeException` into Kotlin rather than aborting.
     #[unsafe(no_mangle)]
-    pub extern "system" fn Java_app_semaphorechat_android_MainActivity_initSemaphoreNative<
+    pub extern "system" fn Java_app_semaphorechat_android_SemaphoreApp_initSemaphoreNative<
         'caller,
     >(
         mut unowned_env: EnvUnowned<'caller>,

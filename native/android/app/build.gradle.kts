@@ -95,7 +95,7 @@ dependencies {
     // are written against kotlinx.coroutines. Compose brings it in transitively; declared here
     // because the bindings need it.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    // The JVM half of rustls-platform-verifier: MainActivity hands it to the Rust TLS verifier
+    // The JVM half of rustls-platform-verifier: SemaphoreApp hands it to the Rust TLS verifier
     // through libsemaphore_ffi.so's initSemaphoreNative. Version from Cargo.lock, as above.
     implementation("org.rustls:rustls-platform-verifier:${rustlsAndroidVersion.get()}")
 }

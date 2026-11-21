@@ -44,6 +44,9 @@ use tokio::time::timeout;
 
 use crate::{Timeouts, http_client_with_timeouts};
 
+mod client_info;
+pub use client_info::{ClientInfo, ClientInfoError, ClientKind};
+
 const DEVICE_ID_KEY: &str = "device-id";
 
 /// What the desktop app puts in `User-Agent`: this crate's version, which the app's release
@@ -59,65 +62,6 @@ pub const DESKTOP_DEVICE_NAME: &str = if cfg!(windows) {
 } else {
     "Semaphore Desktop on Linux"
 };
-
-/// Which native client this process is.
-///
-/// The server tells them apart (`backend/src/auth/client-type.util.ts`): both are native, both
-/// get their refresh token in the response body, and both must send `X-Device-Id` and a
-/// `User-Agent`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ClientKind {
-    /// The desktop app.
-    DesktopNative,
-    /// An Android (or later iOS) app.
-    MobileNative,
-}
-
-impl ClientKind {
-    /// The `X-Client-Type` value, the same string as the contract's `*XClientType` variants.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::DesktopNative => "desktop-native",
-            Self::MobileNative => "mobile-native",
-        }
-    }
-}
-
-/// Who this install says it is, as the server reads it.
-///
-/// The host builds it once, from what it knows about itself, and passes it to
-/// [`HttpBackend::new`]: [`desktop`](Self::desktop) is exactly what the desktop app sent before
-/// it could choose, and a mobile app supplies its own user agent and device name.
-#[derive(Clone, Debug)]
-pub struct ClientInfo {
-    pub kind: ClientKind,
-    /// Sent as `User-Agent` on every request. Visible ASCII only, or the request has no
-    /// `User-Agent`; the server refuses a native sign-in without one.
-    pub user_agent: String,
-    /// Sent as `X-Device-Name` on sign-in: the contract's percent-encoded UTF-8, which must
-    /// therefore be visible ASCII, and at most 64 characters once decoded.
-    pub device_name: String,
-}
-
-impl ClientInfo {
-    /// The desktop app's identity, unchanged from the one it sent before the host chose it.
-    pub fn desktop() -> Self {
-        Self {
-            kind: ClientKind::DesktopNative,
-            user_agent: DESKTOP_USER_AGENT.to_owned(),
-            device_name: DESKTOP_DEVICE_NAME.to_owned(),
-        }
-    }
-
-    /// A mobile app's identity, its user agent and the name it shows in the sessions list.
-    pub fn mobile(user_agent: impl Into<String>, device_name: impl Into<String>) -> Self {
-        Self {
-            kind: ClientKind::MobileNative,
-            user_agent: user_agent.into(),
-            device_name: device_name.into(),
-        }
-    }
-}
 
 /// A token that cannot be printed.
 #[derive(Clone, PartialEq)]
@@ -339,22 +283,24 @@ impl Inner {
 
     /// [`ClientInfo::kind`] as the header type of whichever operation sends it.
     fn client_type<T: std::str::FromStr>(&self) -> Option<T> {
-        self.client.kind.as_str().parse().ok()
+        self.client.kind().as_str().parse().ok()
     }
 
-    /// [`ClientInfo::device_name`] as the header type of whichever operation sends it.
+    /// [`ClientInfo::device_name`] as the header type of whichever operation sends it. A mobile
+    /// name is already encoded to fit the type, and the desktop one is a short constant, so the
+    /// parse only fails if one of those invariants is broken (the unit tests pin them).
     fn device_name<T: std::str::FromStr>(&self) -> Option<T> {
-        self.client.device_name.parse().ok()
+        self.client.device_name().parse().ok()
     }
 
     fn base_headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        match HeaderValue::from_str(&self.client.user_agent) {
+        match HeaderValue::from_str(self.client.user_agent()) {
             Ok(user_agent) => {
                 headers.insert(USER_AGENT, user_agent);
             }
-            // The host chose it, so this is a programming error, and a native sign-in without a
-            // user agent is refused: say so rather than let it go unnoticed.
+            // `ClientInfo` only holds visible ASCII, so this cannot happen; say so if it does
+            // rather than let a native sign-in be refused unnoticed.
             Err(error) => log::error!(
                 "the client's user agent is not a valid header value, so requests carry none: {error}"
             ),

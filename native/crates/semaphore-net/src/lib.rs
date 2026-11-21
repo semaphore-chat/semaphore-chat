@@ -8,6 +8,7 @@ pub mod socket;
 pub use backend::{ClientInfo, ClientKind, HttpBackend};
 pub use realtime::SocketRealtime;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Once, OnceLock};
 use std::time::Duration;
 
@@ -28,19 +29,37 @@ pub fn install_crypto_provider() {
     });
 }
 
+/// Set by a successful [`init_android`]. Android's verifier panics at its first handshake if the
+/// JVM was never handed over, so [`tls_client_config`] refuses to build before this is set.
+static ANDROID_INITIALISED: AtomicBool = AtomicBool::new(false);
+
+/// Whether a TLS client may be built: always off Android, and on Android once [`init_android`]
+/// succeeded. A function of its inputs so the refusal can be tested on any host.
+fn ensure_tls_ready(is_android: bool, initialised: bool) -> Result<(), CoreError> {
+    if is_android && !initialised {
+        return Err(CoreError::Failed {
+            message: "TLS isn't initialised: call init_android first".to_owned(),
+        });
+    }
+    Ok(())
+}
+
 /// On Android, hands rustls-platform-verifier the JVM and the application `Context` it reads the
 /// system trust store through. Call it once, before the first [`tls_client_config`] (so before any
 /// backend makes a request or opens the socket): from then on the verifier is valid for the life
-/// of the process, and calling it again does nothing.
+/// of the process, and calling it again does nothing. Until it has succeeded,
+/// [`tls_client_config`] (and so every REST client and socket) returns an error.
 ///
-/// `semaphore-ffi`'s `Java_app_semaphorechat_android_MainActivity_initSemaphoreNative` is the JNI
-/// entry point the app calls; a host that links this crate itself can call this directly.
+/// `semaphore-ffi`'s `Java_app_semaphorechat_android_SemaphoreApp_initSemaphoreNative` is the JNI
+/// entry point the app's `Application` calls; a host that links this crate itself can call this directly.
 #[cfg(target_os = "android")]
 pub fn init_android(
     env: &mut jni::Env<'_>,
     context: jni::objects::JObject<'_>,
 ) -> Result<(), jni::errors::Error> {
-    rustls_platform_verifier::android::init_with_env(env, context)
+    rustls_platform_verifier::android::init_with_env(env, context)?;
+    ANDROID_INITIALISED.store(true, Ordering::Release);
+    Ok(())
 }
 
 /// How long the network and the keyring may keep a caller waiting.
@@ -73,7 +92,13 @@ impl Default for Timeouts {
 /// The one TLS client configuration, so REST and the socket trust the same certificates: the OS
 /// store, through `rustls-platform-verifier`. A self-hoster's private CA, once installed in the
 /// OS, works for both. Reads the OS store the first time, then keeps it until the app restarts.
+///
+/// On Android this is an error until [`init_android`] has succeeded.
 pub fn tls_client_config() -> Result<Arc<rustls::ClientConfig>, CoreError> {
+    ensure_tls_ready(
+        cfg!(target_os = "android"),
+        ANDROID_INITIALISED.load(Ordering::Acquire),
+    )?;
     static CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
     if let Some(config) = CONFIG.get() {
         return Ok(config.clone());
@@ -136,4 +161,27 @@ pub async fn open_websocket(
                 message: error.to_string(),
             })?;
     Ok(stream)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn android_refuses_a_tls_client_before_init() {
+        let Err(CoreError::Failed { message }) = ensure_tls_ready(true, false) else {
+            panic!("expected a refusal");
+        };
+        assert!(message.contains("init_android"), "{message}");
+    }
+
+    #[test]
+    fn android_allows_a_tls_client_after_init() {
+        assert!(ensure_tls_ready(true, true).is_ok());
+    }
+
+    #[test]
+    fn other_targets_never_need_init() {
+        assert!(ensure_tls_ready(false, false).is_ok());
+    }
 }

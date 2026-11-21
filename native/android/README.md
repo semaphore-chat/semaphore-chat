@@ -53,13 +53,17 @@ system trust store through the JVM. That needs two pieces outside Rust, both in 
 - the crate's Kotlin component, `org.rustls:rustls-platform-verifier`, from the Maven
   repository named in its README (`settings.gradle.kts`); `app/build.gradle.kts` reads its
   version from `../Cargo.lock` so it can never disagree with the Rust crate;
-- an initialisation call carrying the JVM and an application `Context`. `MainActivity` loads
+- an initialisation call carrying the JVM and an application `Context`. `SemaphoreApp` (the `Application`, so any process start) loads
   `libsemaphore_ffi.so` and calls the JNI entry point in `semaphore-ffi`, which calls
   `semaphore_net::init_android`, before building the core.
 
 D2 does not wire `semaphore-net` into the core (that is D3), so the app has no requests to make
 with the verifier yet; the build proves the initialisation compiles and links, and a device run
 would be what proves it succeeds.
+
+Once a minified release build type exists (R8 is off today), it needs the keep rule upstream's
+README asks for, or the verifier's Kotlin classes are stripped:
+`-keep, includedescriptorclasses class org.rustls.platformverifier.** { *; }`
 
 ## Where the APK lands
 
