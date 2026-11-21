@@ -84,8 +84,14 @@ called a host.
   `kit::screen_escape` and name where lost focus goes with
   `kit::screen_focus_target`. A Menu that is part of another surface (a
   dialog's body) is `Menu::inline()` and not a layer of its own. Menu, Dock and
-  Tabs run on the list focus host. The native toast, confirm and load state
-  hosts come next.
+  Tabs run on the list focus host. The native kit has the other hosts too:
+  `kit::Toasts` (`Toasts::of(window, cx)` or `Toasts::for_window(handle)`,
+  then `show(ToastRequest::new(..).id(..))` and `dismiss(id)`, callable from a
+  task without a window) with one `kit::ToastRegion` per window, which the
+  app's window draws at its foot; `kit::confirm_destructive` for a destructive
+  confirmation on a kit Dialog; and `kit::use_load_state` with
+  `kit::LoadStateView` for the load state's five faces. A toast's id names its
+  subject and is also its element id.
 - Two native differences, for now. Native tooltips are not layers: GPUI's own
   tooltips have no open or close a host can see, so an Escape pressed while a
   native tooltip shows closes the layer below it (the same thing MUI does, see

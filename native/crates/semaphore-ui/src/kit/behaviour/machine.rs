@@ -79,6 +79,24 @@ pub(crate) fn drive<T: 'static, S, E, F, P>(
     }
 }
 
+/// [`drive`] for effects that need no window (the toast queue, called from anywhere).
+pub(crate) fn drive_app<T: 'static, S, E, F, P>(
+    entity: &Entity<T>,
+    access: fn(&mut T) -> &mut Machine<S, E, F, P>,
+    event: E,
+    cx: &mut App,
+    mut apply: impl FnMut(F, &mut App),
+) {
+    if !entity.update(cx, |host, _| access(host).enqueue(event)) {
+        return;
+    }
+    while let Some(effects) = entity.update(cx, |host, _| access(host).next()) {
+        for effect in effects {
+            apply(effect, cx);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

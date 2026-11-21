@@ -587,7 +587,7 @@ fn restore_focus(
     }
 }
 
-fn screen_target(overlay: &OverlayHost, cx: &App) -> Option<FocusHandle> {
+pub(crate) fn screen_target(overlay: &OverlayHost, cx: &App) -> Option<FocusHandle> {
     overlay
         .targets
         .iter()

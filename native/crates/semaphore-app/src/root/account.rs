@@ -30,7 +30,7 @@ use semaphore_ui::home::{
     InviteNotice, NOTICE_COPY_FAILED, NOTICE_COPY_FAILED_AFTER_CREATE, NOTICE_CREATE_FAILED,
     Section, ZeroCommunityGate, quick_invite_targets,
 };
-use semaphore_ui::kit::{Alert, Button, Severity};
+use semaphore_ui::kit::{Alert, Button, Severity, ToastRequest};
 use semaphore_ui::nav::Route;
 use semaphore_ui::profile::{
     FriendAction, ProfileActions, ProfileEditEvent, ProfileEditForm, ProfileEvent, ProfileModal,
@@ -56,7 +56,8 @@ pub struct DesktopSignIn {
 }
 
 /// How long the invite card's notice stays, as the web's snackbar.
-const INVITE_NOTICE_FOR: std::time::Duration = std::time::Duration::from_secs(3);
+/// The invite card's notices' subject: one at a time, a newer one replaces the last.
+const INVITE_NOTICE: &str = "home-invite-notice";
 
 #[derive(Default)]
 pub(super) struct Account {
@@ -70,7 +71,6 @@ pub(super) struct Account {
     /// `refresh_home` adds what core knows.
     invite: InviteCardModel,
     /// Takes the invite card's notice away after a while, as the web's snackbar hides.
-    invite_notice_timer: Option<Task<()>>,
     create: Option<Entity<CreateCommunityForm>>,
     desktop_sign_in: Option<DesktopSignIn>,
     links: LinkHandler,
@@ -1245,7 +1245,6 @@ impl AppRoot {
             communities: Vec::new(),
             creating: previous.creating,
             code: previous.code.clone(),
-            notice: previous.notice.clone(),
         };
         // The instance owner skips RBAC, so their capabilities need no roles read and the button
         // is ready at once, as the web's `isOwner` does.
@@ -1269,19 +1268,15 @@ impl AppRoot {
         model
     }
 
-    /// Shows the invite card's notice for `INVITE_NOTICE_FOR`, as the web's snackbar
-    /// (`autoHideDuration` 3000); a newer notice starts the time again.
+    /// The invite card's notice, as a toast (the web's snackbar): a failure is danger.
     fn show_invite_notice(&mut self, notice: InviteNotice, cx: &mut Context<Self>) {
-        self.account.invite.notice = Some(notice);
-        self.account.invite_notice_timer = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(INVITE_NOTICE_FOR).await;
-            this.update(cx, |root, cx| {
-                root.account.invite.notice = None;
-                root.account.invite_notice_timer = None;
-                root.refresh_home(cx);
-            })
-            .ok();
-        }));
+        let request = ToastRequest::new(notice.text).id(INVITE_NOTICE);
+        let request = if notice.failed {
+            request.danger()
+        } else {
+            request.positive()
+        };
+        self.toasts().show(request, cx);
     }
 
     fn on_invite_card(&mut self, event: InviteEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -1298,7 +1293,7 @@ impl AppRoot {
                     return;
                 }
                 self.account.invite.creating = true;
-                self.account.invite.notice = None;
+                self.toasts().dismiss(INVITE_NOTICE, cx);
                 self.refresh_home(cx);
                 let now = i64::try_from(self.config.clock.now_ms()).unwrap_or(i64::MAX);
                 let draft = InstanceInviteDraft {

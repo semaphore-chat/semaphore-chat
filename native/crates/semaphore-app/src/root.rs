@@ -1982,11 +1982,22 @@ impl Render for AppRoot {
     /// that has nowhere else to go is on the root's own handle.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let sink = self.root_focus.clone();
-        semaphore_ui::kit::BehaviourRoot::new(self.render_app(window, cx)).focus_sink(&sink)
+        // The window's toast area over the app, at its foot (the root fills the window).
+        let app = div()
+            .size_full()
+            .relative()
+            .child(self.render_app(window, cx))
+            .child(semaphore_ui::kit::ToastRegion::new());
+        semaphore_ui::kit::BehaviourRoot::new(app).focus_sink(&sink)
     }
 }
 
 impl AppRoot {
+    /// The window's toast queue (`kit::Toasts`): screens' notices go there, never drawn by hand.
+    pub(super) fn toasts(&self) -> semaphore_ui::kit::Toasts {
+        semaphore_ui::kit::Toasts::for_window(self.window)
+    }
+
     fn render_app(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.reconcile(window, cx);
         // Window keys (push to talk above all) dispatch along the focus path. Nothing focused means
@@ -2041,7 +2052,6 @@ impl AppRoot {
             overlays.extend(self.admin_overlays(cx));
             overlays.extend(self.media_overlays(cx));
             overlays.extend(self.u9_overlays(cx));
-            overlays.extend(self.prejoin_overlays(cx));
             return root
                 .child(shell.clone())
                 .children(overlays)
