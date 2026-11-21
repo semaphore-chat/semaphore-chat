@@ -291,3 +291,38 @@ fn text_on_the_old_names_stays_readable_for_every_base() {
         check("primary_light on paper", p.primary_light, surface, 4.5);
     }
 }
+
+/// `text` as the UTF-16BE a TrueType name table stores for the Windows platform.
+fn utf16be(text: &str) -> Vec<u8> {
+    text.encode_utf16().flat_map(u16::to_be_bytes).collect()
+}
+
+#[test]
+fn the_bundled_fonts_are_truetype_named_as_the_tokens() {
+    // The test platform's text system registers nothing, so this checks the files GPUI is handed:
+    // TrueType, with the family name GPUI looks up (`font.body` and `font.heading`).
+    assert_eq!(FONT_FAMILY, "Figtree");
+    assert_eq!(HEADING_FONT_FAMILY, "Bricolage Grotesque");
+    let families = [
+        FONT_FAMILY,
+        FONT_FAMILY,
+        FONT_FAMILY,
+        FONT_FAMILY,
+        HEADING_FONT_FAMILY,
+        HEADING_FONT_FAMILY,
+    ];
+    for (index, (bytes, family)) in FONTS.iter().zip(families).enumerate() {
+        assert_eq!(bytes[..4], [0, 1, 0, 0], "font {index} is not TrueType");
+        let name = utf16be(family);
+        assert!(
+            bytes.windows(name.len()).any(|window| window == name),
+            "font {index} is not named {family}"
+        );
+        // fontsource's instance names must not survive: GPUI would file the face under them.
+        let wrong = utf16be(&format!("{family} Light"));
+        assert!(
+            !bytes.windows(wrong.len()).any(|window| window == wrong),
+            "font {index} still carries an instance name"
+        );
+    }
+}

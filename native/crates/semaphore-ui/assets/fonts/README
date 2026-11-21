@@ -1,2 +1,11 @@
-Roboto, Latin subset, weights 400/500/600/700: the files @fontsource/roboto (used by the web client) ships as woff2,
-decompressed to TTF with fontTools because GPUI needs TTF. SIL Open Font License 1.1: see LICENSE.
+The design system's fonts, as the web kit bundles them (frontend/src/kit/fonts.ts):
+Figtree 400, 400 italic, 500 and 600, and Bricolage Grotesque 600 and 700, from
+@fontsource/figtree 5.3.0 and @fontsource/bricolage-grotesque 5.3.0.
+
+Each file merges the Unicode subsets the web bundles for that face (Figtree: latin and
+latin-ext; Bricolage Grotesque: latin, latin-ext and vietnamese) into one TTF, because GPUI
+takes TTF, with the family name set so GPUI finds it. Text in any other script falls back to
+the system's fonts. Built by native/tools/fonts/build_fonts.py (fonttools 4.60.1, run once in
+a throwaway python:3.13-slim container; the files are committed).
+
+SIL Open Font License 1.1: see LICENSE.

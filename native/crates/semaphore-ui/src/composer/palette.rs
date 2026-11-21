@@ -6,7 +6,7 @@ use semaphore_design::Icon;
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
-pub const BODY_FONT: &str = "Roboto";
+pub const BODY_FONT: &str = crate::theme::FONT_FAMILY;
 
 /// MUI's outlined small field: 16 px on a 23 px line, padded to 40 px for one line.
 pub const FIELD_TEXT: f32 = 16.;

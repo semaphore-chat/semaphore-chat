@@ -24,14 +24,19 @@ use std::borrow::Cow;
 pub mod color;
 use color::{alpha, blend, hsla_of};
 
-/// The one font the web client ships, so widths and metrics match it.
-pub const FONT_FAMILY: &str = "Roboto";
+/// The body font (`font.body` in `design/tokens.json`), for every text the old screens draw.
+pub const FONT_FAMILY: &str = semaphore_design::lounge::FONT_BODY;
+/// The heading font (`font.heading`), for titles and names in converted screens.
+pub const HEADING_FONT_FAMILY: &str = semaphore_design::lounge::FONT_HEADING;
 
-const ROBOTO: [&[u8]; 4] = [
-    include_bytes!("../../assets/fonts/Roboto-400.ttf"),
-    include_bytes!("../../assets/fonts/Roboto-500.ttf"),
-    include_bytes!("../../assets/fonts/Roboto-600.ttf"),
-    include_bytes!("../../assets/fonts/Roboto-700.ttf"),
+/// The faces the web kit bundles (`frontend/src/kit/fonts.ts`); see `assets/fonts/README`.
+const FONTS: [&[u8]; 6] = [
+    include_bytes!("../../assets/fonts/Figtree-400.ttf"),
+    include_bytes!("../../assets/fonts/Figtree-400-italic.ttf"),
+    include_bytes!("../../assets/fonts/Figtree-500.ttf"),
+    include_bytes!("../../assets/fonts/Figtree-600.ttf"),
+    include_bytes!("../../assets/fonts/BricolageGrotesque-600.ttf"),
+    include_bytes!("../../assets/fonts/BricolageGrotesque-700.ttf"),
 ];
 
 /// The design system's default base colour, `#8e75ff` (the server's default `baseColor`).
@@ -421,10 +426,10 @@ impl SemTheme for App {
 }
 
 pub fn init(cx: &mut App) {
-    let fonts = ROBOTO.iter().map(|font| Cow::Borrowed(*font)).collect();
+    let fonts = FONTS.iter().map(|font| Cow::Borrowed(*font)).collect();
     if let Err(error) = cx.text_system().add_fonts(fonts) {
         // Text still draws, in a fallback font, so a bad font must not stop the app.
-        eprintln!("semaphore-ui: registering Roboto failed: {error}");
+        eprintln!("semaphore-ui: registering the bundled fonts failed: {error}");
     }
     apply(ThemeInput::default(), cx);
 }

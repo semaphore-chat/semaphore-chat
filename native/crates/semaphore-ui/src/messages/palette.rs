@@ -3,11 +3,11 @@
 
 use gpui_kit::*;
 
-/// The web client's font first, then what's likely on the machine. Picked from installed fonts
-/// rather than left to GPUI's fallback, because that fallback drops the weight: with Roboto missing,
-/// `font("Roboto")` bold draws as regular DejaVu. Bundling Roboto is the theme's job (U8).
+/// The bundled body font first (the theme registers it), then what's likely on the machine. Picked
+/// from installed fonts rather than left to GPUI's fallback, because that fallback drops the weight:
+/// with the font missing, bold draws as regular DejaVu.
 const BODY_FONTS: [&str; 5] = [
-    "Roboto",
+    crate::theme::FONT_FAMILY,
     "Noto Sans",
     "Segoe UI",
     "Cantarell",
@@ -46,7 +46,7 @@ impl Fonts {
     }
 }
 
-/// The column text wraps at. The web caps at `80ch`, about 720 px in Roboto at 16 px.
+/// The column text wraps at. The web caps at `80ch`, about 720 px at 16 px.
 pub const TEXT_MAX_WIDTH: f32 = 720.;
 pub const CODE_MAX_WIDTH: f32 = 1080.;
 pub const AVATAR: f32 = 32.;

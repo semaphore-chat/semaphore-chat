@@ -411,7 +411,7 @@ compiled in:
 | Asset | Where |
 |---|---|
 | Notification and call sounds (9 WAV files) | `crates/semaphore-app/assets/sounds`, `include_bytes!` in `sounds.rs` |
-| Roboto 400/500/600/700 | `crates/semaphore-ui/assets/fonts`, `include_bytes!` in `theme/mod.rs` |
+| Figtree 400/400 italic/500/600, Bricolage Grotesque 600/700 | `crates/semaphore-ui/assets/fonts`, `include_bytes!` in `theme/mod.rs` |
 | Emoji names and categories | `crates/semaphore-ui/assets/emoji/emoji.json`, `include_str!` in `emoji/data.rs` |
 | 317 design icons and Material icons | `crates/semaphore-design/assets/icons`, `include_bytes!` in `generated.rs` |
 | gpui-kit's Lucide icons | `gpui-kit-assets`, RustEmbed in the crate |
@@ -492,7 +492,7 @@ GPL-licensed code.
 - `third_party/vendor/webrtc-sys/NOTICE.md` (the vendored notices, including the Apache-2.0 and
   MIT texts);
 - a component table for the statically linked libwebrtc;
-- the Roboto (SIL OFL-1.1) and Material Icons (MIT) licence texts.
+- the Figtree and Bricolage Grotesque (SIL OFL-1.1), Material Icons (MIT) and Lucide (ISC) licence texts.
 
 libwebrtc is statically linked. Its components are permissive except FFmpeg, which WebRTC builds
 with `ffmpeg_branding = "Chrome"` and without GPL code: the H.264 decoder, a little libavutil and
