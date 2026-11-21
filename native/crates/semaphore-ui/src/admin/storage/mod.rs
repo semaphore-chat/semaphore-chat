@@ -313,12 +313,13 @@ impl StoragePage {
                 )
                 .action(
                     Button::new("admin-storage-quota-cancel", "Cancel")
+                        .ghost()
                         .disabled(busy)
                         .on_click(cx.listener(|page, _, _, cx| page.close_quota(cx))),
                 )
                 .action(
                     Button::new("admin-storage-quota-save", "Save")
-                        .contained()
+                        .primary()
                         .loading(busy)
                         .disabled(invalid.is_some() || typed.trim().is_empty() || busy)
                         .on_click(cx.listener(|page, _, _, cx| page.save_quota(cx))),

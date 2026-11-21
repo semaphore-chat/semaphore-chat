@@ -1494,19 +1494,21 @@ impl AppRoot {
                             .flex()
                             .justify_end()
                             .gap(px(8.))
-                            .child(Button::new("desktop-sign-in-dismiss", "Dismiss").on_click(
-                                move |_, _, cx| {
-                                    dismiss
-                                        .update(cx, |this, cx| {
-                                            this.account.desktop_sign_in = None;
-                                            cx.notify();
-                                        })
-                                        .ok();
-                                },
-                            ))
+                            .child(
+                                Button::new("desktop-sign-in-dismiss", "Dismiss")
+                                    .text()
+                                    .on_click(move |_, _, cx| {
+                                        dismiss
+                                            .update(cx, |this, cx| {
+                                                this.account.desktop_sign_in = None;
+                                                cx.notify();
+                                            })
+                                            .ok();
+                                    }),
+                            )
                             .child(
                                 Button::new("desktop-sign-in-review", "Review sessions")
-                                    .contained()
+                                    .primary()
                                     .on_click(move |_, _, cx| {
                                         review
                                             .update(cx, |this, cx| {

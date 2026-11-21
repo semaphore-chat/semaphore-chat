@@ -305,11 +305,13 @@ impl Render for ShortcutSheet {
             .width(600.)
             .body(body)
             .action(
-                Button::new("shortcuts-close", "Close").on_click(move |_, _, cx| {
-                    close_button
-                        .update(cx, |_, cx| cx.emit(ShortcutSheetEvent::Close))
-                        .ok();
-                }),
+                Button::new("shortcuts-close", "Close")
+                    .ghost()
+                    .on_click(move |_, _, cx| {
+                        close_button
+                            .update(cx, |_, cx| cx.emit(ShortcutSheetEvent::Close))
+                            .ok();
+                    }),
             )
             .on_close(move |_, cx| {
                 close_dialog

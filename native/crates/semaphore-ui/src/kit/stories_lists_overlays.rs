@@ -3,10 +3,10 @@
 //! and light, on the design default base colour.
 
 use super::{
-    Align, Avatar, Badge, BadgeTone, Button, ButtonTone, Dialog, DialogSize, Icon, IconButton,
-    ListRow, Menu, MenuEntry, MenuItem, MenuTone, Placement, Popover, PopoverExt, PopoverPadding,
-    PopoverPanel, RowSize, SelectField, Surface, Table, TableColumn, TableRow, TextField, Tip,
-    select_state, text_state,
+    Align, Avatar, Badge, BadgeTone, Button, Dialog, DialogSize, Icon, IconButton, ListRow, Menu,
+    MenuEntry, MenuItem, MenuTone, Placement, Popover, PopoverExt, PopoverPadding, PopoverPanel,
+    RowSize, SelectField, Surface, Table, TableColumn, TableRow, TextField, Tip, select_state,
+    text_state,
 };
 use crate::kit::overlays::type_text;
 use crate::stories::Story;
@@ -497,7 +497,7 @@ fn open_menu(placement: Placement) -> AnyElement {
         .child(
             div()
                 .relative()
-                .child(Button::new("menu-trigger", "Message options").outlined())
+                .child(Button::new("menu-trigger", "Message options").soft())
                 .child(
                     div()
                         .absolute()
@@ -558,8 +558,8 @@ fn rename_form(window: &mut Window, cx: &mut App) -> AnyElement {
                 .flex()
                 .justify_end()
                 .gap(px(SPACE_SM))
-                .child(Button::new("rename-cancel", "Cancel"))
-                .child(Button::new("rename-save", "Save").contained()),
+                .child(Button::new("rename-cancel", "Cancel").ghost())
+                .child(Button::new("rename-save", "Save").primary()),
         )
         .into_any_element()
 }
@@ -573,7 +573,7 @@ fn popover_open(padding: PopoverPadding, _: &mut Window, cx: &mut App) -> AnyEle
                     Popover::new("rename-popover")
                         .placement(Placement::BottomStart)
                         .default_open(true)
-                        .trigger_element(Button::new("rename-trigger", "Rename channel").outlined())
+                        .trigger_element(Button::new("rename-trigger", "Rename channel").soft())
                         .content(move |_, window, cx| {
                             PopoverPanel::new("Rename channel")
                                 .padding(padding)
@@ -599,20 +599,20 @@ fn popover_inside_dialog(cx: &App) -> AnyElement {
                         Popover::new("colour-popover")
                             .placement(Placement::BottomStart)
                             .default_open(true)
-                            .trigger_element(Button::new("pick-colour", "Pick colour").outlined())
+                            .trigger_element(Button::new("pick-colour", "Pick colour").soft())
                             .content(|_, _, _| {
                                 PopoverPanel::new("Colours").child(
                                     div().flex().gap(px(SPACE_SM)).children(
                                         SWATCHES
                                             .into_iter()
-                                            .map(|colour| Button::new(colour, colour)),
+                                            .map(|colour| Button::new(colour, colour).text()),
                                     ),
                                 )
                             }),
                     ),
                 )
-                .action(Button::new("edit-cancel", "Cancel"))
-                .action(Button::new("edit-save", "Save").contained()),
+                .action(Button::new("edit-cancel", "Cancel").ghost())
+                .action(Button::new("edit-save", "Save").primary()),
         )
         .into_any_element()
 }
@@ -729,11 +729,10 @@ fn confirm_dialog(
             "This removes the channel and its 1,204 messages for everyone in Couch Co-op. This can't be undone.",
         )
         .size(size)
-        .action(Button::new("confirm-cancel", "Cancel"))
+        .action(Button::new("confirm-cancel", "Cancel").ghost())
         .action(
             Button::new("confirm-delete", "Delete channel")
-                .contained()
-                .tone(ButtonTone::Danger),
+                .danger(),
         );
     if let Some(field) = field {
         dialog = dialog.body(field);
@@ -768,8 +767,8 @@ fn dialog_with_select(window: &mut Window, cx: &mut App) -> AnyElement {
             Dialog::new("Who can see #memes?")
                 .description("Pick who may read and post in this channel.")
                 .body(SelectField::new("story-audience", &audience, "Audience"))
-                .action(Button::new("select-cancel", "Cancel"))
-                .action(Button::new("select-save", "Save").contained()),
+                .action(Button::new("select-cancel", "Cancel").ghost())
+                .action(Button::new("select-save", "Save").primary()),
         )
         .into_any_element()
 }
@@ -792,19 +791,15 @@ fn dialog_from_card(window: &mut Window, cx: &mut App) -> AnyElement {
                     .flex_col()
                     .gap(px(SPACE_SM))
                     .child(type_text(t::TEXT_BODY_STRONG, "Squad Up"))
-                    .child(div().child(Button::new("leave-room", "Leave room"))),
+                    .child(div().child(Button::new("leave-room", "Leave room").text())),
             ),
         )
         .child(
             Dialog::new("Leave Squad Up?")
                 .description("You can rejoin any time while it is open.")
                 .body(TextField::new("why-field", &why, "Tell them why").placeholder("Optional"))
-                .action(Button::new("stay", "Stay"))
-                .action(
-                    Button::new("leave", "Leave")
-                        .contained()
-                        .tone(ButtonTone::Danger),
-                ),
+                .action(Button::new("stay", "Stay").text())
+                .action(Button::new("leave", "Leave").danger()),
         )
         .into_any_element()
 }

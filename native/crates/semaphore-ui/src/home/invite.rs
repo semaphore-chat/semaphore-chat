@@ -150,7 +150,7 @@ impl HomeScreen {
                                 DesignIcon::ContentCopy,
                                 "Copy invite link",
                             )
-                            .tiny()
+                            .small()
                             .on_click(cx.listener(|_, _, _, cx| {
                                 cx.emit(HomeEvent::Invite(InviteEvent::Copy))
                             })),
@@ -159,8 +159,8 @@ impl HomeScreen {
             })
             .child(
                 Button::new("home-invite-quick", "Quick invite")
-                    .contained()
-                    .size(ButtonSize::Small)
+                    .primary()
+                    .size(ButtonSize::Sm)
                     .disabled(!quick)
                     .loading(model.creating)
                     .on_click(cx.listener(|_, _, _, cx| {
@@ -170,8 +170,8 @@ impl HomeScreen {
             .when(model.can_manage, |controls| {
                 controls.child(
                     Button::new("home-invite-manage", "Manage")
-                        .outlined()
-                        .size(ButtonSize::Small)
+                        .soft()
+                        .size(ButtonSize::Sm)
                         .start_icon(DesignIcon::Settings)
                         .on_click(cx.listener(|_, _, _, cx| {
                             cx.emit(HomeEvent::Invite(InviteEvent::Manage))
@@ -184,7 +184,7 @@ impl HomeScreen {
                     DesignIcon::Close,
                     "Dismiss invite card",
                 )
-                .tiny()
+                .small()
                 .on_click(
                     cx.listener(|_, _, _, cx| cx.emit(HomeEvent::Invite(InviteEvent::Dismiss))),
                 ),

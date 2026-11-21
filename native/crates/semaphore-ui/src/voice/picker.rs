@@ -203,9 +203,11 @@ pub fn source_picker(model: &PickerModel, actions: PickerActions) -> impl IntoEl
     let tab_button = |kind: CaptureKind, id: &'static str, name: &str| {
         let on_tab = on_tab.clone();
         let label = format!("{name} ({})", model.count(kind));
-        let button = Button::new(id, label).on_click(move |_, window, cx| on_tab(kind, window, cx));
+        let button = Button::new(id, label)
+            .text()
+            .on_click(move |_, window, cx| on_tab(kind, window, cx));
         if model.tab == kind {
-            button.contained()
+            button.primary()
         } else {
             button
         }
@@ -289,11 +291,12 @@ pub fn source_picker(model: &PickerModel, actions: PickerActions) -> impl IntoEl
         .body(div().flex().flex_col().child(tabs).child(body))
         .action(
             Button::new("picker-cancel", "Cancel")
+                .ghost()
                 .on_click(move |_, window, cx| cancel(window, cx)),
         )
         .action(
             Button::new("picker-share", "Share")
-                .contained()
+                .primary()
                 .disabled(selected.is_none())
                 .on_click(move |_, window, cx| {
                     if let Some(id) = &selected {

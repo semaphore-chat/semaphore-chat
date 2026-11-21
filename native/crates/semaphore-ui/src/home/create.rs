@@ -200,6 +200,7 @@ impl Render for CreateCommunityForm {
             )
             .action(
                 Button::new("create-community-cancel", "Cancel")
+                    .ghost()
                     .disabled(busy)
                     .on_click(move |_, _, cx| {
                         cancel
@@ -216,7 +217,7 @@ impl Render for CreateCommunityForm {
                         "Create Community"
                     },
                 )
-                .contained()
+                .primary()
                 .loading(busy)
                 .disabled(busy || name.trim().is_empty())
                 .on_click(move |_, _, cx| {

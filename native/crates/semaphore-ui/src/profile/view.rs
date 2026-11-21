@@ -39,16 +39,16 @@ fn other_actions<V: EventEmitter<ProfileEvent>>(
     cx: &mut Context<V>,
 ) -> Vec<AnyElement> {
     let size = if small {
-        ButtonSize::Small
+        ButtonSize::Sm
     } else {
-        ButtonSize::Medium
+        ButtonSize::Md
     };
     let mut out = Vec::new();
     if actions.can_message {
         let user_id = user_id.to_owned();
         out.push(
             Button::new("profile-message", "Message")
-                .contained()
+                .primary()
                 .size(size)
                 .start_icon(DesignIcon::Chat)
                 .full_width()
@@ -66,7 +66,7 @@ fn other_actions<V: EventEmitter<ProfileEvent>>(
             let user_id = user_id.to_owned();
             out.push(
                 Button::new("profile-add-friend", "Add Friend")
-                    .outlined()
+                    .soft()
                     .size(size)
                     .start_icon(DesignIcon::PersonAdd)
                     .full_width()
@@ -80,7 +80,7 @@ fn other_actions<V: EventEmitter<ProfileEvent>>(
         }
         FriendAction::Pending => out.push(
             Button::new("profile-friend-pending", "Request pending")
-                .outlined()
+                .soft()
                 .size(size)
                 .full_width()
                 .disabled(true)
@@ -167,8 +167,8 @@ impl Render for ProfileModal {
                 };
                 buttons.push(
                     Button::new("profile-view-page", "View Profile")
-                        .outlined()
-                        .size(ButtonSize::Small)
+                        .soft()
+                        .size(ButtonSize::Sm)
                         .start_icon(DesignIcon::Person)
                         .full_width()
                         .on_click(cx.listener(move |_, _, _, cx| {
@@ -298,14 +298,14 @@ impl Render for ProfilePage {
             .justify_between()
             .child(
                 Button::new("profile-back", "Back")
+                    .ghost()
                     .start_icon(DesignIcon::ArrowBack)
-                    .color(sem.text_primary)
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(ProfileEvent::Back))),
             )
             .when(is_me, |top| {
                 top.child(
                     Button::new("profile-edit", "Edit Profile")
-                        .contained()
+                        .primary()
                         .start_icon(DesignIcon::Edit)
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(ProfileEvent::Edit))),
                 )

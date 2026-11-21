@@ -538,7 +538,7 @@ impl InstanceSettingsPage {
         .disabled(!editable);
 
         let save = Button::new("admin-settings-save", "Save")
-            .contained()
+            .primary()
             .disabled(!self.caps.settings_write || busy || !dirty || checks.any())
             .loading(busy)
             .on_click(cx.listener(|page, _, _, cx| page.submit(cx)));

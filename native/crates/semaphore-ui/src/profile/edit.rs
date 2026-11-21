@@ -304,8 +304,8 @@ impl ProfileEditForm {
                     SharedString::from(format!("profile-{key}-change")),
                     "Change",
                 )
-                .outlined()
-                .size(ButtonSize::Small)
+                .soft()
+                .size(ButtonSize::Sm)
                 .start_icon(if slot == ImageSlot::Avatar {
                     DesignIcon::PhotoCamera
                 } else {
@@ -322,7 +322,8 @@ impl ProfileEditForm {
                         SharedString::from(format!("profile-{key}-remove")),
                         "Remove",
                     )
-                    .size(ButtonSize::Small)
+                    .quiet_danger()
+                    .size(ButtonSize::Sm)
                     .start_icon(DesignIcon::Delete)
                     .disabled(busy)
                     .on_click(cx.listener(move |form, _, _, cx| form.remove(slot, cx))),
@@ -540,8 +541,8 @@ impl Render for ProfileEditForm {
         let phone = is_phone(window);
         let busy = self.is_busy();
         let back = Button::new("profile-edit-back", "Back")
+            .ghost()
             .start_icon(DesignIcon::ArrowBack)
-            .color(sem.text_primary)
             .on_click(cx.listener(|_, _, _, cx| cx.emit(ProfileEditEvent::Cancel)));
         let body: AnyElement = match (&self.view.state, &self.base) {
             (_, Some(_)) => {
@@ -595,8 +596,8 @@ impl Render for ProfileEditForm {
                     .child(
                         div().flex_1().flex().child(
                             Button::new("profile-save", save_label)
-                                .contained()
-                                .size(ButtonSize::Large)
+                                .primary()
+                                .size(ButtonSize::Lg)
                                 .full_width()
                                 .loading(busy)
                                 .disabled(!can_save)
@@ -605,8 +606,8 @@ impl Render for ProfileEditForm {
                     )
                     .child(
                         Button::new("profile-cancel", "Cancel")
-                            .outlined()
-                            .size(ButtonSize::Large)
+                            .soft()
+                            .size(ButtonSize::Lg)
                             .disabled(busy)
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(ProfileEditEvent::Cancel))),
                     );

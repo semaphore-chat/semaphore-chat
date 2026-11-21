@@ -121,16 +121,20 @@ impl ConversationPane {
                 .justify_center()
                 .px(px(16.))
                 .pb(px(8.))
-                .child(Snackbar::new(notice).action(
-                    Button::new("pane-notice-dismiss", "Dismiss").on_click(move |_, _, cx| {
-                        dismiss
-                            .update(cx, |pane, cx| {
-                                pane.notice = None;
-                                cx.notify();
-                            })
-                            .ok();
-                    }),
-                ))
+                .child(
+                    Snackbar::new(notice).action(
+                        Button::new("pane-notice-dismiss", "Dismiss")
+                            .text()
+                            .on_click(move |_, _, cx| {
+                                dismiss
+                                    .update(cx, |pane, cx| {
+                                        pane.notice = None;
+                                        cx.notify();
+                                    })
+                                    .ok();
+                            }),
+                    ),
+                )
                 .into_any_element(),
         )
     }

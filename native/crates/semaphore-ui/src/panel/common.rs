@@ -187,7 +187,7 @@ pub(crate) fn error_block(
                 .mb(px(12.))
                 .text_center(),
         )
-        .child(Button::new(id, "Try again").outlined().on_click(on_retry))
+        .child(Button::new(id, "Try again").soft().on_click(on_retry))
         .into_any_element()
 }
 

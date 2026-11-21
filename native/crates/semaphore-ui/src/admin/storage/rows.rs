@@ -63,7 +63,7 @@ impl StoragePage {
                 ))
                 .child(
                     Button::new("admin-storage-retry", "Try again")
-                        .outlined()
+                        .soft()
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(StorageEvent::Retry))),
                 )
                 .into_any_element(),
@@ -97,7 +97,7 @@ impl StoragePage {
         let more = (self.view.state == LoadState::Ready && self.view.more).then(|| {
             div().flex().justify_center().pt(spacing(1.)).child(
                 Button::new("admin-storage-more", "Load more")
-                    .outlined()
+                    .soft()
                     .loading(self.view.loading_more)
                     .disabled(self.view.loading_more)
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(StorageEvent::LoadMore))),
@@ -203,8 +203,8 @@ impl StoragePage {
             SharedString::from(format!("admin-storage-quota-{}", row.user_id)),
             "Quota",
         )
-        .outlined()
-        .size(ButtonSize::Small)
+        .soft()
+        .size(ButtonSize::Sm)
         .start_icon(DesignIcon::Storage)
         .disabled(quota_busy)
         .on_click(cx.listener({
@@ -215,8 +215,8 @@ impl StoragePage {
             SharedString::from(format!("admin-storage-recalc-{}", row.user_id)),
             "Recalculate",
         )
-        .outlined()
-        .size(ButtonSize::Small)
+        .soft()
+        .size(ButtonSize::Sm)
         .start_icon(DesignIcon::Refresh)
         .loading(recalc_busy)
         .disabled(recalc_busy)
