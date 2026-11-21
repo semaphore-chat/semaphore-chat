@@ -342,7 +342,8 @@ impl RenderOnce for Dialog {
     }
 }
 
-/// MuiTooltip's box. Attach it with [`with_tip`].
+/// The tooltip's box: the theme's inverted pair (`tooltip_bg`, `tooltip_text`), as the web kit's
+/// Tooltip. Attach it with [`with_tip`].
 pub struct Tip(pub SharedString);
 
 impl Render for Tip {
@@ -352,7 +353,7 @@ impl Render for Tip {
             .py(px(4.))
             .rounded(px(4.))
             .bg(cx.sem().tooltip_bg)
-            .text_color(rgb(0xffffff))
+            .text_color(cx.sem().tooltip_text)
             .child(text(Variant::Xs, self.0.clone()).font_weight(FontWeight(500.)))
     }
 }

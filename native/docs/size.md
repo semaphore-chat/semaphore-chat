@@ -103,7 +103,7 @@ packetisation code. Legacy audio codecs are 0.04 MB. Desktop capture is 0.11 MB.
 
 ### Assets
 
-No fonts are embedded (text uses system fonts through fontconfig; Roboto is not bundled yet, see 2).
+No fonts were embedded at the time of this measurement. Since epic #848 B1 the UI bundles Figtree and Bricolage Grotesque (six TTFs, about 0.31 MB).
 The 317 SVG icons embedded with `include_bytes!` (ours and gpui-component's) total 0.11 MB, the emoji
 table 0.01 MB, six small PNGs. **Assets are about 0.1% of the binary.**
 

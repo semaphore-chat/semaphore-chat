@@ -2189,7 +2189,10 @@ impl Rig {
                 }),
                 Condition::Theme(name) => cx
                     .try_global::<semaphore_ui::theme::Sem>()
-                    .is_some_and(|sem| sem.choice.name() == *name),
+                    // A name in either form: `dark-minimal-0d9488`, or the old `dark-teal-minimal`.
+                    .is_some_and(|sem| {
+                        semaphore_ui::theme::ThemeInput::parse(name) == Some(sem.input)
+                    }),
                 Condition::Engine(key, value) => {
                     let Some(voice) = root.app_voice() else {
                         return Some(false);

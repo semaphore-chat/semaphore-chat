@@ -6,10 +6,34 @@
 //! the Rust client, the web client and the shared vectors cannot drift on a
 //! floating-point rounding difference.
 
+use crate::Rgba;
 use crate::colour_params::{
     ACCENT_TEXT_CONTRAST, CHROMA_REFERENCE, DARK, INK, INTENSITY, LIGHT, ModeParams, PAPER, STATUS,
 };
-use crate::{Intensity, Mode, Rgba};
+
+/// Light or dark: which end of the lightness scale the grounds sit at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Mode {
+    Light,
+    Dark,
+}
+
+impl Mode {
+    pub const ALL: [Mode; 2] = [Mode::Light, Mode::Dark];
+}
+
+/// How much of the base colour's hue reaches the neutral roles (`colour.intensity`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Intensity {
+    Minimal,
+    Balanced,
+    Vibrant,
+}
+
+impl Intensity {
+    /// Weakest first.
+    pub const ALL: [Intensity; 3] = [Intensity::Minimal, Intensity::Balanced, Intensity::Vibrant];
+}
 
 /// One mode's 16 colour roles, packed `0xRRGGBBAA`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

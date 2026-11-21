@@ -496,7 +496,8 @@ impl Shell {
         let channel = self.channel()?;
         let sem = cx.sem();
         let pinned = self.pinned_count;
-        let (secondary, primary_badge) = (sem.text_secondary, sem.primary);
+        let (secondary, primary_badge, on_primary_badge) =
+            (sem.text_secondary, sem.primary, sem.primary_contrast);
         let icon_color = sem.action_active;
         Some(
             Paper::new()
@@ -569,7 +570,7 @@ impl Shell {
                                             .justify_center()
                                             .rounded_full()
                                             .bg(primary_badge)
-                                            .text_color(rgb(0xffffff))
+                                            .text_color(on_primary_badge)
                                             .child(text(Variant::Caption, pinned.to_string())),
                                     )
                                 }),

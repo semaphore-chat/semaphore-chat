@@ -40,7 +40,7 @@ pub enum ButtonTone {
 }
 
 /// The three paints and the label a filled button draws with. For the default tone `background` and
-/// `hover` are the theme's accent (a gradient in the balanced and vibrant intensities).
+/// `hover` are the theme's accent and its hover state.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct FilledTone {
     background: Paint,
@@ -813,26 +813,45 @@ impl RenderOnce for Slider {
 mod tests {
     use super::*;
     // `gpui_kit::*` brings GPUI's `test` attribute in too, and it would win.
-    use crate::theme::ThemeChoice;
+    use crate::theme::ThemeInput;
     use crate::theme::color::{contrast_ratio, token_of};
     use core::prelude::v1::test;
 
     fn solid(paint: Paint) -> Hsla {
-        match paint {
-            Paint::Solid(color) => color,
-            Paint::Linear(..) => panic!("a tone fill is solid"),
+        paint.color()
+    }
+
+    /// Every hue at 30 degree steps, plus grey and the default, in both modes and intensities.
+    fn inputs() -> Vec<ThemeInput> {
+        let mut bases: Vec<u32> = vec![
+            0xff0000, 0xff8000, 0xffff00, 0x80ff00, 0x00ff00, 0x00ff80, 0x00ffff, 0x0080ff,
+            0x0000ff, 0x8000ff, 0xff00ff, 0xff0080,
+        ];
+        bases.extend([0x808080, 0x8e75ff]);
+        let mut all = Vec::new();
+        for base in bases {
+            for mode in semaphore_design::Mode::ALL {
+                for intensity in semaphore_design::Intensity::ALL {
+                    all.push(ThemeInput::new(
+                        semaphore_design::Rgba(base << 8 | 0xff),
+                        mode,
+                        intensity,
+                    ));
+                }
+            }
         }
+        all
     }
 
     #[test]
     fn tone_labels_read_on_every_fill_in_every_theme() {
-        for choice in ThemeChoice::all() {
-            let sem = Sem::new(choice);
+        for input in inputs() {
+            let sem = Sem::new(input);
             for tone in [ButtonTone::Danger, ButtonTone::Warning] {
                 let paint = tone.paint(&sem);
                 for fill in [paint.background, paint.hover, paint.pressed] {
                     let ratio = contrast_ratio(token_of(paint.label), token_of(solid(fill)));
-                    assert!(ratio >= 4.5, "{tone:?} label in {}: {ratio}", choice.name());
+                    assert!(ratio >= 4.5, "{tone:?} label in {}: {ratio}", input.name());
                 }
             }
         }
@@ -840,8 +859,8 @@ mod tests {
 
     #[test]
     fn the_default_tone_is_the_accent() {
-        for choice in ThemeChoice::all() {
-            let sem = Sem::new(choice);
+        for input in inputs() {
+            let sem = Sem::new(input);
             let paint = ButtonTone::Default.paint(&sem);
             assert_eq!(paint.background, sem.contained);
             assert_eq!(paint.hover, sem.contained_hover);

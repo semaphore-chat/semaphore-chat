@@ -1,5 +1,9 @@
 # U2: design tokens and icons from the web client
 
+> Superseded in part (epic #848, B1): the 72 resolved palettes (`Tokens`, `Accent`, `tokens()`,
+> `data/tokens.json`) are gone. The native theme derives its palette from a base colour; see
+> `docs/theme.md`. `tools/gen-design` now generates only the MUI icon set and `type_scale`.
+
 Read `_rules.md` here first. Work in `native/`.
 
 ## Goal

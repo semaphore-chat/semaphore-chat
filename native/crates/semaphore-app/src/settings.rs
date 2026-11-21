@@ -203,7 +203,8 @@ pub struct Settings {
     /// image, off by default, because each one tells that site the viewer's address. v2's
     /// `link_preview_images`, widened to GIFs.
     pub third_party_media: bool,
-    /// The last appearance this app showed (`ThemeChoice::name`), so a start draws in it before
+    /// The last appearance this app showed (`ThemeInput::name`; an older `dark-teal-minimal` reads as
+    /// that accent's primary), so a start draws in it before
     /// the server's appearance arrives, and the signed-out screens keep it.
     pub theme: Option<String>,
     /// W4: the float card's placement per viewport bucket (`StoredPlacement`).

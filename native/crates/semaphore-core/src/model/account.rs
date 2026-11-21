@@ -54,10 +54,11 @@ pub enum ThemeMode {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum AccentColor {
-    #[default]
     Teal,
     Blue,
     Indigo,
+    /// The server's default (`accentColor` in the schema), the nearest accent to `#8e75ff`.
+    #[default]
     Purple,
     Rose,
     Red,
@@ -234,21 +235,32 @@ pub struct Appearance {
     pub match_system: bool,
     /// `newDesign`: the new design, stored here for the UI that will use it.
     pub new_design: bool,
+    /// The server stores `baseColor` and `matchSystem` (v0.11.0 on). An older one (down to the
+    /// contract's floor, v0.8.0) sends neither and drops both from an update: it keeps only the
+    /// named accent, so the UI offers the accents' colours there and no "Match system".
+    pub base_colour_settings: bool,
 }
 
 impl Default for Appearance {
     fn default() -> Self {
-        let accent = AccentColor::default();
         Self {
             mode: ThemeMode::default(),
-            accent,
+            accent: AccentColor::default(),
             intensity: ThemeIntensity::default(),
-            base: accent.primary(),
+            base: DEFAULT_BASE,
             match_system: false,
             new_design: false,
+            base_colour_settings: true,
         }
     }
 }
+
+/// The server's default `baseColor` (`#8e75ff`), the design system's default base.
+pub const DEFAULT_BASE: Rgb = Rgb {
+    r: 0x8e,
+    g: 0x75,
+    b: 0xff,
+};
 
 /// What `Core::update_appearance` changes: each `None` is left as it is.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -298,6 +310,39 @@ mod tests {
                 Some((name.trim(), hex.strip_suffix('\'')?.to_owned()))
             })
             .collect()
+    }
+
+    /// The server's schema, read as text, for the defaults a new account gets.
+    const SCHEMA: &str = include_str!("../../../../../backend/prisma/schema.prisma");
+
+    /// `<field> String @default("<value>")` in `UserAppearanceSettings`.
+    fn schema_default(field: &str) -> &'static str {
+        let model = SCHEMA
+            .split_once("model UserAppearanceSettings {")
+            .expect("the schema declares UserAppearanceSettings")
+            .1;
+        let line = model
+            .lines()
+            .find(|line| line.split_whitespace().next() == Some(field))
+            .unwrap_or_else(|| panic!("UserAppearanceSettings has no {field}"));
+        line.split_once("@default(\"")
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .unwrap_or_else(|| panic!("{field} has no string default"))
+            .0
+    }
+
+    #[test]
+    fn the_default_appearance_is_the_servers() {
+        let appearance = Appearance::default();
+        assert_eq!(appearance.base.to_hex(), schema_default("baseColor"));
+        assert_eq!(appearance.base, DEFAULT_BASE);
+        assert_eq!(appearance.accent.name(), schema_default("accentColor"));
+        assert_eq!(AccentColor::nearest_to(DEFAULT_BASE), appearance.accent);
+        assert_eq!(schema_default("themeMode"), "dark");
+        assert_eq!(appearance.mode, ThemeMode::Dark);
+        assert_eq!(schema_default("intensity"), "minimal");
+        assert_eq!(appearance.intensity, ThemeIntensity::Minimal);
+        assert!(!appearance.match_system);
     }
 
     #[test]

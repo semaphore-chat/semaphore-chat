@@ -997,7 +997,7 @@ fn render_link_previews(
         text = text.child(
             div()
                 .font_weight(FontWeight::SEMIBOLD)
-                .text_color(palette.primary)
+                .text_color(palette.primary_light)
                 .truncate()
                 .child(preview.title.clone().unwrap_or_else(|| preview.url.clone())),
         );
@@ -1556,7 +1556,7 @@ fn render_reactions(
         chip = if reaction.me {
             chip.bg(tint)
                 .border_color(palette.tint(palette.primary, 0.3))
-                .text_color(palette.primary)
+                .text_color(palette.primary_light)
                 .font_weight(FontWeight::SEMIBOLD)
                 .hover(|style| style.bg(palette.tint(palette.primary, 0.25)))
         } else {
@@ -1625,7 +1625,7 @@ fn render_thread_badge(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyEleme
             .rounded(px(4.))
             .text_size(px(CAPTION_SIZE))
             .font_weight(FontWeight::MEDIUM)
-            .text_color(palette.primary)
+            .text_color(palette.primary_light)
             .hover(|style| style.bg(palette.tint(palette.primary, 0.08)))
             .on_click(move |_, _, cx| {
                 if let Some(message_id) = message_id.clone() {

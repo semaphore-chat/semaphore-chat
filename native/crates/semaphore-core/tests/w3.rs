@@ -1012,6 +1012,7 @@ async fn the_base_colour_is_parsed_and_falls_back_to_the_accent() {
     served["baseColor"] = json!("#123456");
     rig.backend.w3.answer("appearance", served);
     let rig = rig.signed_in().await;
+    assert!(rig.core.appearance().appearance.base_colour_settings);
     assert_eq!(
         rig.core.appearance().appearance.base,
         Rgb {
@@ -1029,6 +1030,8 @@ async fn the_base_colour_is_parsed_and_falls_back_to_the_accent() {
         let rig = Rig::new();
         rig.backend.w3.answer("appearance", served);
         let rig = rig.signed_in().await;
+        // No base colour served: the server stores neither it nor `matchSystem`.
+        assert!(!rig.core.appearance().appearance.base_colour_settings);
         assert_eq!(
             rig.core.appearance().appearance.base,
             Rgb {
@@ -1041,7 +1044,7 @@ async fn the_base_colour_is_parsed_and_falls_back_to_the_accent() {
 }
 
 #[tokio::test]
-async fn an_appearance_patch_sends_one_colour_field() {
+async fn an_appearance_patch_sends_a_base_with_its_nearest_accent() {
     let rig = Rig::new().signed_in().await;
     rig.backend.w3.answer(
         "update_appearance",
@@ -1060,20 +1063,38 @@ async fn an_appearance_patch_sends_one_colour_field() {
             .expect("the body is JSON")
     }
 
-    // A base goes alone: the server derives the accent, so an accent beside it is dropped.
+    // A base goes with its nearest accent, never the patch's own: a server with the base colour
+    // derives the accent from the base (ignoring the one beside it), and an older server, which
+    // drops `baseColor`, takes the accent, so the pick lands there too.
+    let base = Rgb {
+        r: 0x12,
+        g: 0x34,
+        b: 0x56,
+    };
     rig.core
         .update_appearance(AppearancePatch {
-            base: Some(Rgb {
-                r: 0x12,
-                g: 0x34,
-                b: 0x56,
-            }),
+            base: Some(base),
             accent: Some(AccentColor::Rose),
             ..AppearancePatch::default()
         })
         .await
         .unwrap();
-    assert_eq!(sent(&rig), json!({ "baseColor": "#123456" }));
+    assert_eq!(
+        sent(&rig),
+        json!({ "baseColor": "#123456", "accentColor": AccentColor::nearest_to(base).name() })
+    );
+    // The default base goes with purple, the accent an older server shows for it.
+    rig.core
+        .update_appearance(AppearancePatch {
+            base: Some(semaphore_core::model::DEFAULT_BASE),
+            ..AppearancePatch::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        sent(&rig),
+        json!({ "baseColor": "#8e75ff", "accentColor": "purple" })
+    );
 
     // A named accent goes alone, as the accent picker sends it.
     rig.core

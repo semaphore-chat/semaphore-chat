@@ -1342,7 +1342,7 @@ impl Render for MessageList {
         if self.follow_theme
             && let Some(sem) = cx.try_global::<crate::theme::Sem>()
         {
-            let palette = Palette::for_theme(sem.choice);
+            let palette = Palette::from_sem(sem);
             let old = self.shared.palette.get();
             if (old.text, old.background, old.primary)
                 != (palette.text, palette.background, palette.primary)

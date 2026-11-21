@@ -1,6 +1,6 @@
 //! Renders stories to PNGs, with no display server, and drives them through scripted steps.
 //!
-//!   rig-shot <story> <width> <height> <out.png> [--theme <mode>-<accent>-<intensity>]
+//!   rig-shot <story> <width> <height> <out.png> [--theme <mode>-<intensity>-<rrggbb>]
 //!   rig-shot --script <file.steps> --out <dir>
 //!   rig-shot --list
 //!   rig-shot --compare <jobs.tsv> --composites <dir> [--fuzz <percent>]
@@ -23,7 +23,7 @@ use semaphore_core::model::{Conversation, ListOp, MessageRow, UserView, ViewKey}
 use semaphore_ui::kit::{UiAssets, emit_core_event, set_reduced_motion};
 use semaphore_ui::shell::stories_impl::ActiveFixture;
 use semaphore_ui::stories::{self, StoryEnv, StoryRoot};
-use semaphore_ui::theme::{self, ThemeChoice};
+use semaphore_ui::theme::{self, ThemeInput};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -49,7 +49,7 @@ impl Rig {
         }
     }
 
-    fn open(&mut self, name: &str, width: f32, height: f32, choice: ThemeChoice) -> Result<()> {
+    fn open(&mut self, name: &str, width: f32, height: f32, choice: ThemeInput) -> Result<()> {
         if let Some(window) = self.driver.window.take() {
             self.driver
                 .cx
@@ -108,13 +108,13 @@ impl Rig {
                     height,
                     theme,
                 } => {
-                    let choice = ThemeChoice::parse(theme)
-                        .ok_or_else(|| anyhow!("unknown theme {theme}"))?;
+                    let choice =
+                        ThemeInput::parse(theme).ok_or_else(|| anyhow!("unknown theme {theme}"))?;
                     self.open(name, *width, *height, choice)?;
                 }
                 Step::Theme { name } => {
                     let choice =
-                        ThemeChoice::parse(name).ok_or_else(|| anyhow!("unknown theme {name}"))?;
+                        ThemeInput::parse(name).ok_or_else(|| anyhow!("unknown theme {name}"))?;
                     self.driver.cx.update(|cx| theme::apply(choice, cx));
                 }
                 Step::Emit(emit) => self.emit(emit)?,
@@ -270,8 +270,8 @@ fn main() -> Result<()> {
     let width: f32 = width.parse().context("width")?;
     let height: f32 = height.parse().context("height")?;
     let choice = match theme {
-        Some(name) => ThemeChoice::parse(&name).ok_or_else(|| anyhow!("unknown theme {name}"))?,
-        None => ThemeChoice::default(),
+        Some(name) => ThemeInput::parse(&name).ok_or_else(|| anyhow!("unknown theme {name}"))?,
+        None => ThemeInput::default(),
     };
     let mut rig = Rig::new();
     rig.open(story, width, height, choice)?;

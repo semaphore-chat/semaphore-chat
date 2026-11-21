@@ -114,6 +114,9 @@ fn appearance_of(dto: &wire::AppearanceSettingsResponseDto) -> Appearance {
         base: Rgb::parse(&dto.base_color).unwrap_or_else(|| accent.primary()),
         match_system: dto.match_system,
         new_design: dto.new_design,
+        // A server with the base-colour settings always sends a valid `baseColor`; an older one
+        // none.
+        base_colour_settings: Rgb::parse(&dto.base_color).is_some(),
     }
 }
 
@@ -333,18 +336,19 @@ impl Core {
     /// Changes the fields the patch sets. Shown at once; back if the server refuses.
     pub async fn update_appearance(&self, patch: AppearancePatch) -> Result<(), CoreError> {
         let (services, epoch) = self.begin("appearance settings")?;
-        // The two colour fields never travel together: the server derives the accent from the
-        // base, and ignores an accent sent beside it.
+        // A base goes out with its nearest accent: a server with the base colour derives the
+        // accent from the base and ignores the one beside it, and an older server (below
+        // v0.11.0), which drops `baseColor`, takes the accent, so the pick still lands there.
         let base = patch
             .base
             .map(|base| wire::UpdateAppearanceSettingsDtoBaseColor::try_from(base.to_hex()))
             .transpose()
             .expect("`Rgb::to_hex` writes the #rrggbb the contract's pattern takes");
         let body = wire::UpdateAppearanceSettingsDto {
-            accent_color: patch
-                .accent
-                .filter(|_| patch.base.is_none())
-                .map(wire_accent),
+            accent_color: match patch.base {
+                Some(base) => Some(wire_accent(AccentColor::nearest_to(base))),
+                None => patch.accent.map(wire_accent),
+            },
             base_color: base,
             intensity: patch.intensity.map(wire_intensity),
             match_system: patch.match_system,

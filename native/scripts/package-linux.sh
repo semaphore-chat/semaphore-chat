@@ -320,7 +320,8 @@ EOF
 
 Bundled assets
 --------------
-Roboto 400/500/600/700 (native/crates/semaphore-ui/assets/fonts) — SIL Open Font License 1.1.
+Figtree and Bricolage Grotesque (native/crates/semaphore-ui/assets/fonts) — SIL Open Font License 1.1.
+Lucide icons (native/crates/semaphore-design/assets/lucide) — ISC.
 Material Icons (native/crates/semaphore-design/assets/icons) — MIT.
 Lucide icons, through gpui-kit-assets — ISC.
 The emoji names and categories in native/crates/semaphore-ui/assets/emoji are part of the
@@ -365,6 +366,10 @@ EOF
     echo "Material Icons licence (MIT)"
     echo "----------------------------"
     cat "$NATIVE_DIR/crates/semaphore-design/assets/icons/LICENSE"
+    echo
+    echo "Lucide licence (ISC)"
+    echo "--------------------"
+    cat "$NATIVE_DIR/../design/icons/LICENSE"
   } >"$out"
 }
 

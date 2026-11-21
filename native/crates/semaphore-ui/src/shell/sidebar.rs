@@ -384,17 +384,13 @@ impl Shell {
             hsla(0., 0., 0., 0.04)
         };
         let color = if selected {
-            sem.primary
+            sem.link
         } else if unread {
             sem.text_primary
         } else {
             sem.text_secondary
         };
-        let hover_color = if selected {
-            sem.primary
-        } else {
-            sem.text_primary
-        };
+        let hover_color = if selected { sem.link } else { sem.text_primary };
         let pill = sem.text_primary.opacity(0.8);
         let lock_color = sem.text_secondary;
         let weight = if unread {
@@ -632,6 +628,7 @@ fn voice_user_row(
     // `CompactUserItem`'s ring: only for someone who can be heard.
     let speaking = participant.is_some_and(|p| p.speaking) && !muted && !deafened;
     let hover = sem.action_hover;
+    let on_negative = crate::theme::color::hsla_of(sem.palette.error_contrast_text);
     let (negative, positive, primary, secondary) = (
         sem.negative,
         sem.positive,
@@ -705,7 +702,7 @@ fn voice_user_row(
                                         IconName::MicOff
                                     })
                                     .size(10.)
-                                    .color(hsla(0., 0., 1., 1.)),
+                                    .color(on_negative),
                                 ),
                         )
                     }),

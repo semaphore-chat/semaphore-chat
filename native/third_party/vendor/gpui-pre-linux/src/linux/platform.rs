@@ -141,7 +141,9 @@ impl LinuxCommon {
             background_executor,
             foreground_executor: ForegroundExecutor::new(dispatcher),
             text_system,
-            appearance: WindowAppearance::Light,
+            // Semaphore: dark until the Settings portal says otherwise. Without the portal (a bare
+            // Hyprland or sway) nothing ever reports a scheme, and dark is the design default.
+            appearance: WindowAppearance::Dark,
             auto_hide_scrollbars: false,
             button_layout: WindowButtonLayout::linux_default(),
             callbacks,

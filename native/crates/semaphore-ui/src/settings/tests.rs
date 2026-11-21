@@ -5,7 +5,7 @@ use super::desktop::link_note;
 use super::voice::{device_rows, transmitting};
 use super::{camera_test, *};
 use crate::dms::rig::{Rig, rig};
-use crate::theme::ThemeChoice;
+use crate::theme::ThemeInput;
 use core::prelude::v1::test;
 use gpui_kit::TestAppContext;
 use gpui_kit::component::select::SelectEvent;
@@ -18,6 +18,7 @@ use semaphore_core::model::{
     AccentColor, Appearance, AppearancePatch, AppearanceView, ErrorView, SessionRow,
     ThemeIntensity, ThemeMode,
 };
+use semaphore_design::{Intensity, Mode, Rgba};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -79,46 +80,69 @@ fn stored_keys_read_as_names() {
 
 #[test]
 fn every_appearance_maps_to_its_theme() {
-    let modes = [(ThemeMode::Dark, "dark"), (ThemeMode::Light, "light")];
+    let modes = [
+        (ThemeMode::Dark, Mode::Dark),
+        (ThemeMode::Light, Mode::Light),
+    ];
     let intensities = [
-        (ThemeIntensity::Minimal, "minimal"),
-        (ThemeIntensity::Balanced, "balanced"),
-        (ThemeIntensity::Vibrant, "vibrant"),
+        (ThemeIntensity::Minimal, Intensity::Minimal),
+        (ThemeIntensity::Balanced, Intensity::Balanced),
+        (ThemeIntensity::Vibrant, Intensity::Vibrant),
     ];
-    let accents = [
-        (AccentColor::Teal, "teal"),
-        (AccentColor::Blue, "blue"),
-        (AccentColor::Indigo, "indigo"),
-        (AccentColor::Purple, "purple"),
-        (AccentColor::Rose, "rose"),
-        (AccentColor::Red, "red"),
-        (AccentColor::Orange, "orange"),
-        (AccentColor::Amber, "amber"),
-        (AccentColor::Lime, "lime"),
-        (AccentColor::Emerald, "emerald"),
-        (AccentColor::Cyan, "cyan"),
-        (AccentColor::Slate, "slate"),
-    ];
-    for (mode, mode_name) in modes {
-        for (accent, accent_key) in accents {
-            for (intensity, intensity_name) in intensities {
+    for (base, _) in base_presets() {
+        for (mode, expected_mode) in modes {
+            for (intensity, expected_intensity) in intensities {
                 let appearance = Appearance {
                     mode,
-                    accent,
                     intensity,
-                    base: accent.primary(),
-                    match_system: false,
-                    new_design: false,
+                    base,
+                    ..Appearance::default()
                 };
-                assert_eq!(
-                    theme_choice(appearance).name(),
-                    format!("{mode_name}-{accent_key}-{intensity_name}")
+                let packed = Rgba(
+                    u32::from(base.r) << 24
+                        | u32::from(base.g) << 16
+                        | u32::from(base.b) << 8
+                        | 0xff,
                 );
+                let expected = ThemeInput::new(packed, expected_mode, expected_intensity);
+                // The system's mode is ignored unless the appearance follows it.
+                assert_eq!(theme_input(appearance, Mode::Light), expected);
+                assert_eq!(theme_input(appearance, Mode::Dark), expected);
+                let following = Appearance {
+                    match_system: true,
+                    ..appearance
+                };
+                for system in Mode::ALL {
+                    assert_eq!(
+                        theme_input(following, system),
+                        ThemeInput {
+                            mode: system,
+                            ..expected
+                        }
+                    );
+                }
             }
         }
     }
-    assert_eq!(theme_choice(Appearance::default()), ThemeChoice::default());
+    // The server's defaults are the design default.
+    assert_eq!(
+        theme_input(Appearance::default(), Mode::Light),
+        ThemeInput::default()
+    );
     assert_eq!(accent_name(AccentColor::Slate), "Slate Gray");
+}
+
+#[test]
+fn the_presets_start_with_the_default_and_hold_every_old_accent() {
+    let presets = base_presets();
+    assert_eq!(presets.len(), 13);
+    assert_eq!(presets[0].0.to_hex(), "#8e75ff");
+    for accent in AccentColor::ALL {
+        assert!(
+            presets.iter().any(|(base, _)| *base == accent.primary()),
+            "{accent:?}"
+        );
+    }
 }
 
 // ---- Voice and video, the pure parts. ----
@@ -827,18 +851,25 @@ fn appearance(
 #[gpui_kit::test]
 fn each_appearance_pick_goes_out_at_once(cx: &mut TestAppContext) {
     let rig = appearance(cx, LoadState::Ready);
-    rig.click(cx, "appearance-dark");
-    rig.click(cx, "appearance-accent-amber");
+    rig.click(cx, "appearance-mode-light");
+    rig.click(cx, "appearance-mode-match-system");
+    rig.click(cx, "appearance-base-f59e0b");
     rig.click(cx, "appearance-intensity-vibrant");
     assert_eq!(
         rig.events(),
         [
             AppearanceEvent::Update(AppearancePatch {
                 mode: Some(ThemeMode::Light),
+                match_system: Some(false),
                 ..AppearancePatch::default()
             }),
             AppearanceEvent::Update(AppearancePatch {
-                accent: Some(AccentColor::Amber),
+                match_system: Some(true),
+                ..AppearancePatch::default()
+            }),
+            // A base colour, never an accent: the server derives the accent from it.
+            AppearanceEvent::Update(AppearancePatch {
+                base: Some(AccentColor::Amber.primary()),
                 ..AppearancePatch::default()
             }),
             AppearanceEvent::Update(AppearancePatch {
@@ -851,9 +882,55 @@ fn each_appearance_pick_goes_out_at_once(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn an_older_server_gets_the_accents_and_no_match_system(cx: &mut TestAppContext) {
+    let older = Appearance {
+        base_colour_settings: false,
+        base: AccentColor::Teal.primary(),
+        accent: AccentColor::Teal,
+        ..Appearance::default()
+    };
+    let rig = rig(cx, 900., move |_, cx| {
+        let mut settings = AppearanceSettings::new(cx);
+        settings.set_view(
+            AppearanceView {
+                state: LoadState::Ready,
+                appearance: older,
+            },
+            cx,
+        );
+        settings
+    });
+    assert!(rig.has(cx, "appearance-mode-dark"));
+    assert!(!rig.has(cx, "appearance-mode-match-system"));
+    assert!(!rig.has(cx, "appearance-base-8e75ff"));
+    rig.click(cx, "appearance-base-3b82f6");
+    assert_eq!(
+        rig.events(),
+        [AppearanceEvent::Update(AppearancePatch {
+            base: Some(AccentColor::Blue.primary()),
+            ..AppearancePatch::default()
+        })]
+    );
+}
+
+#[test]
+fn presets_on_an_older_server_are_the_accents() {
+    let older = Appearance {
+        base_colour_settings: false,
+        ..Appearance::default()
+    };
+    let presets = presets_for(older);
+    assert_eq!(presets.len(), 12);
+    for accent in AccentColor::ALL {
+        assert!(presets.iter().any(|(base, _)| *base == accent.primary()));
+    }
+    assert_eq!(presets_for(Appearance::default()), base_presets());
+}
+
+#[gpui_kit::test]
 fn failed_appearance_offers_a_retry(cx: &mut TestAppContext) {
     let rig = appearance(cx, failed());
-    assert!(!rig.has(cx, "appearance-dark"));
+    assert!(!rig.has(cx, "appearance-mode-dark"));
     rig.click(cx, "appearance-retry");
     assert_eq!(rig.events(), [AppearanceEvent::Retry]);
 }

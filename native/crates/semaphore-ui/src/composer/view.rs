@@ -1104,7 +1104,7 @@ impl Composer {
                                 .child(
                                     div()
                                         .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(p.primary)
+                                        .text_color(p.link)
                                         .child(reply.author_name.clone()),
                                 ),
                         )
@@ -1594,7 +1594,7 @@ impl Render for Composer {
         if self.follow_theme
             && let Some(sem) = cx.try_global::<crate::theme::Sem>()
         {
-            self.palette = Palette::for_theme(sem.choice);
+            self.palette = Palette::from_sem(sem);
         }
         let p = self.palette;
         let viewport = window.viewport_size();
