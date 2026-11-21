@@ -189,9 +189,10 @@ echo "=== gradle assembleDebug testDebugUnitTest"
   -Psemaphore.channelId="$(entity cc-general)" \
   -Psemaphore.authorId="$(entity u-priya)"
 
-# The app's JVM tests (the bindings, the palette through the FFI) and the kit's (its unit tests and
-# every screenshot story, rendered under Robolectric).
-python3 - "$APP/build/test-results/testDebugUnitTest" "$ANDROID_DIR/kit/build/test-results/testDebugUnitTest" <<'PY'
+# The app's JVM tests (the bindings, the palette through the FFI, the app flow on the fake server),
+# the kit's and the screens' (their unit tests and every screenshot story, under Robolectric).
+python3 - "$APP/build/test-results/testDebugUnitTest" "$ANDROID_DIR/kit/build/test-results/testDebugUnitTest" \
+  "$ANDROID_DIR/screens/build/test-results/testDebugUnitTest" <<'PY'
 import glob, sys, xml.etree.ElementTree as ET
 tests = failures = skipped = 0
 for path in [p for d in sys.argv[1:] for p in glob.glob(d + "/*.xml")]:

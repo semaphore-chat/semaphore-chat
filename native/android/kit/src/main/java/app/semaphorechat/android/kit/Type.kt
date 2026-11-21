@@ -22,9 +22,13 @@ private val WEIGHTS = listOf(FontWeight.W400, FontWeight.W500, FontWeight.W600, 
  * each pinning the weight axis, so the instance drawn is the one the web's static file is.
  */
 @OptIn(ExperimentalTextApi::class)
-private fun variableFamily(upright: Int, italic: Int? = null): FontFamily = FontFamily(
+private fun variableFamily(
+    upright: Int,
+    italic: Int? = null,
+    axes: List<FontVariation.Setting> = emptyList(),
+): FontFamily = FontFamily(
     WEIGHTS.flatMap { weight ->
-        val settings = FontVariation.Settings(FontVariation.weight(weight.weight))
+        val settings = FontVariation.Settings(FontVariation.weight(weight.weight), *axes.toTypedArray())
         listOfNotNull(
             Font(upright, weight, FontStyle.Normal, variationSettings = settings),
             italic?.let { Font(it, weight, FontStyle.Italic, variationSettings = settings) },
@@ -35,8 +39,17 @@ private fun variableFamily(upright: Int, italic: Int? = null): FontFamily = Font
 /** `font.body`: Figtree, upright and italic. */
 val FigtreeFamily: FontFamily = variableFamily(R.font.figtree_wght, R.font.figtree_italic_wght)
 
-/** `font.heading`: Bricolage Grotesque, at its default optical size and width. */
-val BricolageFamily: FontFamily = variableFamily(R.font.bricolage_grotesque_wght)
+/**
+ * `font.heading`: Bricolage Grotesque at optical size 14 and width 100, the instance the web's
+ * static files are (@fontsource/bricolage-grotesque 5.3.0: its Bold's advances match the variable
+ * font instanced at opsz 14 exactly, and are 4 to 12% wider than at the variable font's default
+ * opsz of 96, which this family drew before).
+ */
+@OptIn(ExperimentalTextApi::class)
+val BricolageFamily: FontFamily = variableFamily(
+    R.font.bricolage_grotesque_wght,
+    axes = listOf(FontVariation.Setting("opsz", 14f), FontVariation.width(100f)),
+)
 
 private fun family(name: String): FontFamily = when (name) {
     Tokens.Font.Heading -> BricolageFamily

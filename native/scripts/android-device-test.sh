@@ -232,6 +232,13 @@ gradle_status=0
   -Pandroid.testInstrumentationRunnerArguments.trustedServer="$TRUSTED_SERVER" \
   || gradle_status=$?
 
+# A crash ends the instrumentation with no stack trace in the results: print the device's.
+if [ "$gradle_status" != 0 ]; then
+  echo "=== device crash log"
+  "$ADB" logcat -d -b crash 2>/dev/null | grep -E "Abort message|signal [0-9]|#0[0-9] pc" | head -n 40 || true
+  "$ADB" logcat -d 2>/dev/null | grep -E "AndroidRuntime|FATAL EXCEPTION|runtime.cc|Caused by|panicked" | head -n 80 || true
+fi
+
 results="$APP/build/outputs/androidTest-results"
 python3 - "$results" <<'PY'
 import glob, sys, xml.etree.ElementTree as ET
