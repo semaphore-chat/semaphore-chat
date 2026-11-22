@@ -159,6 +159,7 @@ object SemaphoreHost {
             scope = modelScope,
             lastCommunity = FileLastCommunity(File(base, "last-community")),
             lastServer = started.lastServer(),
+            networks = connectivity?.let(::connectivityWatch) ?: NetworkWatch.None,
         )
         // Published with whatever the activity recorded meanwhile: a start that finished in the
         // background is suspended now, and `foregrounded` resumes it.
@@ -188,6 +189,15 @@ object SemaphoreHost {
         }
         connectivity.registerDefaultNetworkCallback(callback)
         return callback
+    }
+
+    /** [NetworkWatch] over the system's default-network callback: all the platform the model needs. */
+    private fun connectivityWatch(connectivity: ConnectivityManager) = NetworkWatch { onAvailable ->
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = onAvailable()
+        }
+        connectivity.registerDefaultNetworkCallback(callback)
+        AutoCloseable { runCatching { connectivity.unregisterNetworkCallback(callback) } }
     }
 
     /** The name the user gave the device, else its model. semaphore-mobile makes it header-safe. */

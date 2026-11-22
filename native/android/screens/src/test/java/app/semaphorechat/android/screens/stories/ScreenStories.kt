@@ -18,6 +18,7 @@ import app.semaphorechat.android.screens.PersonItem
 import app.semaphorechat.android.screens.ServerSummary
 import app.semaphorechat.android.screens.SignInScreen
 import app.semaphorechat.android.screens.SignInState
+import app.semaphorechat.android.screens.SERVER_ERROR_FALLBACK
 import app.semaphorechat.android.screens.StartScreen
 import app.semaphorechat.android.screens.StartState
 import app.semaphorechat.android.screens.TextChannelItem
@@ -119,7 +120,25 @@ val SCREEN_STORIES: List<Story> = listOf(
     Story("screen-start") { StartScreen(StartState.Starting, none, none) },
     Story("screen-start-restoring") { StartScreen(StartState.Restoring("https://chat.lumen.studio"), none, none) },
     Story("screen-start-unreachable") {
-        StartScreen(StartState.Unreachable("https://chat.lumen.studio", "connection refused"), none, none)
+        StartScreen(
+            StartState.Unreachable("https://chat.lumen.studio", "CLIENT_UNREACHABLE", "Can't reach the server."),
+            none,
+            none,
+        )
+    },
+    Story("screen-start-tls-refused") {
+        StartScreen(
+            StartState.Unreachable("https://chat.lumen.studio", "CLIENT_TLS", "This device doesn't trust the server's certificate."),
+            none,
+            none,
+        )
+    },
+    Story("screen-start-server-error") {
+        StartScreen(
+            StartState.Unreachable("https://chat.lumen.studio", "UNKNOWN", SERVER_ERROR_FALLBACK),
+            none,
+            none,
+        )
     },
     Story("screen-start-failed") { StartScreen(StartState.StartFailed("the secret store could not be read"), none, none) },
     Story("screen-lounge") { Lounge() },

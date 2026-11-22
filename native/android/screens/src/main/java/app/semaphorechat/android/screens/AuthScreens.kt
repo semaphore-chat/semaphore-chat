@@ -100,6 +100,19 @@ internal fun connectFailureText(failure: ConnectFailure): Pair<String, String>? 
 }
 
 /**
+ * What a restore that failed says, as the connect screen words the same failures: a refused
+ * certificate and a server error read as there, and only "nothing answered" says to check the
+ * connection. The session is kept in every case.
+ */
+internal fun startUnreachableText(state: StartState.Unreachable): Pair<String, String> = when (state.code) {
+    "CLIENT_TLS" -> connectFailureText(ConnectFailure.TlsRefused)!!
+    "CLIENT_UNREACHABLE" ->
+        "Can't reach ${hostOf(state.server)}" to
+            "Check your connection. You're still signed in: try again when you're back online."
+    else -> "The server answered with an error" to state.message
+}
+
+/**
  * Connect: the server's address and a probe of it. A `https://` server that answers goes on to
  * sign-in by itself; a plain `http://` one shows [INSECURE_WARNING] first, and [onContinue]
  * goes on. A server with no users yet is finished on the web ([onOpenWeb]).
@@ -249,10 +262,11 @@ fun StartScreen(state: StartState, onRetry: () -> Unit, onOtherServer: () -> Uni
                     announce = false,
                 )
                 is StartState.Unreachable -> {
+                    val (title, message) = startUnreachableText(state)
                     Alert(
                         AlertSeverity.Warning,
-                        title = "Can't reach ${hostOf(state.server)}",
-                        message = "Check your connection. You're still signed in: try again when you're back online.",
+                        title = title,
+                        message = message,
                         action = AlertAction("Try again", onRetry),
                         modifier = Modifier.fillMaxWidth(),
                     )

@@ -16,8 +16,11 @@ import app.semaphorechat.android.screens.Route
 import app.semaphorechat.android.screens.ServerSummary
 import app.semaphorechat.android.screens.SignInState
 import app.semaphorechat.android.screens.StartState
+import app.semaphorechat.android.screens.errorText
 import java.net.URI
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -40,6 +43,21 @@ interface LastCommunity {
 const val SESSION_ENDED = "Your session ended. Sign in again."
 
 /**
+ * Tells the model when the device gets a network, for as long as the handle it returns is open.
+ * The platform part is thin (a `ConnectivityManager` callback); the model's logic stays JVM-testable.
+ */
+fun interface NetworkWatch {
+    fun watch(onAvailable: () -> Unit): AutoCloseable
+
+    companion object {
+        val None = NetworkWatch { AutoCloseable { } }
+    }
+}
+
+/** A burst of "network available" callbacks gives one retry, this long after the last. */
+const val NETWORK_RETRY_DEBOUNCE_MS = 750L
+
+/**
  * The app's state between core and the screens: which screen ([navigator]), the signed-out
  * screens' forms, and the Lounge's sheet. Core's session decides the top of the stack: signing in
  * opens the Lounge, losing the session goes back to sign-in. Plain Kotlin over [store], so the JVM
@@ -52,6 +70,8 @@ class AppModel(
     private val lastCommunity: LastCommunity,
     /** The server the last session was on (semaphore-mobile remembers it), or null. */
     private val lastServer: String?,
+    private val networks: NetworkWatch = NetworkWatch.None,
+    private val networkDebounceMs: Long = NETWORK_RETRY_DEBOUNCE_MS,
 ) {
     val navigator = Navigator(Route.Start)
 
@@ -74,7 +94,13 @@ class AppModel(
 
     private var wasSignedIn = false
 
+    private val networkLock = Any()
+    private var networkHandle: AutoCloseable? = null
+    private var networkRetry: Job? = null
+
     init {
+        // While the restore can't reach the server, a returning network retries it.
+        scope.launch { startState.collect { watchNetwork(it is StartState.Unreachable) } }
         scope.launch { store.session.collect(::onSession) }
         scope.launch { store.communities.collect(::onCommunities) }
         scope.launch {
@@ -107,8 +133,11 @@ class AppModel(
                 RestoreOutcome.SignedIn -> Unit // onSession opens the Lounge.
                 RestoreOutcome.NoSession -> toConnect(server, notice = null)
                 RestoreOutcome.Refused -> refused(server)
-                is RestoreOutcome.Unreachable ->
-                    startState.value = StartState.Unreachable(server, outcome.error.message)
+                is RestoreOutcome.Unreachable -> startState.value = StartState.Unreachable(
+                    server,
+                    outcome.error.code,
+                    errorText(outcome.error.code, outcome.error.message),
+                )
             }
         }
     }
@@ -127,11 +156,31 @@ class AppModel(
         lastServer?.let(::restore)
     }
 
+    private fun watchNetwork(on: Boolean) = synchronized(networkLock) {
+        if (on) {
+            if (networkHandle == null) networkHandle = networks.watch(::onNetworkAvailable)
+        } else {
+            networkHandle?.close()
+            networkHandle = null
+            networkRetry?.cancel()
+            networkRetry = null
+        }
+    }
+
+    private fun onNetworkAvailable() = synchronized(networkLock) {
+        networkRetry?.cancel()
+        networkRetry = scope.launch {
+            delay(networkDebounceMs)
+            if (startState.value is StartState.Unreachable) retryRestore()
+        }
+    }
+
     fun useAnotherServer() = toConnect(lastServer.orEmpty(), notice = null)
 
     private fun toConnect(url: String, notice: String?) {
         connectState.value = ConnectState(url = url, notice = notice)
         signInState.value = null
+        startState.value = StartState.Starting
         navigator.reset(Route.Connect)
     }
 
@@ -175,7 +224,7 @@ class AppModel(
                 is ProbeOutcome.Unreachable -> fail(ConnectFailure.Unreachable)
                 is ProbeOutcome.TlsRefused -> fail(ConnectFailure.TlsRefused)
                 ProbeOutcome.NotSemaphore -> fail(ConnectFailure.NotSemaphore)
-                is ProbeOutcome.Failed -> fail(ConnectFailure.Failed(outcome.error.message))
+                is ProbeOutcome.Failed -> fail(ConnectFailure.Failed(errorText(outcome.error.code, outcome.error.message)))
             }
         }
     }
@@ -213,7 +262,7 @@ class AppModel(
         scope.launch {
             val error = try {
                 core.signIn(state.server.url, state.username.trim(), state.password)
-                (core.session() as? SessionState.SignInFailed)?.error?.message
+                (core.session() as? SessionState.SignInFailed)?.error?.let { errorText(it.code, it.message) }
             } catch (failure: CoreException) {
                 failure.message ?: "Sign-in failed"
             }
@@ -301,7 +350,12 @@ class AppModel(
             val url = if (trimmed.contains("://")) trimmed else "https://$trimmed"
             val parsed = runCatching { URI(url) }.getOrNull() ?: return null
             if (parsed.scheme?.lowercase() !in setOf("http", "https")) return null
-            if (parsed.host.isNullOrEmpty()) return null
+            // `host` is null for a name that isn't ASCII letters, digits, dots and dashes (an
+            // internationalised one, or an underscore); core converts those, so only an empty
+            // host is refused here.
+            val authority = parsed.rawAuthority?.substringAfterLast('@').orEmpty()
+            val host = if (authority.startsWith("[")) authority else authority.substringBefore(':')
+            if (host.isEmpty()) return null
             return url
         }
 

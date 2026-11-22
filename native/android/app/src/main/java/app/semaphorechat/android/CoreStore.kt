@@ -13,6 +13,7 @@ import app.semaphorechat.android.screens.CommunitySummary
 import app.semaphorechat.android.screens.Load
 import app.semaphorechat.android.screens.PersonItem
 import app.semaphorechat.android.screens.TextChannelItem
+import app.semaphorechat.android.screens.errorText
 import app.semaphorechat.android.screens.VoiceRoomItem
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
@@ -63,7 +64,7 @@ sealed interface CoreNotice {
 
 /**
  * Core's views as Kotlin state for Compose. One collector, on [scope], drains each burst of
- * events and then re-reads core's views: the session, the connection, the appearance and the
+ * events (and of [refresh] and [retry] requests) and then re-reads core's views: the session, the connection, the appearance and the
  * communities every time, and the channels of each community a screen [watch]es (all of them
  * unless the burst only touched some communities' channels). Core's reads are in-memory, and a
  * `MutableStateFlow` drops a value equal to the last, so a re-read that changes nothing redraws
@@ -87,11 +88,21 @@ class CoreStore(
     val communities: StateFlow<Load<List<CommunitySummary>>> = communityState
     val notices: SharedFlow<CoreNotice> = noticeFlow
 
+    /** Core's events and the callers' requests, in one queue: one coroutine reads and writes. */
+    private sealed interface Input {
+        data class Event(val event: CoreEvent) : Input
+        data object Refresh : Input
+        data object Retry : Input
+    }
+
+    private val inbox = Channel<Input>(Channel.UNLIMITED)
+
     init {
+        scope.launch { for (event in events) inbox.send(Input.Event(event)) }
         scope.launch {
-            for (first in events) {
+            for (first in inbox) {
                 val burst = mutableListOf(first)
-                while (true) burst += events.tryReceive().getOrNull() ?: break
+                while (true) burst += inbox.tryReceive().getOrNull() ?: break
                 apply(burst)
             }
         }
@@ -101,23 +112,23 @@ class CoreStore(
     fun watch(communityId: String): StateFlow<Load<CommunityChannels>> =
         channelStates.getOrPut(communityId) { MutableStateFlow(readChannels(communityId)) }
 
-    /** Re-reads everything: at start, on resume, and after a retry. */
+    /**
+     * Re-reads everything: at start, on resume, and after a retry. Asks the collector to, so every
+     * core read and every state write is on its one coroutine; returns at once.
+     */
     fun refresh() {
-        sessionState.value = core.session()
-        connectionState.value = core.connection()
-        appearanceState.value = core.appearance().appearance
-        communityState.value = readCommunities()
-        channelStates.forEach { (id, state) -> state.value = readChannels(id) }
+        inbox.trySend(Input.Refresh)
     }
 
-    /** Fetches again whatever failed to load, then re-reads. */
+    /** Fetches again whatever failed to load, then re-reads (on the collector, like [refresh]). */
     fun retry() {
-        core.retryFailed()
-        refresh()
+        inbox.trySend(Input.Retry)
     }
 
-    private fun apply(burst: List<CoreEvent>) {
-        burst.forEach { event ->
+    private fun apply(burst: List<Input>) {
+        if (burst.any { it is Input.Retry }) core.retryFailed()
+        val events = burst.filterIsInstance<Input.Event>().map { it.event }
+        events.forEach { event ->
             when (event) {
                 is CoreEvent.CommunityRemoved -> noticeFlow.tryEmit(
                     CoreNotice.CommunityRemoved(event.communityId, removalMessage(event.name, event.cause)),
@@ -133,10 +144,11 @@ class CoreStore(
         appearanceState.value = core.appearance().appearance
         communityState.value = readCommunities()
         // Only some communities' channels changed: re-read those; anything else, all of them.
-        val only = burst.map { event ->
+        val only = events.map { event ->
             ((event as? CoreEvent.ViewChanged)?.view as? ViewKey.Channels)?.communityId
         }
-        val ids = if (only.all { it != null }) only.filterNotNull().toSet() else channelStates.keys
+        val everything = events.size < burst.size || only.any { it == null }
+        val ids = if (everything) channelStates.keys.toSet() else only.filterNotNull().toSet()
         ids.forEach { id -> channelStates[id]?.let { it.value = readChannels(id) } }
     }
 
@@ -144,7 +156,7 @@ class CoreStore(
         if (core.session() !is SessionState.SignedIn) return Load.Loading
         val rows = core.communities()
         return when (val state = core.loadState(ViewKey.Communities)) {
-            is LoadState.Failed -> if (rows.isEmpty()) Load.Failed(state.error.message) else Load.Ready(rows.map(::summary))
+            is LoadState.Failed -> if (rows.isEmpty()) Load.Failed(errorText(state.error.code, state.error.message)) else Load.Ready(rows.map(::summary))
             LoadState.Loading -> if (rows.isEmpty()) Load.Loading else Load.Ready(rows.map(::summary))
             LoadState.Ready -> Load.Ready(rows.map(::summary))
         }
@@ -154,7 +166,7 @@ class CoreStore(
         if (core.session() !is SessionState.SignedIn) return Load.Loading
         val rows = core.channels(communityId)
         return when (val state = core.loadState(ViewKey.Channels(communityId))) {
-            is LoadState.Failed -> if (rows.isEmpty()) Load.Failed(state.error.message) else Load.Ready(channelsOf(rows))
+            is LoadState.Failed -> if (rows.isEmpty()) Load.Failed(errorText(state.error.code, state.error.message)) else Load.Ready(channelsOf(rows))
             LoadState.Loading -> if (rows.isEmpty()) Load.Loading else Load.Ready(channelsOf(rows))
             LoadState.Ready -> Load.Ready(channelsOf(rows))
         }

@@ -11,9 +11,14 @@ import app.semaphorechat.android.screens.ChannelIcon
 import app.semaphorechat.android.screens.ConnectFailure
 import app.semaphorechat.android.screens.Load
 import app.semaphorechat.android.screens.Route
+import app.semaphorechat.android.screens.SERVER_ERROR_FALLBACK
+import app.semaphorechat.android.screens.StartState
 import java.io.File
+import java.io.InputStream
 import java.net.HttpURLConnection
+import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.net.Socket
 import java.net.URI
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
@@ -23,6 +28,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -86,7 +93,108 @@ class AppFlowJvmTest {
         }
     }
 
-    private fun launch(dir: File, secrets: SecretStore, last: LastCommunity): Run {
+    /** A "network available" signal the test fires by hand; counts the registrations and closes. */
+    private class FakeNetwork : NetworkWatch {
+        val callbacks = CopyOnWriteArrayList<() -> Unit>()
+        val registered = AtomicInteger()
+        val closed = AtomicInteger()
+        override fun watch(onAvailable: () -> Unit): AutoCloseable {
+            callbacks += onAvailable
+            registered.incrementAndGet()
+            return AutoCloseable {
+                callbacks -= onAvailable
+                closed.incrementAndGet()
+            }
+        }
+        fun available() = callbacks.forEach { it() }
+    }
+
+    /**
+     * A loopback HTTP proxy to [upstream]: one request per connection, except a WebSocket upgrade,
+     * which is piped through. [failLogin] answers a login with a web server's HTML 502 page. Closing
+     * it frees the port, so a later [Proxy] on the same port brings the "server" back.
+     */
+    private class Proxy(private val upstream: URI, port: Int = 0) : AutoCloseable {
+        private val listener = ServerSocket().apply {
+            reuseAddress = true
+            bind(InetSocketAddress("127.0.0.1", port))
+        }
+        @Volatile var failLogin = false
+        val port: Int get() = listener.localPort
+        val url: String get() = "http://127.0.0.1:$port"
+
+        init {
+            thread(isDaemon = true) {
+                while (!listener.isClosed) {
+                    val client = runCatching { listener.accept() }.getOrNull() ?: break
+                    thread(isDaemon = true) { runCatching { client.use { serve(it) } } }
+                }
+            }
+        }
+
+        private fun readHead(input: InputStream): ByteArray? {
+            val head = java.io.ByteArrayOutputStream()
+            while (true) {
+                val next = input.read()
+                if (next < 0) return null
+                head.write(next)
+                val bytes = head.toByteArray()
+                if (bytes.size >= 4 && String(bytes, bytes.size - 4, 4, Charsets.ISO_8859_1) == "\r\n\r\n") return bytes
+            }
+        }
+
+        private fun serve(client: Socket) {
+            val input = client.getInputStream().buffered()
+            val out = client.getOutputStream()
+            val head = readHead(input) ?: return
+            val text = String(head, Charsets.ISO_8859_1)
+            val lines = text.trimEnd().split("\r\n")
+            val length = lines.firstNotNullOfOrNull {
+                if (it.startsWith("content-length:", ignoreCase = true)) it.substringAfter(':').trim().toInt() else null
+            } ?: 0
+            val body = input.readNBytes(length)
+            val upgrade = lines.any { it.startsWith("upgrade:", ignoreCase = true) }
+            if (failLogin && !upgrade && lines.first().contains("/auth/login")) {
+                val page = "<html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>"
+                out.write(
+                    ("HTTP/1.1 502 Bad Gateway\r\ncontent-type: text/html\r\ncontent-length: ${page.length}\r\n" +
+                        "connection: close\r\n\r\n$page").toByteArray(),
+                )
+                return
+            }
+            Socket(upstream.host, upstream.port).use { up ->
+                if (upgrade) {
+                    up.getOutputStream().write(head + body)
+                    thread(isDaemon = true) { runCatching { up.getInputStream().copyTo(out) } }
+                    input.copyTo(up.getOutputStream())
+                } else {
+                    val rewritten = lines.filterNot { it.startsWith("connection:", ignoreCase = true) } +
+                        "Connection: close"
+                    up.getOutputStream().write((rewritten.joinToString("\r\n") + "\r\n\r\n").toByteArray(Charsets.ISO_8859_1) + body)
+                    up.getInputStream().copyTo(out)
+                }
+            }
+        }
+
+        override fun close() = listener.close()
+    }
+
+    /** Connect and sign in as the screens do, on a plain-http server. */
+    private fun signInThroughModel(model: AppModel, url: String) {
+        assertNull(probe(model, url))
+        model.continueInsecure()
+        model.onUsernameChange("me")
+        model.onPasswordChange("pw")
+        model.signIn()
+        until("the Lounge") { (model.navigator.top as? Route.Community)?.id != null }
+    }
+
+    private fun launch(
+        dir: File,
+        secrets: SecretStore,
+        last: LastCommunity,
+        networks: NetworkWatch = NetworkWatch.None,
+    ): Run {
         val pipe = EventPipe()
         val host = runBlocking {
             start(
@@ -98,7 +206,7 @@ class AppFlowJvmTest {
         }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val store = CoreStore(host.core(), scope, pipe.events)
-        return Run(host, AppModel(host.core(), store, scope, last, host.lastServer()), scope, pipe)
+        return Run(host, AppModel(host.core(), store, scope, last, host.lastServer(), networks, networkDebounceMs = 100), scope, pipe)
     }
 
     private fun until(what: String, condition: () -> Boolean) {
@@ -241,6 +349,155 @@ class AppFlowJvmTest {
     }
 
     @Test
+    fun aSessionRevokedWhileSignedInGoesBackToSignInSayingSo() {
+        assumeTrue("android.sh passes the fake server", server != null)
+        val url = server!!
+        val run = launch(Files.createTempDirectory("semaphore-flow-revoked").toFile(), MemorySecrets(), MemoryLastCommunity())
+        signInThroughModel(run.model, url)
+        // Another device signs in and ends every other session, this running one's included.
+        val other = launch(Files.createTempDirectory("semaphore-flow-other").toFile(), MemorySecrets(), MemoryLastCommunity())
+        runBlocking { other.host.core().signIn(url, "me", "pw") }
+        until("the other device's session") { other.host.core().session() is SessionState.SignedIn }
+        assertTrue(runBlocking { other.host.core().revokeOtherSessions() } >= 1u)
+        other.close()
+        // The running app finds out on its next authenticated call.
+        until("sign-in after the revoke") {
+            run.model.store.retry()
+            run.model.navigator.top == Route.SignIn
+        }
+        assertEquals(SESSION_ENDED, run.model.signIn.value?.notice)
+        assertEquals(url, run.model.signIn.value?.server?.url)
+        assertNull(run.model.server)
+        run.close()
+    }
+
+    @Test
+    fun anUnreachableServerAtLaunchKeepsTheSessionAndRetriesWhenItsBack() {
+        assumeTrue("android.sh passes the fake server", server != null)
+        val dir = Files.createTempDirectory("semaphore-flow-offline").toFile()
+        val secrets = MemorySecrets()
+        val last = MemoryLastCommunity()
+        // Sign in through a proxy, so the "server" can go away and come back on the same address.
+        val proxy = Proxy(URI(server!!))
+        val port = proxy.port
+        val first = launch(dir, secrets, last)
+        runBlocking { first.host.core().signIn(proxy.url, "me", "pw") }
+        until("the first session") { first.host.core().session() is SessionState.SignedIn }
+        first.close()
+        proxy.close()
+
+        val network = FakeNetwork()
+        val second = launch(dir, secrets, last, network)
+        val state = { second.model.start.value }
+        until("the unreachable start") { state() is StartState.Unreachable }
+        val unreachable = state() as StartState.Unreachable
+        assertEquals("http://127.0.0.1:$port", unreachable.server)
+        assertEquals("CLIENT_UNREACHABLE", unreachable.code)
+        assertEquals(Route.Start, second.model.navigator.top)
+
+        // The network comes back (a burst of callbacks) while the server is still down: one retry,
+        // which is unreachable again, and the watch is registered again for the next one.
+        until("the network watch") { network.registered.get() == 1 }
+        repeat(3) { network.available() }
+        until("the failed retry's watch") { network.closed.get() >= 1 && network.registered.get() == 2 }
+        assertTrue(state() is StartState.Unreachable)
+
+        // The server is back; the next signal retries once and opens the Lounge.
+        val back = Proxy(URI(server), port)
+        try {
+            repeat(3) { network.available() }
+            until("the restored Lounge") { (second.model.navigator.top as? Route.Community)?.id != null }
+            until("the watch is closed after leaving the state") { network.callbacks.isEmpty() }
+        } finally {
+            second.close()
+            back.close()
+        }
+    }
+
+    @Test
+    fun retryRestoreByHandAndUseAnotherServerFromUnreachable() {
+        assumeTrue("android.sh passes the fake server", server != null)
+        val dir = Files.createTempDirectory("semaphore-flow-offline2").toFile()
+        val secrets = MemorySecrets()
+        val last = MemoryLastCommunity()
+        val proxy = Proxy(URI(server!!))
+        val port = proxy.port
+        val first = launch(dir, secrets, last)
+        runBlocking { first.host.core().signIn(proxy.url, "me", "pw") }
+        until("the first session") { first.host.core().session() is SessionState.SignedIn }
+        first.close()
+        proxy.close()
+
+        val network = FakeNetwork()
+        val second = launch(dir, secrets, last, network)
+        until("the unreachable start") { second.model.start.value is StartState.Unreachable }
+        // "Try again" while it is still down stays here.
+        second.model.retryRestore()
+        until("the retry to fail again") { second.model.start.value is StartState.Unreachable && network.registered.get() >= 1 }
+        assertEquals(Route.Start, second.model.navigator.top)
+        // "Use another server": the connect screen, with the address filled in and the watch gone.
+        second.model.useAnotherServer()
+        assertEquals(Route.Connect, second.model.navigator.top)
+        assertEquals("http://127.0.0.1:$port", second.model.connect.value.url)
+        assertNull(second.model.connect.value.failure)
+        until("the watch to close") { network.callbacks.isEmpty() }
+        // The old server coming back no longer pulls the app away from the connect screen.
+        network.available()
+        Thread.sleep(400)
+        assertEquals(Route.Connect, second.model.navigator.top)
+        second.close()
+    }
+
+    @Test
+    fun aServerErrorShowsFixedTextNeverTheResponseBody() {
+        assumeTrue("android.sh passes the fake server", server != null)
+        val proxy = Proxy(URI(server!!))
+        val run = launch(Files.createTempDirectory("semaphore-flow-502").toFile(), MemorySecrets(), MemoryLastCommunity())
+        try {
+            // A server answering Semaphore's probe with an HTML 502: ConnectFailure.Failed, fixed text.
+            val badGateway = badGatewayServer()
+            val failure = probe(run.model, badGateway)
+            assertEquals(ConnectFailure.Failed(SERVER_ERROR_FALLBACK), failure)
+            assertTrue(!(failure as ConnectFailure.Failed).message.contains("<"))
+
+            // A login answered with the same page.
+            proxy.failLogin = true
+            assertNull(probe(run.model, proxy.url))
+            run.model.continueInsecure()
+            run.model.onUsernameChange("me")
+            run.model.onPasswordChange("pw")
+            run.model.signIn()
+            until("the sign-in error") { run.model.signIn.value?.error != null }
+            assertEquals(SERVER_ERROR_FALLBACK, run.model.signIn.value?.error)
+        } finally {
+            run.close()
+            proxy.close()
+        }
+    }
+
+    /** A port that answers every request with an HTML 502 page, as a proxy in front of a dead backend. */
+    private fun badGatewayServer(): String {
+        val socket = ServerSocket(0)
+        thread(isDaemon = true) {
+            while (!socket.isClosed) {
+                val client = runCatching { socket.accept() }.getOrNull() ?: break
+                thread(isDaemon = true) {
+                    client.use {
+                        val reader = it.getInputStream().bufferedReader()
+                        while (reader.readLine()?.isNotEmpty() == true) Unit
+                        val page = "<html><head><title>502 Bad Gateway</title></head></html>"
+                        it.getOutputStream().write(
+                            ("HTTP/1.1 502 Bad Gateway\r\ncontent-type: text/html\r\ncontent-length: ${page.length}\r\n" +
+                                "connection: close\r\n\r\n$page").toByteArray(),
+                        )
+                    }
+                }
+            }
+        }
+        return "http://127.0.0.1:${socket.localPort}"
+    }
+
+    @Test
     fun coreRowsBecomeTheScreensModels() {
         val community = CommunityRow("c", "Lumen", null, 4u, 0u)
         assertEquals(false, CoreStore.summary(community).mentions > 0)
@@ -266,6 +523,12 @@ class AppFlowJvmTest {
         assertEquals("A community you were in was deleted.", CoreStore.removalMessage("", RemovalCause.Deleted))
         assertEquals("https://chat.example.com", AppModel.normaliseServerUrl(" chat.example.com/ "))
         assertEquals("http://10.0.2.2:3000", AppModel.normaliseServerUrl("http://10.0.2.2:3000"))
+        assertEquals("https://münchen.example", AppModel.normaliseServerUrl("münchen.example"))
+        assertEquals("https://чат.рф", AppModel.normaliseServerUrl("чат.рф"))
+        assertEquals("http://my_server:3000", AppModel.normaliseServerUrl("http://my_server:3000"))
+        assertEquals("https://[::1]:3000", AppModel.normaliseServerUrl("[::1]:3000"))
+        assertNull(AppModel.normaliseServerUrl("https://:3000"))
+        assertNull(AppModel.normaliseServerUrl("https://"))
         assertNull(AppModel.normaliseServerUrl("ftp://x"))
         assertNull(AppModel.normaliseServerUrl("two words"))
     }

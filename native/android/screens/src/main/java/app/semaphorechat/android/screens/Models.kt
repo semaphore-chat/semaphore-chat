@@ -19,6 +19,21 @@ sealed interface Load<out T> {
     data class Ready<T>(val value: T) : Load<T>
 }
 
+/** What an error with no message of the server's own says, whatever the response body was. */
+const val SERVER_ERROR_FALLBACK = "The server answered with an error. Try again in a moment."
+
+/**
+ * The line to show for a failed call. The server's own message goes through only when the error
+ * has a server code, i.e. a Semaphore error response was parsed: otherwise [message] is whatever
+ * came back (a proxy's HTML page, say) or a client library's text, and is never shown.
+ */
+fun errorText(code: String, message: String): String = when {
+    code == "CLIENT_UNREACHABLE" -> "Can't reach the server. Check your connection and try again."
+    code == "CLIENT_TLS" -> "This device doesn't trust the server's certificate."
+    code.isEmpty() || code == "UNKNOWN" || code.startsWith("CLIENT_") || message.isBlank() -> SERVER_ERROR_FALLBACK
+    else -> message
+}
+
 /** A server that answered a probe: what sign-in shows about it. */
 data class ServerSummary(
     /** The URL as core normalised it. */
@@ -80,8 +95,12 @@ sealed interface StartState {
     /** The core itself didn't start. */
     data class StartFailed(val message: String) : StartState
     data class Restoring(val server: String) : StartState
-    /** The server didn't answer; the stored session is kept, to try again. */
-    data class Unreachable(val server: String, val message: String) : StartState
+    /**
+     * The server didn't answer, or failed; the stored session is kept, to try again. [code] is the
+     * error's code: `CLIENT_UNREACHABLE` (nothing answered), `CLIENT_TLS` (the certificate was
+     * refused), or anything else for a server error, whose [message] is safe to show.
+     */
+    data class Unreachable(val server: String, val code: String, val message: String) : StartState
 }
 
 /** A community in the dock and the "All communities" sheet. */
