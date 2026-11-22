@@ -25,6 +25,11 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
+/// The gutter each side of a toast, inside its region (`layouts.md`, "Where toasts sit").
+const TOAST_GUTTER: f32 = semaphore_design::lounge::LAYOUT_GUTTER;
+/// A toast is never wider than a small dialog.
+pub(crate) const TOAST_MAX_WIDTH: f32 = semaphore_design::lounge::LAYOUT_DIALOG_SM;
+
 type ToastAction = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// What a screen asks for: one notice.
@@ -406,14 +411,18 @@ impl RenderOnce for ToastRegion {
         if let Some(label) = toast.action {
             piece = piece.action(label, move |window, cx| act.act(&act_id, window, cx));
         }
-        // Laid out where the region is (a template's main pane), painted after the rest of the
-        // window: a toast stays over the dialogs and sheets drawn later in the tree.
+        // Laid out where the region is (a template's main pane) and deferred at the lowest
+        // priority: painted over the layers that aren't deferred (the image viewer), and under
+        // every deferred overlay (menus, popovers, the composer's lists and pickers: priority 1
+        // and up) and kit dialogs and sheets (10 and up), as `design/guide/layouts.md` says
+        // ("Where toasts sit"). As wide as the region less a gutter each side, at most 400 px;
+        // the message wraps.
         let area = div()
             .absolute()
             .left_0()
             .right_0()
             .bottom(px(24.))
-            .px(px(16.))
+            .px(px(TOAST_GUTTER))
             .flex()
             .justify_center()
             .child(
@@ -422,6 +431,10 @@ impl RenderOnce for ToastRegion {
                     .test_support()
                     .track_focus(&region)
                     .relative()
+                    .w_full()
+                    .max_w(px(TOAST_MAX_WIDTH))
+                    .flex()
+                    .justify_center()
                     .child(piece)
                     // The pointer on the area: from its painted bounds, as the toast's own
                     // panel occludes the area's hitbox. A mouse or pen; GPUI has no touch here.
@@ -450,6 +463,6 @@ impl RenderOnce for ToastRegion {
                         .size_full(),
                     ),
             );
-        deferred(area).with_priority(2).into_any_element()
+        deferred(area).with_priority(0).into_any_element()
     }
 }

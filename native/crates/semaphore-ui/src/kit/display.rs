@@ -1972,6 +1972,7 @@ fn toast_frame(sem: &Sem) -> Div {
         .flex()
         .items_center()
         .gap(px(SPACE_MD))
+        .min_w_0()
         .max_w_full()
         .py(px(SPACE_MD))
         .px(px(SPACE_LG))

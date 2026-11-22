@@ -256,10 +256,7 @@ impl Shell {
             .members_shown(right_beside)
             .on_show_members(move |_, cx| {
                 members_view
-                    .update(cx, |shell, cx| {
-                        shell.right_open = Some(true);
-                        cx.notify();
-                    })
+                    .update(cx, |shell, cx| shell.show_members(cx))
                     .ok();
             })
             .on_menu(move |_, cx| {
@@ -555,43 +552,24 @@ impl Shell {
 }
 
 impl Shell {
-    /// The side panel below wide: over a scrim that asks the owner to close it, at the right edge
-    /// (`SIDE_PANEL_WIDTH`) or, on a phone, over the whole window. The panel brings its own header
-    /// and Close, and fills the drawer's height.
+    /// The side panel below wide: a kit [`Drawer`](crate::kit::Drawer), a modal layer of the
+    /// window's overlay stack at the right edge (`SIDE_PANEL_WIDTH`) or, on a phone, over the
+    /// whole window. Escape and the scrim ask the owner to close it; focus moves in on open and
+    /// back to the opener on close. The panel brings its own header and Close, and fills the
+    /// drawer's height.
     fn side_panel_drawer(&self, panel: AnyView, phone: bool, cx: &mut Context<Self>) -> AnyElement {
         let view = cx.entity().downgrade();
-        let surface = cx.sem().role.surface;
-        div()
-            .absolute()
-            .inset_0()
-            .child(
-                div()
-                    .id("side-panel-scrim")
-                    .test_support()
-                    .absolute()
-                    .inset_0()
-                    .occlude()
-                    .bg(hsla(0., 0., 0., 0.5))
-                    .on_click(move |_, _, cx| {
-                        view.update(cx, |_, cx| cx.emit(ShellEvent::CloseSidePanel))
-                            .ok();
-                    }),
-            )
+        crate::kit::Drawer::new("side-panel-drawer", "Details", super::SIDE_PANEL_WIDTH)
+            .full(phone)
+            .on_request_close(move |_, _, cx| {
+                view.update(cx, |_, cx| cx.emit(ShellEvent::CloseSidePanel))
+                    .ok();
+            })
             .child(
                 div()
                     .id("side-panel")
                     .test_support()
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .right_0()
-                    .when(phone, |drawer| drawer.left_0())
-                    .when(!phone, |drawer| {
-                        drawer.w(px(super::SIDE_PANEL_WIDTH)).max_w_full()
-                    })
-                    .occlude()
-                    .shadow_lg()
-                    .bg(surface)
+                    .size_full()
                     .child(panel),
             )
             .into_any_element()

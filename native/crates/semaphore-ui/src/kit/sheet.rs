@@ -280,3 +280,124 @@ impl RenderOnce for Sheet {
         )
     }
 }
+
+/// A full-height modal panel at the window's right edge, over a dimmed page: the side panel
+/// (pins, search, a thread) below wide (`design/guide/layouts.md`, "How the right region
+/// behaves"). It is a Sheet layer of the window's overlay stack and shares the modal core:
+/// Escape and the scrim ask to close, focus moves to its first control on open and back to the
+/// opener on close, Tab stays inside, and toasts pause while it is open. `full` covers the whole
+/// window (a phone). The content brings its own header and Close, and fills the panel's height.
+#[derive(IntoElement)]
+pub struct Drawer {
+    id: ElementId,
+    label: SharedString,
+    width: f32,
+    full: bool,
+    content: Option<AnyElement>,
+    on_close: Option<ValueAction<SheetCloseReason>>,
+}
+
+impl Drawer {
+    /// `id` keys the drawer's focus state and layer; `label` names it.
+    pub fn new(id: impl Into<ElementId>, label: impl Into<SharedString>, width: f32) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            width,
+            full: false,
+            content: None,
+            on_close: None,
+        }
+    }
+
+    /// Covers the whole window instead of `width` at the right edge.
+    pub fn full(mut self, full: bool) -> Self {
+        self.full = full;
+        self
+    }
+
+    pub fn child(mut self, element: impl IntoElement) -> Self {
+        self.content = Some(element.into_any_element());
+        self
+    }
+
+    /// Called on Escape and a press on the scrim, with which; the owner removes the drawer.
+    pub fn on_request_close(
+        mut self,
+        handler: impl Fn(SheetCloseReason, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_close = Some(Rc::new(handler));
+        self
+    }
+}
+
+impl RenderOnce for Drawer {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let sem = cx.sem().clone();
+        let Drawer {
+            id,
+            label,
+            width,
+            full,
+            content,
+            on_close,
+        } = self;
+        let modal_close: Option<ModalClose> = on_close.map(|close| {
+            Rc::new(
+                move |reason: ModalReason, window: &mut Window, cx: &mut App| {
+                    let reason = match reason {
+                        ModalReason::Escape => SheetCloseReason::Escape,
+                        ModalReason::Scrim => SheetCloseReason::Scrim,
+                        ModalReason::ParentClosed => SheetCloseReason::ParentClosed,
+                    };
+                    close(reason, window, cx)
+                },
+            ) as ModalClose
+        });
+        modal(
+            id,
+            LayerKind::Sheet,
+            ModalAlign::End,
+            true,
+            modal_close,
+            window,
+            cx,
+            move |first| {
+                div()
+                    .id("drawer-panel")
+                    .test_support()
+                    .aria_label(label)
+                    .occlude()
+                    .h_full()
+                    .map(|panel| {
+                        if full {
+                            panel.w_full()
+                        } else {
+                            panel
+                                .w(px(width))
+                                .max_w_full()
+                                .border_l(px(BORDER_HAIRLINE))
+                        }
+                    })
+                    .flex()
+                    .flex_col()
+                    .overflow_hidden()
+                    .bg(sem.role.surface)
+                    .text_color(sem.role.text)
+                    .border_color(sem.role.hairline)
+                    .shadow(shadow(&sem, ShadowKind::Overlay))
+                    // Focus starts on the content's first control.
+                    .child(
+                        div()
+                            .track_focus(first)
+                            .tab_group()
+                            .flex_1()
+                            .min_h_0()
+                            .size_full()
+                            .children(content),
+                    )
+                    .into_any_element()
+            },
+        )
+    }
+}

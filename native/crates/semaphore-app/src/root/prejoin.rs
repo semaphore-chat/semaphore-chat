@@ -54,6 +54,10 @@ struct Shown {
 /// The failed join's toast: one at a time, a newer failure replaces it.
 pub const JOIN_FAILED_TOAST: &str = "voice-join-failed";
 
+/// What the failed join's toast says.
+pub const JOIN_FAILED_MESSAGE: &str =
+    "Couldn't join the room. Check your connection and try again.";
+
 /// What core says when the user left (or moved on) while the join ran: nobody's failure.
 fn was_left(error: &CoreError) -> bool {
     matches!(error, CoreError::Failed { message } if message == "the call was left while joining")
@@ -298,7 +302,7 @@ impl AppRoot {
                 if this.prejoin.joins != join || was_left(&error) || !idle {
                     return;
                 }
-                this.prejoin_fail(format!("Couldn't join voice: {error}"), cx);
+                this.prejoin_fail(cx);
             },
         );
         cx.notify();
@@ -351,14 +355,17 @@ impl AppRoot {
                 if this.prejoin.joins != join || was_left(&error) || !idle {
                     return;
                 }
-                this.prejoin_fail(format!("Couldn't join voice: {error}"), cx);
+                this.prejoin_fail(cx);
             },
         );
         cx.notify();
     }
 
-    fn prejoin_fail(&mut self, message: String, cx: &mut Context<Self>) {
-        let request = ToastRequest::new(message).id(JOIN_FAILED_TOAST).danger();
+    /// The failed join's toast: a short sentence; the error chain is in the log (`joining voice`).
+    fn prejoin_fail(&mut self, cx: &mut Context<Self>) {
+        let request = ToastRequest::new(JOIN_FAILED_MESSAGE)
+            .id(JOIN_FAILED_TOAST)
+            .danger();
         self.toasts().show(request, cx);
         cx.notify();
     }

@@ -114,8 +114,8 @@ pub enum ShellEvent {
     OpenPins,
     /// The header's search button: likewise for the search panel.
     OpenSearch,
-    /// The side panel asked to close (its drawer's scrim below wide, or Members replacing it):
-    /// the owner closes it.
+    /// The side panel asked to close (Escape or the scrim of its drawer below wide, or Members
+    /// replacing it): the owner closes it.
     CloseSidePanel,
 }
 
@@ -439,6 +439,16 @@ impl Shell {
     /// The channel header. On a phone it leads with Back to the left pane; its Members button
     /// shows or hides the members at every width (`right_shown`: whether they are showing), and
     /// replaces an open side panel with them.
+    /// Shows the members, the action of the header's Members button and the community header's
+    /// members button. They replace an open side panel, as on the web: the owner closes it.
+    pub(crate) fn show_members(&mut self, cx: &mut Context<Self>) {
+        self.right_open = Some(true);
+        if self.side_panel.is_some() {
+            cx.emit(ShellEvent::CloseSidePanel);
+        }
+        cx.notify();
+    }
+
     pub(crate) fn header(
         &self,
         phone: bool,
@@ -544,15 +554,12 @@ impl Shell {
                                 .selected(right_shown)
                                 .on_click(move |_, _, cx| {
                                     view.update(cx, |shell, cx| {
-                                        if shell.side_panel.is_some() {
-                                            // The members replace an open side panel, as on
-                                            // the web: the owner closes it.
-                                            shell.right_open = Some(true);
-                                            cx.emit(ShellEvent::CloseSidePanel);
+                                        if shell.side_panel.is_some() || !right_shown {
+                                            shell.show_members(cx);
                                         } else {
-                                            shell.right_open = Some(!right_shown);
+                                            shell.right_open = Some(false);
+                                            cx.notify();
                                         }
-                                        cx.notify();
                                     })
                                     .ok();
                                 })

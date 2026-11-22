@@ -99,7 +99,7 @@ pub use overlays::{
     MenuTone, Paper, Placement, Popover, PopoverPadding, PopoverPanel, SecondaryTone, Tip,
     with_tip,
 };
-pub use sheet::{Sheet, SheetCloseReason, SheetSize, sheet_is_bottom};
+pub use sheet::{Drawer, Sheet, SheetCloseReason, SheetSize, sheet_is_bottom};
 pub use surface::{Surface, SurfaceScope};
 pub use tabs::{TabItem, Tabs, TabsVariant};
 pub use typography::{Variant, link, text};

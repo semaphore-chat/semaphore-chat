@@ -1,11 +1,13 @@
 //! The Lounge frame as a view, at a phone's, a tablet's and a desktop's width: the dock, the
 //! sheet's foot, the Members button and the right content's close, the side panel's height, the
-//! phone's panes and focus, and the members' long press.
+//! phone's panes and focus, the side panel's drawer (Escape, the scrim, focus), and the members'
+//! long press. The shell is inside a `BehaviourRoot`, as in the app, so Escape, presses and focus
+//! go through the window's overlay stack.
 
 use super::press::LONG_PRESS;
 use super::source::{Load, MemberRow, RailCounts, ShellSource};
 use super::{ContentSlot, Shell, ShellEvent};
-use crate::kit::PhonePane;
+use crate::kit::{BehaviourRoot, PhonePane};
 use crate::messages::fixture::{self, Body};
 use crate::messages::{ListData, ListOptions, ListStatus, MessageList, NoMedia};
 use crate::nav::Route;
@@ -92,6 +94,17 @@ impl ShellSource for Couch {
 type Events = Rc<RefCell<Vec<ShellEvent>>>;
 type Asked = Rc<RefCell<Vec<bool>>>;
 
+/// The window's root, as the app's: the shell inside a `BehaviourRoot`.
+struct Host {
+    shell: Entity<Shell>,
+}
+
+impl Render for Host {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        BehaviourRoot::new(div().size_full().child(self.shell.clone()))
+    }
+}
+
 /// A shell on `route` in a `width` x 800 window, recording its events and every content slot's
 /// `take_focus`.
 fn shell(
@@ -111,17 +124,29 @@ fn shell(
         seen.borrow_mut().push(props.take_focus);
         div().size_full().into_any_element()
     });
-    let (view, cx) = cx.add_window_view(move |window, cx| {
-        Shell::new(
-            Rc::new(Couch),
-            route,
-            content,
-            ConnectionState::Connected,
-            window,
-            cx,
-        )
-        .with_instance_label("moss.social")
+    // Under gpui-kit's window root, as `gpui_kit::open_window` puts every app view: it moves
+    // focus on Tab.
+    let made: Rc<RefCell<Option<Entity<Shell>>>> = Rc::default();
+    let keep = made.clone();
+    let (_, cx) = cx.add_window_view(move |window, cx| {
+        let shell = cx.new(|cx| {
+            Shell::new(
+                Rc::new(Couch),
+                route,
+                content,
+                ConnectionState::Connected,
+                window,
+                cx,
+            )
+            .with_instance_label("moss.social")
+        });
+        *keep.borrow_mut() = Some(shell.clone());
+        let host = cx.new(|_| Host { shell });
+        gpui_kit::base::Root::new(host, window, cx)
     });
+    let view = made.borrow().clone().expect("built");
+    // An active window, as the app's: keys reach focus and Tab moves it.
+    cx.update(|window, _| window.activate_window());
     cx.simulate_resize(size(px(width), px(800.)));
     let events: Events = Rc::default();
     let sink = events.clone();
@@ -243,9 +268,24 @@ impl Render for Pins {
     }
 }
 
+fn closes(events: &Events) -> usize {
+    count(events, |event| matches!(event, ShellEvent::CloseSidePanel))
+}
+
+fn open_pins(view: &Entity<Shell>, cx: &mut VisualTestContext) {
+    cx.update(|_, cx| {
+        let pins = cx.new(|_| Pins);
+        view.update(cx, |shell, cx| shell.set_side_panel(Some(pins.into()), cx));
+    });
+    draw(cx);
+}
+
+/// The members were hidden, so they show only because Members asked for them.
 #[gpui_kit::test]
 fn members_replace_an_open_side_panel(cx: &mut TestAppContext) {
     let (view, cx, events, _) = shell(cx, 1280., general());
+    click(cx, "members-toggle");
+    assert!(!has(cx, "member-ana"), "hidden first");
     cx.update(|window, cx| {
         let pins = cx.new(|_| Pins);
         view.update(cx, |shell, cx| shell.set_side_panel(Some(pins.into()), cx));
@@ -255,10 +295,7 @@ fn members_replace_an_open_side_panel(cx: &mut TestAppContext) {
     assert!(has(cx, "pins-panel"));
     assert!(!has(cx, "member-ana"), "the panel takes the members' place");
     click(cx, "members-toggle");
-    assert_eq!(
-        count(&events, |event| matches!(event, ShellEvent::CloseSidePanel)),
-        1
-    );
+    assert_eq!(closes(&events), 1);
     view.update(cx, |shell, cx| shell.set_side_panel(None, cx));
     draw(cx);
     assert!(
@@ -267,26 +304,141 @@ fn members_replace_an_open_side_panel(cx: &mut TestAppContext) {
     );
 }
 
+/// The community header's members button is the same action as the centre header's.
 #[gpui_kit::test]
-fn a_side_panels_scrim_asks_the_owner_to_close_it_below_wide(cx: &mut TestAppContext) {
+fn the_community_headers_members_button_replaces_an_open_side_panel(cx: &mut TestAppContext) {
+    let (view, cx, events, _) = shell(cx, 1280., general());
+    click(cx, "members-toggle");
+    open_pins(&view, cx);
+    assert!(has(cx, "community-members"), "offered while pins show");
+    click(cx, "community-members");
+    assert_eq!(closes(&events), 1, "it asks the owner to close pins");
+    view.update(cx, |shell, cx| shell.set_side_panel(None, cx));
+    draw(cx);
+    assert!(has(cx, "member-ana"), "the members replace the panel");
+}
+
+fn bounds_of(cx: &mut VisualTestContext, id: &str) -> Bounds<Pixels> {
+    let id = id.to_owned();
+    cx.update(|window, _| window.try_find(id.clone()).expect("drawn").bounds())
+}
+
+/// Below wide the side panel is a drawer: 400 px at the right edge, full height, or the whole
+/// window on a phone; a press on the dimmed page asks the owner to close it.
+#[gpui_kit::test]
+fn a_side_panels_drawer_and_its_scrim_below_wide(cx: &mut TestAppContext) {
+    for width in [599., 900.] {
+        let (view, cx, events, _) = shell(cx, width, general());
+        open_pins(&view, cx);
+        let drawer = bounds_of(cx, "drawer-panel");
+        let expected_width = if width < 600. { width } else { 400. };
+        assert_eq!(drawer.size.width, px(expected_width), "at {width}");
+        assert_eq!(drawer.size.height, px(800.), "full height at {width}");
+        assert_eq!(drawer.right(), px(width), "at the right edge at {width}");
+        assert!(has(cx, "pins-panel"));
+        if width >= 600. {
+            // The scrim's left part, clear of the drawer.
+            let at = point(px(40.), px(400.));
+            cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+            cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+            draw(cx);
+            assert_eq!(closes(&events), 1, "the scrim at {width}");
+        } else {
+            cx.update(|window, cx| window.press("escape", cx));
+            draw(cx);
+            assert_eq!(closes(&events), 1, "Escape closes the phone's at {width}");
+        }
+    }
+}
+
+/// A panel with two controls that take focus, as pins' Close and a row.
+struct FocusPanel {
+    root: FocusHandle,
+    inner: FocusHandle,
+    second: FocusHandle,
+}
+
+impl Render for FocusPanel {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .id("pins-panel")
+            .test_support()
+            .track_focus(&self.root)
+            .size_full()
+            .child(
+                div()
+                    .id("panel-inner")
+                    .track_focus(&self.inner)
+                    .child("inner"),
+            )
+            .child(
+                div()
+                    .id("panel-second")
+                    .track_focus(&self.second)
+                    .child("second"),
+            )
+    }
+}
+
+/// The drawer is a modal layer: Escape closes it from wherever focus is, focus moves in as it
+/// opens, Tab stays inside, and focus goes back to the opener as it closes.
+#[gpui_kit::test]
+fn the_drawer_takes_focus_traps_tab_closes_on_escape_and_gives_focus_back(cx: &mut TestAppContext) {
     for width in [390., 900.] {
         let (view, cx, events, _) = shell(cx, width, general());
-        cx.update(|_, cx| {
-            let pins = cx.new(|_| Pins);
-            view.update(cx, |shell, cx| shell.set_side_panel(Some(pins.into()), cx));
+        // Escape from outside the panel: focus is on the shell, not in the drawer.
+        open_pins(&view, cx);
+        cx.update(|window, cx| {
+            let shell_focus = view.read(cx).focus.clone();
+            window.focus(&shell_focus, cx);
         });
         draw(cx);
-        if width >= 600. {
-            click(cx, "side-panel-scrim");
-            assert_eq!(
-                count(&events, |event| matches!(event, ShellEvent::CloseSidePanel)),
-                1,
-                "at {width}"
+        cx.update(|window, cx| window.press("escape", cx));
+        draw(cx);
+        assert_eq!(closes(&events), 1, "Escape from anywhere at {width}");
+        view.update(cx, |shell, cx| shell.set_side_panel(None, cx));
+        draw(cx);
+
+        let opener = cx
+            .update(|window, cx| window.focused(cx))
+            .expect("focus somewhere");
+        let (root, inner, second) = cx.update(|_, cx| {
+            let root = cx.focus_handle();
+            let inner = cx.focus_handle().tab_stop(true);
+            let second = cx.focus_handle().tab_stop(true);
+            let panel = cx.new(|_| FocusPanel {
+                root: root.clone(),
+                inner: inner.clone(),
+                second: second.clone(),
+            });
+            view.update(cx, |shell, cx| shell.set_side_panel(Some(panel.into()), cx));
+            (root, inner, second)
+        });
+        draw(cx);
+        assert!(
+            cx.update(|window, _| inner.is_focused(window)),
+            "focus moves to the drawer's first control at {width}"
+        );
+        // Tab moves between the two and wraps round inside, never to the shell under the scrim.
+        for press in 1..=6 {
+            cx.update(|window, cx| window.press("tab", cx));
+            draw(cx);
+            let on = if press % 2 == 1 { &second } else { &inner };
+            assert!(
+                cx.update(|window, _| on.is_focused(window)),
+                "Tab {press} stays in the drawer at {width}"
             );
-        } else {
-            // A phone's drawer is the whole window.
-            assert!(has(cx, "pins-panel"));
         }
+        assert!(cx.update(|window, cx| root.contains_focused(window, cx)));
+        cx.update(|window, cx| window.press("escape", cx));
+        draw(cx);
+        assert_eq!(closes(&events), 2, "Escape from inside at {width}");
+        view.update(cx, |shell, cx| shell.set_side_panel(None, cx));
+        draw(cx);
+        assert!(
+            cx.update(|window, _| opener.is_focused(window)),
+            "focus goes back to the opener at {width}"
+        );
     }
 }
 
@@ -379,9 +531,12 @@ fn a_phone_asks_the_composer_for_focus_only_when_the_centre_shows(cx: &mut TestA
         "no focus for a centre that isn't drawn: {:?}",
         asked.borrow()
     );
-    // Tab still moves focus: the window's focus is on something drawn.
+    // Tab still moves focus, onto a control that is drawn.
+    let before = cx.update(|window, cx| window.focused(cx));
     cx.update(|window, cx| window.press("tab", cx));
     draw(cx);
+    let after = cx.update(|window, cx| window.focused(cx));
+    assert!(after.is_some() && after != before, "Tab moved focus");
     // Its channel row shows the centre, which takes the focus then.
     click(cx, "channel-general");
     assert_eq!(
