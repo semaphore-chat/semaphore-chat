@@ -135,12 +135,16 @@ impl RenderOnce for SuggestionList {
             .active_index
             .filter(|index| *index < self.options.len());
         // GPUI keeps an item in view only once the list has been laid out (its first frame
-        // has no bounds yet), so until then the request is made again each frame.
+        // has no bounds yet), so until then the request is made again, and one more frame is
+        // asked for: otherwise nothing would draw the frame that lays it out.
         let laid_out = kept.scroll.bounds().size.height > px(0.);
         if let Some(index) = active
             && (kept.shown.get() != active || !laid_out)
         {
             kept.scroll.scroll_to_item(index);
+            if !laid_out {
+                window.request_animation_frame();
+            }
         }
         kept.shown.set(if laid_out { active } else { None });
 

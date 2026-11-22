@@ -4,15 +4,16 @@
 
 use super::*;
 use crate::dms::rig::{Rig, rig};
-use crate::kit::{Surface, SurfaceScope};
+use crate::kit::{Button, Placement, Popover, PopoverPanel, Surface, SurfaceScope};
 use core::prelude::v1::test;
-use gpui_kit::component::input::TextareaState;
+use gpui_kit::component::input::{Textarea, TextareaState};
+use gpui_kit::component::{Sizable as _, Size};
 use gpui_kit::prelude::*;
 use gpui_kit::test::{TestInput, TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::*;
 use semaphore_design::chat::{SUGGESTIONS_SHOWN, cap_rows};
 use semaphore_design::lounge::{CONTROL_LG, SPACE_XS, TEXT_BODY};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 type Log = Rc<RefCell<Vec<String>>>;
@@ -99,6 +100,36 @@ fn id_of(parent: &'static str, name: &'static str) -> ElementId {
     child_id(&ElementId::from(parent), name)
 }
 
+/// Draws one frame, without asking for or delivering another.
+fn draw(rig: &Rig<Host, ()>, cx: &mut TestAppContext) {
+    cx.update_window(rig.window, |_, window, cx| window.render_frame(cx))
+        .expect("window");
+}
+
+/// Delivers the frame callbacks scheduled so far, and returns how many ran.
+fn frames_asked(rig: &Rig<Host, ()>, cx: &mut TestAppContext) -> usize {
+    cx.update_window(rig.window, |_, window, cx| window.simulate_next_frame(cx))
+        .expect("window")
+}
+
+/// Whether the row named `label` is inside the list's bounds right now (no frame drawn).
+fn in_view(rig: &Rig<Host, ()>, cx: &mut TestAppContext, label: &'static str) -> bool {
+    cx.update_window(rig.window, |_, window, _| {
+        let list = window.find_by_label("Mention suggestions").bounds();
+        let row = window.find_by_label(label).bounds();
+        row.top() >= list.top() && row.bottom() <= list.bottom()
+    })
+    .expect("window")
+}
+
+/// The list's bounds right now (no frame drawn).
+fn list_bounds(rig: &Rig<Host, ()>, cx: &mut TestAppContext) -> Bounds<Pixels> {
+    cx.update_window(rig.window, |_, window, _| {
+        window.find_by_label("Mention suggestions").bounds()
+    })
+    .expect("window")
+}
+
 /// Drives the input method protocol on the field.
 fn ime<R>(
     rig: &Rig<Host, ()>,
@@ -178,7 +209,16 @@ fn nothing_submits_while_an_input_method_has_marked_text(cx: &mut TestAppContext
             input.marked_text_range(cx)
         });
         assert!(marked.is_some());
+        let composed = value(&rig, cx);
         press(&rig, cx, key);
+        if key == "enter" {
+            let after = value(&rig, cx);
+            assert_eq!(
+                after, composed,
+                "Enter while composing makes no line over the marked text"
+            );
+            assert!(!after.contains('\n'), "{after:?}");
+        }
         assert!(
             logged(&log).is_empty(),
             "{key}: no submit and no screen key while composing: {:?}",
@@ -315,6 +355,78 @@ fn the_caret_moving_is_reported(cx: &mut TestAppContext) {
     );
 }
 
+#[gpui_kit::test]
+fn a_text_field_in_a_slot_keeps_its_own_keys(cx: &mut TestAppContext) {
+    // A search field in an emoji picker Popover sits inside the composer's tree, in its emoji
+    // slot. The composer's keys are the field's, not the root's, so they are not taken from it.
+    let inner_slot: Rc<RefCell<Option<Entity<TextareaState>>>> = Rc::default();
+    let slot = inner_slot.clone();
+    let (rig, log) = host(cx, move |state, log, window, cx| {
+        let existing = slot.borrow().clone();
+        let search = match existing {
+            Some(search) => search,
+            None => {
+                let search = cx.new(|cx| TextareaState::new(window, cx).submit_on_enter(true));
+                *slot.borrow_mut() = Some(search.clone());
+                search
+            }
+        };
+        let keys = log.clone();
+        let popover_search = search.clone();
+        composer(state, log, move |c| {
+            let keys = keys.clone();
+            c.on_key(move |key, _, _| {
+                keys.borrow_mut().push(format!("key {key:?}"));
+                false
+            })
+            .emoji([Popover::new("emoji-picker")
+                .placement(Placement::BottomStart)
+                .default_open(true)
+                .trigger_element(Button::new("emoji-trigger", "Emoji").soft())
+                .content({
+                    let search = popover_search.clone();
+                    move |_, _| {
+                        PopoverPanel::new("Emoji").child(
+                            Textarea::new(&search)
+                                .with_size(Size::XSmall)
+                                .aria_label("Search emoji"),
+                        )
+                    }
+                })])
+        })
+    });
+    let search = inner_slot
+        .borrow()
+        .clone()
+        .expect("the popover's field was drawn");
+
+    focus_field(&rig, cx);
+    typed(&rig, cx, "draft");
+    rig.with(cx, {
+        let search = search.clone();
+        move |_, window, cx| search.update(cx, |field, cx| field.focus(window, cx))
+    });
+    typed(&rig, cx, "cats");
+    assert_eq!(
+        cx.update(|cx| search.read(cx).value().to_string()),
+        "cats",
+        "the popover's field took the typing"
+    );
+
+    press(&rig, cx, "enter");
+    assert!(
+        logged(&log).is_empty(),
+        "Enter stayed in the popover's field: {:?}",
+        logged(&log)
+    );
+    assert_eq!(value(&rig, cx), "draft", "the draft did not submit or grow");
+    assert_eq!(
+        cx.update(|cx| search.read(cx).value().to_string()),
+        "cats",
+        "nor did Enter reach it"
+    );
+}
+
 // ---------------------------------------------------------------------------------------------
 // Caps
 
@@ -348,6 +460,58 @@ fn the_caps_give_2_4_and_10_rows(cx: &mut TestAppContext) {
         );
         assert!(logged(&log).is_empty());
     }
+}
+
+#[gpui_kit::test]
+fn a_new_state_under_the_same_id_grows_and_reports_its_caret(cx: &mut TestAppContext) {
+    // A screen may keep one draft per channel and pass a different state under one composer id.
+    let (rig, log) = host(cx, |state, log, _, _| {
+        Composer::new("c", "Message #general", state.clone())
+            .on_caret_move(note(log, "caret"))
+            .into_any_element()
+    });
+    let line = px(TEXT_BODY.line_height);
+    let height = |cx: &mut TestAppContext, state: &Entity<TextareaState>| {
+        let id: ElementId = ("input", state.entity_id()).into();
+        rig.with(cx, move |_, window, _| window.find(id).bounds().size.height)
+    };
+
+    let first = field(&rig, cx);
+    focus_field(&rig, cx);
+    typed(&rig, cx, "a");
+    for _ in 0..5 {
+        press(&rig, cx, "shift-enter");
+    }
+    assert!(height(cx, &first) > line, "the first field grows");
+
+    let second = rig.with(cx, |_, window, cx| {
+        cx.new(|cx| TextareaState::new(window, cx))
+    });
+    rig.with(cx, {
+        let second = second.clone();
+        move |view, _, cx| {
+            view.update(cx, |host, cx| {
+                host.field = second;
+                cx.notify();
+            });
+        }
+    });
+
+    let before = logged(&log).len();
+    focus_field(&rig, cx);
+    typed(&rig, cx, "b");
+    for _ in 0..5 {
+        press(&rig, cx, "shift-enter");
+    }
+    assert!(
+        height(cx, &second) > line,
+        "the new state under the same id grows too"
+    );
+    let carets = &logged(&log)[before..];
+    assert!(
+        !carets.is_empty() && carets.iter().all(|line| line == "caret"),
+        "the new state reports its caret: {carets:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -524,22 +688,74 @@ fn loading_shows_a_loading_row(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn six_rows_show_and_the_active_row_is_kept_in_view(cx: &mut TestAppContext) {
-    let (rig, _) = list_host(cx, 12, Some(10), false);
-    rig.with(cx, |_, window, _| {
-        let list = window.find_by_label("Mention suggestions").bounds();
-        let most = px(SUGGESTIONS_SHOWN as f32 * CONTROL_LG + 2. * SPACE_XS + 2.);
-        assert!(
-            list.size.height <= most,
-            "{:?} over {most:?}",
-            list.size.height
-        );
-        assert!(list.size.height >= px(SUGGESTIONS_SHOWN as f32 * CONTROL_LG));
-        let active = window.find_by_label("member10, Member 10").bounds();
-        assert!(
-            active.top() >= list.top() && active.bottom() <= list.bottom(),
-            "{active:?} outside {list:?}"
-        );
+    let active = Rc::new(Cell::new(Some(10usize)));
+    let highlight = active.clone();
+    let open = Rc::new(Cell::new(false));
+    let shown = open.clone();
+    let log: Log = Rc::default();
+    let rig = rig(cx, 900., move |window, cx| Host {
+        field: cx.new(|cx| TextareaState::new(window, cx)),
+        body: Box::new(move |state, log, _, _| {
+            let open = shown.get();
+            composer(state, log, |c| {
+                if open {
+                    c.suggestions(SuggestionList::new(
+                        "list",
+                        "Mention suggestions",
+                        options(12),
+                        highlight.get(),
+                    ))
+                } else {
+                    c
+                }
+            })
+        }),
+        log,
     });
+
+    // The list's first frame has no bounds to scroll within; it asks for one more frame. Draw a
+    // frame without it first, then the frame it appears on.
+    draw(&rig, cx);
+    open.set(true);
+    draw(&rig, cx);
+    let mut settled = false;
+    for _ in 0..8 {
+        if frames_asked(&rig, cx) == 0 {
+            settled = true;
+            break;
+        }
+        draw(&rig, cx);
+    }
+    assert!(
+        settled,
+        "the list stops asking for frames once it is laid out"
+    );
+    assert!(
+        in_view(&rig, cx, "member10, Member 10"),
+        "the active row is in view from the first frame"
+    );
+
+    let list = list_bounds(&rig, cx);
+    let most = px(SUGGESTIONS_SHOWN as f32 * CONTROL_LG + 2. * SPACE_XS + 2.);
+    assert!(
+        list.size.height <= most,
+        "{:?} over {most:?}",
+        list.size.height
+    );
+    assert!(list.size.height >= px(SUGGESTIONS_SHOWN as f32 * CONTROL_LG));
+
+    // Moving the highlight above the fold scrolls it into view too.
+    active.set(Some(1));
+    draw(&rig, cx);
+    draw(&rig, cx);
+    assert!(
+        in_view(&rig, cx, "member1, Member 1"),
+        "the moved highlight is in view"
+    );
+    assert!(
+        !in_view(&rig, cx, "member10, Member 10"),
+        "and the row it left is not"
+    );
 }
 
 #[gpui_kit::test]

@@ -323,6 +323,8 @@ pub(crate) fn composing(state: &Entity<TextareaState>, window: &mut Window, cx: 
 
 /// What the caret watch last saw, and who to tell when it changes.
 struct CaretWatch {
+    /// The field's entity: a new `state` under the same composer id gets a new watch.
+    field: u64,
     seen: (SharedString, Range<usize>),
     handler: Option<Action>,
     _observe: Option<Subscription>,
@@ -331,6 +333,30 @@ struct CaretWatch {
 fn caret_of(state: &Entity<TextareaState>, cx: &App) -> (SharedString, Range<usize>) {
     let field = state.read(cx);
     (field.value(), field.selected_range())
+}
+
+/// Calls `handler` whenever `state`'s text or selection changes, for as long as the watch lives.
+fn observe_caret(
+    watch: WeakEntity<CaretWatch>,
+    state: &Entity<TextareaState>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Subscription {
+    window.observe(state, cx, move |field, window, cx| {
+        let Some(watch) = watch.upgrade() else {
+            return;
+        };
+        let now = caret_of(&field, cx);
+        let handler = watch.update(cx, |watch: &mut CaretWatch, _| {
+            (watch.seen != now).then(|| {
+                watch.seen = now;
+                watch.handler.clone()
+            })
+        });
+        if let Some(Some(handler)) = handler {
+            handler(window, cx);
+        }
+    })
 }
 
 /// Calls `handler` whenever the field's text or selection changes, for as long as the composer
@@ -342,33 +368,24 @@ fn watch_caret(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let watch = window.use_keyed_state(child_id(id, "caret"), cx, |window, cx| {
-        let weak = cx.weak_entity();
-        let observe = window.observe(state, cx, move |field, window, cx| {
-            let Some(watch) = weak.upgrade() else {
-                return;
-            };
-            let now = caret_of(&field, cx);
-            let handler = watch.update(cx, |watch: &mut CaretWatch, _| {
-                (watch.seen != now).then(|| {
-                    watch.seen = now;
-                    watch.handler.clone()
-                })
-            });
-            if let Some(Some(handler)) = handler {
-                handler(window, cx);
-            }
-        });
-        CaretWatch {
-            seen: caret_of(state, cx),
-            handler: None,
-            _observe: Some(observe),
-        }
+    let watch = window.use_keyed_state(child_id(id, "caret"), cx, |window, cx| CaretWatch {
+        field: state.entity_id().as_u64(),
+        seen: caret_of(state, cx),
+        handler: None,
+        _observe: Some(observe_caret(cx.weak_entity(), state, window, cx)),
     });
+    if watch.read(cx).field != state.entity_id().as_u64() {
+        let observe = observe_caret(watch.downgrade(), state, window, cx);
+        watch.update(cx, |watch, cx| {
+            watch.field = state.entity_id().as_u64();
+            watch.seen = caret_of(state, cx);
+            watch._observe = Some(observe);
+        });
+    }
     watch.update(cx, |watch, _| watch.handler = handler);
 }
 
-/// Sets the field to grow from one line to `rows`, once per change of the cap.
+/// Sets the field to grow from one line to `rows`, once per field and change of the cap.
 fn apply_cap(
     id: &ElementId,
     state: &Entity<TextareaState>,
@@ -377,10 +394,13 @@ fn apply_cap(
     cx: &mut App,
 ) {
     let applied = window
-        .use_keyed_state(child_id(id, "rows"), cx, |_, _| Rc::new(Cell::new(0usize)))
+        .use_keyed_state(child_id(id, "rows"), cx, |_, _| {
+            Rc::new(Cell::new((0u64, 0usize)))
+        })
         .read(cx)
         .clone();
-    if applied.replace(rows) != rows {
+    let wanted = (state.entity_id().as_u64(), rows);
+    if applied.replace(wanted) != wanted {
         state.update(cx, |field, cx| field.set_auto_grow(1, rows, cx));
     }
 }
@@ -485,20 +505,29 @@ impl RenderOnce for Composer {
             let screen_key = screen_key.clone();
             let submit = submit.clone();
             move |action: &Enter, window: &mut Window, cx: &mut App| {
-                if screen_key(
+                match screen_key(
                     ComposerKey::Enter {
                         shift: action.shift,
                     },
                     window,
                     cx,
-                ) != Some(false)
-                {
-                    return;
-                }
-                if submit_on_enter && !action.shift {
-                    // Enter sends and never makes a line, even when there is nothing to send.
-                    cx.stop_propagation();
-                    submit(window, cx);
+                ) {
+                    // The input method owns this Enter: take it so the field cannot put a line
+                    // over the marked text, and nothing submits.
+                    None => {
+                        if submit_on_enter {
+                            cx.stop_propagation();
+                        }
+                    }
+                    Some(true) => {}
+                    Some(false) => {
+                        if submit_on_enter && !action.shift {
+                            // Enter sends and never makes a line, even when there is nothing to
+                            // send.
+                            cx.stop_propagation();
+                            submit(window, cx);
+                        }
+                    }
                 }
             }
         };
@@ -547,7 +576,14 @@ impl RenderOnce for Composer {
                     .left(px(SPACE_SM))
                     .right(px(SPACE_SM))
                     .text_color(sem.role.text_dim)
-            }));
+            }))
+            // The field's own keys, on its box: another text field in the emoji or the attach
+            // slot (a popover's search) is not under this and keeps them.
+            .capture_action(move |action: &Enter, window, cx| on_enter(action, window, cx))
+            .capture_action(move |_: &MoveUp, window, cx| up(window, cx))
+            .capture_action(move |_: &MoveDown, window, cx| down(window, cx))
+            .capture_action(move |_: &IndentInline, window, cx| tab(window, cx))
+            .capture_action(move |_: &Escape, window, cx| escape(window, cx));
 
         let attach = self.on_attach.map(|on_attach| {
             let unavailable = self.attach_unavailable;
@@ -744,12 +780,7 @@ impl RenderOnce for Composer {
                 )
         });
 
-        root.capture_action(move |action: &Enter, window, cx| on_enter(action, window, cx))
-            .capture_action(move |_: &MoveUp, window, cx| up(window, cx))
-            .capture_action(move |_: &MoveDown, window, cx| down(window, cx))
-            .capture_action(move |_: &IndentInline, window, cx| tab(window, cx))
-            .capture_action(move |_: &Escape, window, cx| escape(window, cx))
-            .children(banner)
+        root.children(banner)
             .children(tray)
             .child(
                 div()
