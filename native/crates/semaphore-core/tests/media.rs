@@ -5,7 +5,7 @@ mod common;
 use common::*;
 use semaphore_core::model::{
     ConnectionQuality, LocalMediaView, LocalShare, ParticipantView, UserView, VideoDemand,
-    VideoTrackView, VoiceStatus, VoiceView,
+    VideoTrackView, VoiceRoom, VoiceStatus, VoiceView,
 };
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
@@ -255,6 +255,38 @@ async fn the_engine_ending_a_call_ends_it_here_and_on_the_server() {
     assert_eq!(voice.channel_id, None);
     assert_eq!(voice.error.as_deref(), Some("removed from the room"));
     assert_eq!(voice_calls(&rig), ["join", "leave"]);
+    // B11: how it ended, with the room it was in (the view's `room` is gone).
+    let ended = voice.ended.expect("ended");
+    assert!(matches!(ended.room, VoiceRoom::Channel { .. }));
+    assert!(!ended.while_reconnecting);
+    assert_eq!(ended.error.as_deref(), Some("removed from the room"));
+}
+
+#[tokio::test]
+async fn a_rejoin_that_gives_up_ends_the_call_while_reconnecting() {
+    let rig = in_call(&["me"]).await;
+    rig.core
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me")]));
+    rig.core
+        .ingest_media(CALL, report(VoiceStatus::Reconnecting, Vec::new()));
+    rig.core.ingest_media(
+        CALL,
+        VoiceView {
+            status: VoiceStatus::Disconnected,
+            error: Some("no route".into()),
+            ..VoiceView::default()
+        },
+    );
+    let ended = rig.core.voice().ended.expect("ended");
+    assert!(ended.while_reconnecting);
+    assert_eq!(ended.error.as_deref(), Some("no route"));
+}
+
+#[tokio::test]
+async fn leaving_says_nothing_ended() {
+    let rig = in_call(&["me"]).await;
+    rig.core.leave_voice().await.unwrap();
+    assert_eq!(rig.core.voice().ended, None);
 }
 
 #[tokio::test]

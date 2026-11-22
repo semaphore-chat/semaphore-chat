@@ -418,6 +418,7 @@ pub struct IconButton {
     on: Option<Surface>,
     tab_stop: Option<bool>,
     on_click: Option<ClickHandler>,
+    on_unavailable_press: Option<ClickHandler>,
     lounge: Option<LoungeIcon>,
     badge: Option<(u32, SharedString)>,
     current: bool,
@@ -440,6 +441,7 @@ impl IconButton {
             on: None,
             tab_stop: None,
             on_click: None,
+            on_unavailable_press: None,
             lounge: None,
             badge: None,
             current: false,
@@ -555,6 +557,16 @@ impl IconButton {
         self.on_click = Some(Rc::new(handler));
         self
     }
+
+    /// What a press does while the button is [`IconButton::unavailable`] (the web's
+    /// `onUnavailablePress`): say why it can do nothing. The action itself never runs.
+    pub fn on_unavailable_press(
+        mut self,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_unavailable_press = Some(Rc::new(handler));
+        self
+    }
 }
 
 impl RenderOnce for IconButton {
@@ -583,6 +595,8 @@ impl RenderOnce for IconButton {
             .when_some(self.tab_stop, |button, stop| button.tab_stop(stop))
             .size(px(self.size.height()));
         if let Some(handler) = self.on_click.filter(|_| state.acts()) {
+            button = button.on_click(move |event, window, cx| handler(event, window, cx));
+        } else if let Some(handler) = self.on_unavailable_press.filter(|_| state.unavailable) {
             button = button.on_click(move |event, window, cx| handler(event, window, cx));
         }
         if self.current {

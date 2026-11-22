@@ -5,8 +5,8 @@ use crate::cache::keys;
 use crate::client::{Core, Effect, JoinFailureReport, State};
 use crate::model::{
     JoinFailure, JoinFailureClass, LocalMediaView, LocalShare, ParticipantView, ScreenShareRequest,
-    UserView, VideoDemand, ViewKey, VoiceJoinMode, VoiceJoinOptions, VoiceModerationCaps,
-    VoicePreJoinView, VoiceRoom, VoiceStatus, VoiceView,
+    UserView, VideoDemand, ViewKey, VoiceEnded, VoiceJoinMode, VoiceJoinOptions,
+    VoiceModerationCaps, VoicePreJoinView, VoiceRoom, VoiceStatus, VoiceView,
 };
 use crate::platform::CoreError;
 use crate::resync::unavailable;
@@ -250,6 +250,7 @@ impl Core {
             state.voice.room = Some(room.clone());
             state.voice.reconnect_attempt = None;
             state.voice.error = None;
+            state.voice.ended = None;
             // A camera or share belongs to one call.
             state.voice.local = LocalMediaView::default();
             state.media = None;
@@ -781,6 +782,11 @@ impl Core {
                     let status = status_name(was);
                     state.voice = VoiceView {
                         error: media.error.clone(),
+                        ended: room.clone().map(|room| VoiceEnded {
+                            room,
+                            while_reconnecting: was == VoiceStatus::Reconnecting,
+                            error: media.error.clone(),
+                        }),
                         ..VoiceView::default()
                     };
                     state.media = None;

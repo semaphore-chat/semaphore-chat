@@ -241,27 +241,6 @@ fn soundboard_button(
     )
 }
 
-/// The bar as an element that finds the theme when it's drawn.
-#[derive(IntoElement)]
-pub(super) struct VoiceBar {
-    pub model: VoiceStageModel,
-    pub soundboard: SoundboardBar,
-    pub narrow: bool,
-    pub controller: Arc<dyn VoiceController>,
-}
-
-impl RenderOnce for VoiceBar {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        voice_bar(
-            &self.model,
-            &self.soundboard,
-            self.narrow,
-            self.controller,
-            cx,
-        )
-    }
-}
-
 pub(super) fn voice_bar(
     model: &VoiceStageModel,
     soundboard: &SoundboardBar,

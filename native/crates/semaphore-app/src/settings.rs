@@ -207,7 +207,8 @@ pub struct Settings {
     /// that accent's primary), so a start draws in it before
     /// the server's appearance arrives, and the signed-out screens keep it.
     pub theme: Option<String>,
-    /// W4: the float card's placement per viewport bucket (`StoredPlacement`).
+    /// The old float card's placements (gone in B11, replaced by the call surface). Kept so a
+    /// settings file that has them still loads; nothing reads them.
     pub float_placements: BTreeMap<String, StoredPlacement>,
     /// W4: the DM call's stage share of the column's height (0..1), as the web's
     /// `semaphore_dm_stage_ratio`. `None`: the default split.

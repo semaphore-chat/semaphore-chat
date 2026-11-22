@@ -7,6 +7,7 @@
 //! does is a callback; what it shows of a load is a [`Face`].
 
 mod all_sheet;
+pub mod call;
 mod community_left;
 mod dock;
 pub mod lines;

@@ -171,6 +171,21 @@ pub struct VoiceView {
     /// W4: the server refused the buffer's start (400) and it is asked again then, when the host
     /// calls `Core::retry_replay`. `replay` stays `Starting` meanwhile.
     pub replay_retry_at_ms: Option<u64>,
+    /// B11: the last call ended on its own (the engine dropped it; not a leave), and how. Set with
+    /// `Disconnected`, cleared by the next join or a leave. The call bar's voice notice reads it:
+    /// `room` is gone from the view by then.
+    pub ended: Option<VoiceEnded>,
+}
+
+/// How a call ended on its own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoiceEnded {
+    /// The room it was in, for Retry.
+    pub room: VoiceRoom,
+    /// It was rejoining when it ended: the connection was lost and could not come back.
+    pub while_reconnecting: bool,
+    /// What the engine said, as `error`.
+    pub error: Option<String>,
 }
 
 /// One thing we may send, as its button shows it.

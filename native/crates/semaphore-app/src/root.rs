@@ -35,7 +35,7 @@ use semaphore_ui::theme::SemTheme as _;
 use semaphore_ui::voice::{
     PickerActions, PickerModel, PickerSource, PttAction, PttContext, PttInput, PttState,
     QualityLevel, VideoFrames, VoiceController, VoiceStage, VoiceStageModel, ptt_decide,
-    source_picker, voice_bar_element_with,
+    source_picker,
 };
 use std::rc::Rc;
 use std::sync::Arc;
@@ -103,7 +103,7 @@ pub struct AppRoot {
     os_watcher: Option<OsWatcher>,
     voice: Option<Arc<AppVoice>>,
     stage: Option<Entity<VoiceStage>>,
-    /// The window's video frames, for the float card (W4).
+    /// The window's video frames, for the stage and the call surface.
     frames: Option<Arc<VideoFrames>>,
     /// The voice channel's name, from when it was joined.
     voice_channel_name: String,
@@ -1089,11 +1089,7 @@ impl AppRoot {
                 self.drop_moderation();
                 // This session's notices go with it: none waits on the sign-in screen.
                 let toasts = self.toasts();
-                for id in [
-                    replay::REPLAY_TOAST,
-                    prejoin::JOIN_FAILED_TOAST,
-                    account::INVITE_NOTICE,
-                ] {
+                for id in [replay::REPLAY_TOAST, account::INVITE_NOTICE] {
                     toasts.dismiss(id, cx);
                 }
                 self.account_open = false;
@@ -1303,33 +1299,7 @@ impl AppRoot {
                 let (element, stage_shown) =
                     content(&pane, &stage, &content_core, &root, props, window, cx);
                 shown.set(stage_shown);
-                if stage_shown {
-                    return element;
-                }
-                // WP: no float card over another voice channel's pre-join, whose joins sit where
-                // the card goes; the bar in the frame's call slot still shows the call.
-                let prejoin_shown = props.channel.as_ref().is_some_and(|channel| {
-                    channel.kind == ChannelKind::Voice
-                        && root
-                            .upgrade()
-                            .is_some_and(|root| root.read(cx).prejoin_shows(&channel.id))
-                });
-                if prejoin_shown {
-                    return element;
-                }
-                // W4: the call over the column while its stage isn't shown (wide windows).
-                let float = root
-                    .upgrade()
-                    .and_then(|root| root.update(cx, |root, cx| root.float_card(window, cx)));
-                match float {
-                    Some(float) => div()
-                        .relative()
-                        .size_full()
-                        .child(element)
-                        .child(float)
-                        .into_any_element(),
-                    None => element,
-                }
+                element
             },
         );
         let connection = core.connection();
@@ -1342,29 +1312,13 @@ impl AppRoot {
             .map(|(url, _)| server_label(url))
             .unwrap_or_default();
         let shell = cx.new(|cx| {
-            // The call's bar in the frame's call slot, wherever the user is but the call's own view.
+            // The frame's call slot (B11): the call bar, with the call surface above it, wherever
+            // the user is but the call's own view; the voice notice after a call.
             let bar: semaphore_ui::shell::VoiceBarSlot = Rc::new(move |window, cx| {
                 let root = bar_root.upgrade()?;
-                let (model, soundboard, controller) = {
-                    let root = root.read(cx);
-                    let model = root.stage_model();
-                    model.voice.room.as_ref()?;
-                    let controller: Arc<dyn VoiceController> = root.voice.clone()?;
-                    (model, root.soundboard_bar(), controller)
-                };
                 // The stage has a bar of its own.
-                if showing.get() {
-                    return None;
-                }
-                // The call slot is the left column (288 px) at compact and wide, and a phone's
-                // width below: the bar's narrow layout fits both.
-                let _ = window;
-                Some(voice_bar_element_with(
-                    &model,
-                    &soundboard,
-                    true,
-                    controller,
-                ))
+                let stage_shown = showing.get();
+                root.update(cx, |root, cx| root.call_slot(stage_shown, window, cx))
             });
             Shell::new(
                 Rc::new(CoreSource(core.clone())),
@@ -1630,6 +1584,7 @@ impl AppRoot {
                 self.open_settings(semaphore_ui::settings::SettingsTab::VoiceVideo, cx)
             }
             VoiceRequest::OpenMore => self.more_open = true,
+            VoiceRequest::OpenCallView => self.open_call_view(cx),
             VoiceRequest::OpenPicker => self.picker = Some(PickerModel::loading()),
             // Only into a picker still open and still loading: a cancelled one stays closed.
             VoiceRequest::PickerSources(listed) => {

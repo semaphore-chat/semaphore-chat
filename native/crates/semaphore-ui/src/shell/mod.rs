@@ -47,8 +47,9 @@ pub const SIDE_PANEL_WIDTH: f32 = 400.;
 
 /// Draws the centre for a route. Messages (U9) and the composer (U10) arrive here.
 pub type ContentSlot = Rc<dyn Fn(&ContentProps, &mut Window, &mut App) -> AnyElement>;
-/// Draws the frame's call slot when there's a call: the voice bar (U11).
-pub type VoiceBarSlot = Rc<dyn Fn(&mut Window, &mut App) -> Option<AnyElement>>;
+/// Draws the frame's call slot (B11): the call bar with the call surface above it while there is a
+/// call, the voice notice after one, or nothing.
+pub type VoiceBarSlot = Rc<dyn Fn(&mut Window, &mut App) -> Option<crate::kit::CallSlot>>;
 /// Draws the update card in the frame's banner row, when there's an update to talk about.
 pub type UpdateBannerSlot = Rc<dyn Fn(&mut Window, &mut App) -> Option<AnyElement>>;
 
@@ -627,6 +628,7 @@ pub(crate) fn error_state(
 pub fn stories() -> Vec<crate::stories::Story> {
     let mut all = stories_impl::stories();
     all.extend(lounge::stories::stories());
+    all.extend(lounge::call::stories::stories());
     all
 }
 
