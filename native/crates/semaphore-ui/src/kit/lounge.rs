@@ -450,6 +450,7 @@ pub struct DockItem {
     on_click: Option<Action>,
     focus: Option<FocusHandle>,
     tab_stop: Option<bool>,
+    element_id: Option<ElementId>,
 }
 
 impl DockItem {
@@ -469,7 +470,14 @@ impl DockItem {
             on_click: None,
             focus: None,
             tab_stop: None,
+            element_id: None,
         }
+    }
+
+    /// The item's element id; the default is `dock-item-<key>`.
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.element_id = Some(id.into());
+        self
     }
 
     pub fn image(mut self, image: Option<ImageSource>) -> Self {
@@ -547,7 +555,10 @@ fn corner_dot(colour: Hsla, ring: Hsla) -> Div {
 impl RenderOnce for DockItem {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let sem = cx.sem().clone();
-        let id = ElementId::Name(format!("dock-item-{}", self.key).into());
+        let id = self
+            .element_id
+            .clone()
+            .unwrap_or_else(|| ElementId::Name(format!("dock-item-{}", self.key).into()));
         let focus = self
             .focus
             .clone()
@@ -669,9 +680,8 @@ pub enum DockEntry {
     /// An icon button (Inbox, "All communities") with the key it has in the dock's keyboard list.
     Button(SharedString, IconButton),
     Divider,
-    /// Any element, for the surface tests.
-    #[cfg(test)]
-    Probe(AnyElement),
+    /// Any element that is not a stop of the dock's keyboard list: a loading placeholder.
+    Element(AnyElement),
 }
 
 impl DockEntry {
@@ -683,9 +693,7 @@ impl DockEntry {
         match self {
             DockEntry::Item(item) => Some(&item.key),
             DockEntry::Button(key, _) => Some(key),
-            DockEntry::Divider => None,
-            #[cfg(test)]
-            DockEntry::Probe(_) => None,
+            DockEntry::Divider | DockEntry::Element(_) => None,
         }
     }
 
@@ -714,8 +722,7 @@ impl DockEntry {
                 None => button.into_any_element(),
             },
             DockEntry::Divider => DockDivider.into_any_element(),
-            #[cfg(test)]
-            DockEntry::Probe(element) => element,
+            DockEntry::Element(element) => element,
         }
     }
 }

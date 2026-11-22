@@ -405,6 +405,8 @@ pub struct IconButton {
     on: Option<Surface>,
     tab_stop: Option<bool>,
     on_click: Option<ClickHandler>,
+    lounge: Option<LoungeIcon>,
+    badge: Option<(u32, SharedString)>,
 }
 
 impl IconButton {
@@ -424,7 +426,22 @@ impl IconButton {
             on: None,
             tab_stop: None,
             on_click: None,
+            lounge: None,
+            badge: None,
         }
+    }
+
+    /// Draws a Lounge glyph in place of `icon` (the web kit's lucide names: Inbox, LayoutGrid).
+    pub fn lounge_icon(mut self, icon: LoungeIcon) -> Self {
+        self.lounge = Some(icon);
+        self
+    }
+
+    /// A danger count at the top-right corner, as the web kit's `badge`; nothing for 0. `words`
+    /// say it ("9 unread") and are added to the button's name.
+    pub fn badge(mut self, count: u32, words: impl Into<SharedString>) -> Self {
+        self.badge = (count > 0).then(|| (count, words.into()));
+        self
     }
 
     pub fn size(mut self, size: ControlSize) -> Self {
@@ -518,14 +535,41 @@ impl RenderOnce for IconButton {
             .filter(|_| !self.selected)
             .unwrap_or(c(look.label));
         let icon_size = icon_size(self.size);
+        let label = match &self.badge {
+            Some((_, words)) => SharedString::from(format!("{}, {words}", self.label)),
+            None => self.label.clone(),
+        };
         let mut button = pill(self.id, self.focus, look, &p, state, window, cx)
             .selected(self.selected)
-            .accessibility_label(self.label)
+            .accessibility_label(label)
             .when_some(self.tab_stop, |button, stop| button.tab_stop(stop))
             .size(px(self.size.height()));
         if let Some(handler) = self.on_click.filter(|_| state.acts()) {
             button = button.on_click(move |event, window, cx| handler(event, window, cx));
         }
+        if let Some((count, words)) = self.badge {
+            let ring = cx.sem().role.surface;
+            button = button.relative().child(
+                div()
+                    .absolute()
+                    .top(px(-semaphore_design::lounge::SPACE_XS))
+                    .right(px(-semaphore_design::lounge::SPACE_XS))
+                    .flex()
+                    .rounded_full()
+                    .border(px(semaphore_design::lounge::BORDER_SELECTED))
+                    .border_color(ring)
+                    .child(
+                        super::Badge::new(words)
+                            .count(count)
+                            .tone(super::BadgeTone::Danger)
+                            .decorative(true),
+                    ),
+            );
+        }
+        let glyph = match self.lounge {
+            Some(lounge) => Icon::lounge(lounge),
+            None => Icon::new(self.icon),
+        };
         if state.busy {
             button.child(
                 Spinner::new("icon-button-spinner")
@@ -533,7 +577,7 @@ impl RenderOnce for IconButton {
                     .color(ink),
             )
         } else {
-            button.child(Icon::new(self.icon).size(icon_size).color(ink))
+            button.child(glyph.size(icon_size).color(ink))
         }
     }
 }

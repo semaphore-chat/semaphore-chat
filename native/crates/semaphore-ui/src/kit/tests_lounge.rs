@@ -204,7 +204,7 @@ fn each_piece_hands_its_children_the_right_layer(cx: &mut TestAppContext) {
             .child(
                 Dock::new("dock", "Communities")
                     .item(DockItem::new("a", "Alpha"))
-                    .item(DockEntry::Probe(probe("dock", log).into_any_element()))
+                    .item(DockEntry::Element(probe("dock", log).into_any_element()))
                     .end(DockEntry::button(
                         "all",
                         IconButton::new("all", I::Settings, "All"),

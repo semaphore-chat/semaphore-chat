@@ -50,6 +50,7 @@ mod tests_lounge;
 mod typography;
 
 pub use assets::{UiAssets, icon_path, lounge_icon_path};
+pub(crate) use behaviour::list_focus;
 pub use behaviour::{
     Announcer, BehaviourHost, BehaviourRoot, CloseReason, ConfirmDestructive, ConfirmDialog,
     ConfirmOptions, LayerKind, LoadResult, LoadState, LoadStateView, Politeness, ToastRegion,
@@ -84,6 +85,7 @@ pub use media::{
     MediaKind, MediaStep, MediaTile, VideoFit, VideoSlot, media_step, media_tile_breakpoints,
     media_tile_label,
 };
+pub(crate) use overlays::type_text;
 pub use overlays::{
     ANCHOR_GAP, Dialog, DialogCloseReason, DialogSize, Menu, MenuCloseReason, MenuEntry, MenuItem,
     MenuTone, Paper, Placement, Popover, PopoverPadding, PopoverPanel, SecondaryTone, Tip,
