@@ -26,7 +26,7 @@ use semaphore_core::model::{
 };
 use semaphore_core::{Core, CoreEvent};
 use semaphore_ui::composer::{Availability, Composer, ComposerConfig, DraftStore, MentionSource};
-use semaphore_ui::kit::{Speaker, on_core_event};
+use semaphore_ui::kit::{ChatPane, Speaker, TypingLine, on_core_event};
 use semaphore_ui::messages::{
     ListData, ListOptions, ListPermissions, ListStatus, MessageList, ReplyPreview, TimeFormat,
 };
@@ -485,6 +485,10 @@ impl ConversationPane {
             self.sync_side(cx);
         }
         let list = self.new_list(Vec::new(), ListStatus::Loading, cx);
+        // The pane's typing line floats over the list's foot: keep its height free under the rows.
+        list.update(cx, |list, cx| {
+            list.set_bottom_room(px(TypingLine::HEIGHT), cx)
+        });
         let list_events = cx.subscribe_in(&list, window, |this, _, event, window, cx| {
             this.on_list_event(Which::Main, event, window, cx)
         });
@@ -836,10 +840,12 @@ impl ConversationPane {
         );
     }
 
-    fn typing_line(&self) -> Option<String> {
-        let conversation = self.conversation.clone()?;
-        let names: Vec<String> = self
-            .core
+    /// Who is typing here, by name, for the kit's `TypingLine`.
+    fn typing_names(&self) -> Vec<String> {
+        let Some(conversation) = self.conversation.clone() else {
+            return Vec::new();
+        };
+        self.core
             .typing_users(conversation)
             .into_iter()
             .map(|user| {
@@ -847,13 +853,7 @@ impl ConversationPane {
                     .filter(|name| !name.is_empty())
                     .unwrap_or(user.username)
             })
-            .collect();
-        match names.as_slice() {
-            [] => None,
-            [one] => Some(format!("{one} is typing...")),
-            [one, two] => Some(format!("{one} and {two} are typing...")),
-            _ => Some("Several people are typing...".into()),
-        }
+            .collect()
     }
 }
 
@@ -961,13 +961,20 @@ pub fn mime_for(name: &str) -> String {
 
 impl Render for ConversationPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let palette = cx
-            .try_global::<semaphore_ui::theme::Sem>()
-            .map(semaphore_ui::messages::palette::Palette::from_sem)
-            .unwrap_or_else(semaphore_ui::messages::palette::Palette::dark);
-        let typing = self.typing_line();
         let notice = self.notice_element(cx);
         let picker = self.picker_element(cx);
+        let composer = div()
+            .flex()
+            .flex_col()
+            .min_w_0()
+            .children(notice)
+            .children(self.composer.clone());
+        let pane = ChatPane::new("conversation-chat")
+            .typing(TypingLine::new(self.typing_names()))
+            .composer(composer)
+            // Toasts sit at the foot of the messages, above the composer.
+            .list_foot(semaphore_ui::kit::ToastAnchor::new())
+            .when_some(self.list.clone(), |pane, list| pane.list(list));
         div()
             .id("conversation")
             .key_context("ConversationPane")
@@ -982,28 +989,7 @@ impl Render for ConversationPane {
             .flex()
             .flex_col()
             .min_h_0()
-            .child(
-                // Toasts sit at the foot of the messages, above the typing line and the composer.
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_h_0()
-                    .when_some(self.list.clone(), |this, list| this.child(list))
-                    .child(semaphore_ui::kit::ToastAnchor::new()),
-            )
-            .child(
-                div()
-                    .h(px(20.))
-                    .px(px(16.))
-                    .flex_shrink_0()
-                    .text_size(px(12.))
-                    .text_color(palette.text_secondary)
-                    .when_some(typing, |this, typing| this.child(typing)),
-            )
-            .children(notice)
-            .when_some(self.composer.clone(), |this, composer| {
-                this.child(div().flex_shrink_0().child(composer))
-            })
+            .child(pane)
             .children(picker)
             .children(self.announce.node("pane-announcer", Live::Polite))
     }

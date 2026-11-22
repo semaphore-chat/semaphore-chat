@@ -339,6 +339,8 @@ enum Condition {
     Reaction(String, String, u32),
     ThreadRows(usize),
     ThreadSent(String),
+    /// A thread reply containing this text is shown failed.
+    ThreadFailed(String),
     Subscribed(bool),
     UnreadAfter(String),
     Notice(String),
@@ -714,6 +716,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
         }
         ["thread-rows", ">=", count] => Condition::ThreadRows(number(count)?),
         ["thread-sent", text] => Condition::ThreadSent((*text).into()),
+        ["thread-failed", text] => Condition::ThreadFailed((*text).into()),
         ["subscribed", "yes"] => Condition::Subscribed(true),
         ["subscribed", "no"] => Condition::Subscribed(false),
         ["unread-after", text] => Condition::UnreadAfter((*text).into()),
@@ -2019,6 +2022,7 @@ impl Rig {
             | Condition::Reaction(..)
             | Condition::ThreadRows(_)
             | Condition::ThreadSent(_)
+            | Condition::ThreadFailed(_)
             | Condition::Subscribed(_)
             | Condition::UnreadAfter(_)
             | Condition::Notice(_)
@@ -2148,6 +2152,10 @@ impl Rig {
                         .any(|r| r.emoji == *emoji && r.count == *count && r.me)
                 }),
                 Condition::ThreadRows(count) => pane.thread_rows().len() >= *count,
+                Condition::ThreadFailed(text) => pane.thread_rows().iter().any(|row| {
+                    row.display.contains(text.as_str())
+                        && matches!(row.send_state, SendState::Failed { .. })
+                }),
                 Condition::ThreadSent(text) => pane.thread_rows().iter().any(|row| {
                     row.display.contains(text.as_str())
                         && row.id.is_some()
@@ -2299,6 +2307,7 @@ fn w1_condition(condition: &Condition) -> bool {
             | Condition::Reaction(..)
             | Condition::ThreadRows(_)
             | Condition::ThreadSent(_)
+            | Condition::ThreadFailed(_)
             | Condition::Subscribed(_)
             | Condition::UnreadAfter(_)
             | Condition::Notice(_)
@@ -2605,20 +2614,46 @@ impl Rig {
         offset: Option<(f32, f32)>,
     ) -> Result<()> {
         self.driver.settle()?;
-        let (rows, _, _) = self.rows()?;
+        // `thread:name`: a row of the thread pane's replies, not the conversation's.
+        let (name, rows) = match name.strip_prefix("thread:") {
+            Some(name) => {
+                let app = self.app()?.clone();
+                let rows = self.driver.cx.update(|cx| {
+                    app.read(cx)
+                        .pane()
+                        .map(|pane| pane.read(cx).thread_rows().to_vec())
+                        .unwrap_or_default()
+                });
+                (name, rows)
+            }
+            None => (name, self.rows()?.0),
+        };
         let seq = rows
             .iter()
             .rev()
             .find(|row| row.display.contains(text))
             .map(|row| row.seq)
             .ok_or_else(|| anyhow!("no row contains {text:?}"))?;
+        // `parent/child`: a part the kit names under the row's own id (`message/name` is the
+        // author's name in the kit's MessageRow).
+        let (parent, child) = match name.split_once('/') {
+            Some((parent, child)) => (parent, Some(child)),
+            None => (name, None),
+        };
         let id = ElementId::NamedInteger(
-            name.to_owned().into(),
+            parent.to_owned().into(),
             match index {
                 Some(index) => (seq as u64) << 8 | index,
                 None => seq as u64,
             },
         );
+        let id = match child {
+            Some(child) => ElementId::NamedChild(
+                std::sync::Arc::new(id),
+                SharedString::from(child.to_owned()),
+            ),
+            None => id,
+        };
         self.driver.update(|window, cx| match (gesture, offset) {
             (RowGesture::Click, Some((x, y))) => window.click_at(id, point(px(x), px(y)), cx),
             (RowGesture::Click, None) => window.click(id, cx),

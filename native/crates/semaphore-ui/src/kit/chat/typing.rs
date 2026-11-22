@@ -16,6 +16,9 @@ pub struct TypingLine {
 }
 
 impl TypingLine {
+    /// How tall the line is: a list under it keeps this much room below its last row.
+    pub const HEIGHT: f32 = TYPING_LINE_HEIGHT;
+
     /// Who is typing, by name, the first to start first.
     pub fn new(names: impl IntoIterator<Item = impl Into<SharedString>>) -> Self {
         Self {

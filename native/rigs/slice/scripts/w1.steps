@@ -58,6 +58,17 @@ type "count me in"
 press enter
 wait core thread-sent "count me in"
 wait core requests sendThreadReply >= 1
+# A failed reply: Retry is a button and takes focus; it hands the caret back to the thread's
+# composer, so the next reply is typed there.
+server fail_next_send "{\"code\": \"RATE_LIMITED\", \"retryable\": true}"
+type "thread try"
+press enter
+wait core thread-failed "thread try" within 3
+click-row thread:message/retry "thread try"
+wait core thread-sent "thread try"
+type "thread after retry"
+press enter
+wait core thread-sent "thread after retry"
 # The server's clock stands still: move it, so the choice comes after the reply, as it would.
 server advance_clock "{\"ms\": 1000}"
 click thread-subscribe

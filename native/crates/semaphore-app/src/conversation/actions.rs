@@ -211,16 +211,20 @@ impl ConversationPane {
                 })
             }
             MessageListEvent::RetrySend { client_nonce } => {
+                self.refocus_composer(which, window, cx);
                 self.command("retrying a send", window, cx, async move {
                     core.retry_send(client_nonce).await
                 })
             }
-            MessageListEvent::DiscardFailed { client_nonce } => self.exec.fire(async move {
-                log_failure(
-                    "discarding a failed send",
-                    core.discard_failed_send(client_nonce).await,
-                );
-            }),
+            MessageListEvent::DiscardFailed { client_nonce } => {
+                self.refocus_composer(which, window, cx);
+                self.exec.fire(async move {
+                    log_failure(
+                        "discarding a failed send",
+                        core.discard_failed_send(client_nonce).await,
+                    );
+                })
+            }
             MessageListEvent::OpenAttachment { file_id }
             | MessageListEvent::OpenExternally { file_id } => {
                 let how = match event {
@@ -680,15 +684,27 @@ impl ConversationPane {
 
     /// A link in a message: one to a message on this server opens it here, anything else goes to
     /// the system's browser.
+    /// The failed row's Retry and Delete are buttons and take focus; the caret goes back to the
+    /// composer of the list they were in, where the user was typing, as before.
+    fn refocus_composer(&self, which: Which, window: &mut Window, cx: &mut Context<Self>) {
+        let composer = match which {
+            Which::Main => self.composer.clone(),
+            _ => self.thread.as_ref().map(|thread| thread.composer.clone()),
+        };
+        if let Some(composer) = composer {
+            composer.update(cx, |composer, cx| composer.focus(window, cx));
+        }
+    }
+
     pub(crate) fn open_link(&mut self, url: String, window: &mut Window, cx: &mut Context<Self>) {
         let ours = (self.server_url)()
             .and_then(|server| semaphore_core::links::parse_message_link(&server, &url));
         let Some(link) = ours else {
-            // Only http(s) goes to the OS: a preview card's link is the server's to choose.
-            if semaphore_core::links::is_web_url(&url) {
-                crate::open_url(&url, cx);
-            } else {
-                log::warn!("not opening {url:?} from a message: not an http(s) link");
+            // The list hands over `check_link`'s address; check again, so nothing else reaches the
+            // OS: only http(s) with no user info, as parsed, never as written.
+            match semaphore_core::links::check_link(&url) {
+                Some(checked) => crate::open_url(&checked.href, cx),
+                None => log::warn!("not opening {url:?} from a message: not a checked link"),
             }
             return;
         };

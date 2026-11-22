@@ -307,7 +307,7 @@ type "my clip"
 press enter
 wait core sent "my clip"
 # (My "ptt picture" from step 5 heads the group "my clip" joins, so its row has the author.)
-click-row message-author "ptt picture"
+click-row message/name "ptt picture"
 wait core profile-open $ID(me)
 click profile-view-page
 wait core route profile/$ID(me)
