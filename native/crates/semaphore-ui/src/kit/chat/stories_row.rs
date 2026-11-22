@@ -346,6 +346,7 @@ fn frame(height: f32, pane: impl IntoElement) -> AnyElement {
         .child(
             Island::new("pane-island")
                 .padding(Padding::None)
+                .scroll(true)
                 .child(div().size_full().child(pane)),
         )
         .into_any_element()
