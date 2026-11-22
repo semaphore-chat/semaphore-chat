@@ -726,3 +726,56 @@ fn a_late_answer_for_an_earlier_subject_never_shows(cx: &mut TestAppContext) {
     assert!(rig.has(cx, "cleo"), "c-3's answer stays");
     assert!(!rig.has(cx, "dev"), "c-2's late answer never shows");
 }
+
+/// A toast region early in the tree, with a full-window layer drawn after it (as the app draws
+/// its dialogs and the image viewer after the shell, whose frame places the region).
+struct Covered {
+    log: Log,
+}
+
+impl EventEmitter<()> for Covered {}
+
+impl Render for Covered {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let log = self.log.clone();
+        BehaviourRoot::new(
+            div()
+                .relative()
+                .size_full()
+                .child(div().relative().size_full().child(ToastRegion::new()))
+                .child(
+                    div()
+                        .id("later-layer")
+                        .test_support()
+                        .absolute()
+                        .inset_0()
+                        .occlude()
+                        .on_click(move |_, _, _| log.borrow_mut().push("layer".into())),
+                ),
+        )
+    }
+}
+
+#[gpui_kit::test]
+fn a_toast_stays_over_layers_drawn_after_it(cx: &mut TestAppContext) {
+    let log: Log = Rc::default();
+    let shared = log.clone();
+    let rig: Rig<Covered, ()> = rig(cx, 900., move |_, _| Covered { log: shared });
+    rig.with(cx, |_, window, _| window.activate_window());
+    let ran = log.clone();
+    let toasts = rig.with(cx, |_, window, cx| Toasts::of(window, cx).expect("toasts"));
+    rig.with(cx, move |_, _, cx| {
+        toasts.show(
+            ToastRequest::new("Recording saved")
+                .id("saved")
+                .action("Open", move |_, _| ran.borrow_mut().push("open".into())),
+            cx,
+        );
+    });
+    rig.click(cx, "saved-action");
+    assert_eq!(
+        *log.borrow(),
+        ["open"],
+        "the toast is on top, not the layer"
+    );
+}

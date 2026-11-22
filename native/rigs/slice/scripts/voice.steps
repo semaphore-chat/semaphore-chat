@@ -15,8 +15,18 @@ wait core session signed-in
 wait core channel $ID(cc-general)
 wait core connection connected
 
-# Join: connected, the publisher seen, its video reaching a tile. The row shows the pre-join
-# (WP); its Join joins.
+# A room card's Join joins from where you are (design PA-2): #general stays on screen, the card
+# says "You're here", and its Leave leaves.
+click room-join-$ID(vc-squad)
+wait core voice connected within 30
+expect core channel $ID(cc-general)
+wait core element room-leave-$ID(vc-squad)
+click room-leave-$ID(vc-squad)
+wait core voice disconnected within 15
+wait core element room-join-$ID(vc-squad)
+
+# Join: connected, the publisher seen, its video reaching a tile. The room card's name opens the
+# pre-join (WP); its Join joins.
 click channel-$ID(vc-squad)
 wait core element voice-prejoin-join
 click voice-prejoin-join

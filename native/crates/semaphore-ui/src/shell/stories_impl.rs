@@ -341,25 +341,14 @@ impl Render for PlaceholderPanel {
 }
 
 /// Stands in for the DM sidebar, which draws its own stories.
-fn placeholder_sidebar(
-    props: &RouteSidebarProps,
-    _: &mut Window,
-    cx: &mut App,
-) -> Option<AnyElement> {
+fn placeholder_sidebar(_: &RouteSidebarProps, _: &mut Window, cx: &mut App) -> Option<AnyElement> {
     let sem = cx.sem();
     Some(
         div()
             .size_full()
             .p(px(16.))
             .bg(sem.paper)
-            .child(crate::kit::text(
-                crate::kit::Variant::H6,
-                if props.phone {
-                    "Route sidebar (phone)"
-                } else {
-                    "Route sidebar"
-                },
-            ))
+            .child(crate::kit::text(crate::kit::Variant::H6, "Route sidebar"))
             .into_any_element(),
     )
 }
@@ -627,6 +616,20 @@ pub fn stories() -> Vec<Story> {
         shell_story!("shell-members-open", members_open: true, phone_content: true),
         shell_story!("shell-channel-pane", phone_content: true),
         shell_story!("shell-side-panel", side_panel: true, phone_content: true),
+        // A real thread in the side panel: the right island at wide, a drawer below.
+        Story::new("shell-side-panel-thread", |env, window, cx| {
+            let panel = Some(crate::thread::stories::in_shell(window, cx));
+            shell_view(
+                env,
+                Options {
+                    panel,
+                    phone_content: true,
+                    ..Options::default()
+                },
+                window,
+                cx,
+            )
+        }),
         shell_story!("shell-route-sidebar", dm_route: true),
         shell_story!("shell-header-accessory", header_accessory: true, phone_content: true),
         shell_story!("shell-long-content", edit: long_names),

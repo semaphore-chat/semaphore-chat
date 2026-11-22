@@ -406,7 +406,9 @@ impl RenderOnce for ToastRegion {
         if let Some(label) = toast.action {
             piece = piece.action(label, move |window, cx| act.act(&act_id, window, cx));
         }
-        div()
+        // Laid out where the region is (a template's main pane), painted after the rest of the
+        // window: a toast stays over the dialogs and sheets drawn later in the tree.
+        let area = div()
             .absolute()
             .left_0()
             .right_0()
@@ -447,7 +449,7 @@ impl RenderOnce for ToastRegion {
                         .left_0()
                         .size_full(),
                     ),
-            )
-            .into_any_element()
+            );
+        deferred(area).with_priority(2).into_any_element()
     }
 }

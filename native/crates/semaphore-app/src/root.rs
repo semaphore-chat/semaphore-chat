@@ -1307,7 +1307,7 @@ impl AppRoot {
                     return element;
                 }
                 // WP: no float card over another voice channel's pre-join, whose joins sit where
-                // the card goes; the bar under the columns still shows the call.
+                // the card goes; the bar in the frame's call slot still shows the call.
                 let prejoin_shown = props.channel.as_ref().is_some_and(|channel| {
                     channel.kind == ChannelKind::Voice
                         && root
@@ -1342,7 +1342,7 @@ impl AppRoot {
             .map(|(url, _)| server_label(url))
             .unwrap_or_default();
         let shell = cx.new(|cx| {
-            // The call's bar under the columns, wherever the user is but the call's own channel.
+            // The call's bar in the frame's call slot, wherever the user is but the call's own view.
             let bar: semaphore_ui::shell::VoiceBarSlot = Rc::new(move |window, cx| {
                 let root = bar_root.upgrade()?;
                 let (model, soundboard, controller) = {
@@ -1474,11 +1474,11 @@ impl AppRoot {
             ShellEvent::CreateCommunity => self.open_create_community(window, cx),
             ShellEvent::OpenProfile { user_id } => self.open_profile(user_id.clone(), window, cx),
             ShellEvent::OpenNotifications => self.toggle_centre(cx),
-            // WP: a voice row only selects its channel; the route shows the pre-join, whose Join
-            // joins (`prejoin.rs`), as the web's row does.
-            // A voice room card's Join joins from the left island (design PA-2); its name
-            // opens the room's pre-join or call view.
-            ShellEvent::JoinVoice { channel_id } => self.join_voice(channel_id.clone(), cx),
+            // A voice room card's Join joins from where you are (design PA-2); its name opens
+            // the room's pre-join or call view.
+            ShellEvent::JoinVoice { channel_id } => {
+                self.join_from_card(channel_id.clone(), window, cx)
+            }
             ShellEvent::LeaveVoice => {
                 if let Some(voice) = &self.voice {
                     voice.leave();
@@ -1957,7 +1957,7 @@ fn content(
         }
         (Route::DirectMessage { dm_group_id }, _) => root
             .upgrade()
-            .and_then(|root| inbox::dm_conversation(&root, dm_group_id, false, window, cx))
+            .and_then(|root| inbox::dm_conversation(&root, dm_group_id, window, cx))
             .unwrap_or_else(|| placeholder("Loading".into(), "")),
         (
             route @ (Route::Settings { .. }
@@ -2009,7 +2009,7 @@ fn content(
             ),
             None => placeholder("Loading".into(), ""),
         },
-        _ => placeholder("Home".into(), "Pick a community from the rail."),
+        _ => placeholder("Home".into(), "Pick a community from the dock."),
     };
     (element, stage_shown)
 }

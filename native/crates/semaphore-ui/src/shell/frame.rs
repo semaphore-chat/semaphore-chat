@@ -506,10 +506,7 @@ impl Shell {
             route @ (Route::DirectMessages | Route::DirectMessage { .. }) => route.clone(),
             _ => Route::DirectMessages,
         };
-        let props = RouteSidebarProps {
-            route,
-            phone: false,
-        };
+        let props = RouteSidebarProps { route };
         self.route_sidebar
             .clone()
             .and_then(|slot| slot(&props, window, cx))
@@ -557,6 +554,50 @@ impl Shell {
     }
 }
 
+impl Shell {
+    /// The side panel below wide: over a scrim that asks the owner to close it, at the right edge
+    /// (`SIDE_PANEL_WIDTH`) or, on a phone, over the whole window. The panel brings its own header
+    /// and Close, and fills the drawer's height.
+    fn side_panel_drawer(&self, panel: AnyView, phone: bool, cx: &mut Context<Self>) -> AnyElement {
+        let view = cx.entity().downgrade();
+        let surface = cx.sem().role.surface;
+        div()
+            .absolute()
+            .inset_0()
+            .child(
+                div()
+                    .id("side-panel-scrim")
+                    .test_support()
+                    .absolute()
+                    .inset_0()
+                    .occlude()
+                    .bg(hsla(0., 0., 0., 0.5))
+                    .on_click(move |_, _, cx| {
+                        view.update(cx, |_, cx| cx.emit(ShellEvent::CloseSidePanel))
+                            .ok();
+                    }),
+            )
+            .child(
+                div()
+                    .id("side-panel")
+                    .test_support()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .right_0()
+                    .when(phone, |drawer| drawer.left_0())
+                    .when(!phone, |drawer| {
+                        drawer.w(px(super::SIDE_PANEL_WIDTH)).max_w_full()
+                    })
+                    .occlude()
+                    .shadow_lg()
+                    .bg(surface)
+                    .child(panel),
+            )
+            .into_any_element()
+    }
+}
+
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.took_focus {
@@ -567,12 +608,21 @@ impl Render for Shell {
         let phone = range.is_phone();
         let route = self.nav.current().clone();
         let community_id = route.community_id().map(str::to_owned);
+        // The side panel (pins, search, a thread) the owner opens: the right island at wide; below
+        // it a drawer over the frame (a full-screen layer on a phone), whose definite height its
+        // own list and header need (a Sheet's body takes its height from its content).
         let panel = self.side_panel.clone();
-        let has_right = panel.is_some() || community_id.is_some();
-        // A side panel the owner opens shows at every width; the members follow the user's choice.
-        let right_shown =
-            has_right && (panel.is_some() || self.right_open.unwrap_or(range.is_wide()));
-        let right_beside = range.is_wide() && right_shown && panel.is_none();
+        let (island_panel, drawer_panel) = match panel {
+            Some(panel) if range.is_wide() => (Some(panel), None),
+            Some(panel) => (None, Some(panel)),
+            None => (None, None),
+        };
+        // The members follow the user's choice; an open side panel takes their place.
+        let members_shown = self.side_panel.is_none()
+            && community_id.is_some()
+            && self.right_open.unwrap_or(range.is_wide());
+        let right_shown = island_panel.is_some() || members_shown;
+        let right_beside = range.is_wide() && members_shown;
 
         let left = match &community_id {
             Some(id) => self.left_island(id, right_beside, cx).into_any_element(),
@@ -586,9 +636,12 @@ impl Render for Shell {
             None => "Inbox".into(),
         };
 
-        let header = self.header(phone, right_shown, cx);
+        let header = self.header(phone, members_shown, cx);
         let has_header = header.is_some();
-        let content = self.content_element(window, cx);
+        // The composer takes focus only when the centre is drawn: a phone showing the left pane
+        // keeps the request for when it shows the centre.
+        let centre_drawn = !phone || self.phone_pane == PhonePane::Centre;
+        let content = self.content_element(centre_drawn, window, cx);
         let centre = div()
             .id("shell-centre")
             .size_full()
@@ -626,7 +679,7 @@ impl Render for Shell {
                 })
                 .ok();
         });
-        if let Some(panel) = panel {
+        if let Some(panel) = island_panel {
             islands = islands
                 .right(
                     div()
@@ -650,11 +703,14 @@ impl Render for Shell {
             frame = frame.banner(banner);
         }
         let sheet = self.sheet_open.then(|| self.sheet(window, cx));
+        let drawer = drawer_panel.map(|panel| self.side_panel_drawer(panel, phone, cx));
         div()
             .id("shell")
             .size_full()
+            .relative()
             .track_focus(&self.focus)
             .child(frame)
+            .children(drawer)
             .children(sheet)
     }
 }

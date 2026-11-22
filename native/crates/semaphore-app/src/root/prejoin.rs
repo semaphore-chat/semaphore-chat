@@ -7,10 +7,11 @@
 //! fills them. Copy the shape of `root/community.rs` (W5-app): one state struct here, feeds that
 //! read core when they run, continuations that hold a ticket.
 //!
-//! - **Choosing a voice channel never joins it.** Every way there (a sidebar row, a deep link, the
-//!   keyboard, Home's voice section) is a navigation to `Route::Channel`; `prejoin_navigated` builds
-//!   the panel for it once core knows the channel is a voice one. The sidebar row's `JoinVoice` is
-//!   ignored in `root.rs`, as the web's row only selects the channel.
+//! - **Choosing a voice channel never joins it.** Every way there (a voice room card's name, a deep
+//!   link, the keyboard, Home's voice section) is a navigation to `Route::Channel`;
+//!   `prejoin_navigated` builds the panel for it once core knows the channel is a voice one.
+//! - **A voice room card's Join joins from where you are** (`join_from_card`, design PA-2): no
+//!   navigation, and a failed join says so with the pre-join's toast.
 //! - **The call you're in shows the stage**, as before: `root.rs` checks that before asking here.
 //! - **Feeds**: the panel reads `Core::voice_prejoin` on navigation and on `ViewChanged { Voice }`
 //!   (presence, my mute) and `ViewChanged { Channels }` of its community (names, capabilities).
@@ -291,6 +292,59 @@ impl AppRoot {
                 };
                 log::warn!("joining voice: {error}");
                 // Another join since, a leave, or a call that's up anyway: not this one's to say.
+                let idle = this
+                    .core()
+                    .is_none_or(|core| core.voice().status == VoiceStatus::Disconnected);
+                if this.prejoin.joins != join || was_left(&error) || !idle {
+                    return;
+                }
+                this.prejoin_fail(format!("Couldn't join voice: {error}"), cx);
+            },
+        );
+        cx.notify();
+    }
+
+    /// A voice room card's Join (the Lounge's left island): joins the room and stays on the
+    /// screen, as the web's card does (design PA-2). A failure is the pre-join Join's toast.
+    pub(crate) fn join_from_card(
+        &mut self,
+        channel_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(services) = &self.services else {
+            return;
+        };
+        let (core, exec) = (services.core.clone(), services.exec.clone());
+        let community = self.shell.as_ref().and_then(|shell| {
+            shell
+                .read(cx)
+                .nav()
+                .current()
+                .community_id()
+                .map(str::to_owned)
+        });
+        if let Some(channel) = community.and_then(|community| {
+            core.channels(community)
+                .into_iter()
+                .find(|channel| channel.id == channel_id)
+        }) {
+            self.voice_channel_name = channel.name;
+        }
+        self.prepare_join();
+        self.toasts().dismiss(JOIN_FAILED_TOAST, cx);
+        self.prejoin.joins += 1;
+        let join = self.prejoin.joins;
+        let joining = core.clone();
+        exec.run(
+            window,
+            cx,
+            async move { joining.join_voice(channel_id).await },
+            move |this, result, _, cx| {
+                let Err(error) = result else {
+                    return;
+                };
+                log::warn!("joining voice: {error}");
                 let idle = this
                     .core()
                     .is_none_or(|core| core.voice().status == VoiceStatus::Disconnected);

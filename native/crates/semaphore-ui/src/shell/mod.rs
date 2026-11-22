@@ -11,6 +11,8 @@ mod faces;
 #[cfg(feature = "stories")]
 pub mod fixtures;
 mod frame;
+#[cfg(test)]
+mod frame_tests;
 pub mod lounge;
 pub(crate) mod press;
 mod source;
@@ -35,32 +37,23 @@ use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-/// From `constants/layout.ts`.
-pub const RAIL_WIDTH: f32 = 80.;
-pub const RAIL_EXPANDED_WIDTH: f32 = 160.;
+/// From `constants/layout.ts`: the width of the old channel sidebar, which some stories still
+/// frame their views at.
 pub const CHANNEL_SIDEBAR_WIDTH: f32 = 280.;
-pub const MEMBER_LIST_WIDTH: f32 = 240.;
-/// `useResponsive`: under this the members panel doesn't fit inline (`isNarrowDesktop`).
-pub const NARROW_DESKTOP: f32 = 1024.;
 /// `DEVICE_BREAKPOINTS.PHONE`: under this, one pane at a time.
 pub const PHONE: f32 = 600.;
-/// `SIDE_PANEL_WIDTH`: the docked pins, search and thread panel.
+/// `SIDE_PANEL_WIDTH`: the pins, search and thread panel's drawer below wide.
 pub const SIDE_PANEL_WIDTH: f32 = 400.;
-/// `DEVICE_BREAKPOINTS.DESKTOP`: from here up the side panel docks beside the messages; narrower
-/// desktop windows draw it as a drawer, and the phone layout as a full-screen layer.
-pub const DOCKED_PANEL: f32 = 1200.;
 
-/// Draws the middle column for a route. Messages (U9) and the composer (U10) arrive here.
+/// Draws the centre for a route. Messages (U9) and the composer (U10) arrive here.
 pub type ContentSlot = Rc<dyn Fn(&ContentProps, &mut Window, &mut App) -> AnyElement>;
-/// Draws under the columns when there's something to show: the voice bar (U11).
+/// Draws the frame's call slot when there's a call: the voice bar (U11).
 pub type VoiceBarSlot = Rc<dyn Fn(&mut Window, &mut App) -> Option<AnyElement>>;
-/// Draws the update card over the bottom-left corner, when there's an update to talk about.
+/// Draws the update card in the frame's banner row, when there's an update to talk about.
 pub type UpdateBannerSlot = Rc<dyn Fn(&mut Window, &mut App) -> Option<AnyElement>>;
 
-/// Draws the sidebar column for a route outside a community: the DM list and friends on
-/// `/direct-messages`. `None` leaves the route without one. On a phone the shell shows what it
-/// returns in place of the middle column, so the owner returns `None` there for a route whose
-/// content should show instead (an open conversation).
+/// Draws the inbox's left island, outside a community: the DM list and friends. `None` leaves it
+/// with a placeholder.
 pub type RouteSidebarSlot =
     Rc<dyn Fn(&RouteSidebarProps, &mut Window, &mut App) -> Option<AnyElement>>;
 
@@ -68,8 +61,6 @@ pub type RouteSidebarSlot =
 #[derive(Debug, Clone)]
 pub struct RouteSidebarProps {
     pub route: Route,
-    /// The phone layout: the sidebar would fill the pane between the app bar and the navigation.
-    pub phone: bool,
 }
 
 /// What the shell knows when asking for the middle column.
@@ -123,7 +114,8 @@ pub enum ShellEvent {
     OpenPins,
     /// The header's search button: likewise for the search panel.
     OpenSearch,
-    /// The drawer's scrim was clicked: the owner closes the side panel.
+    /// The side panel asked to close (its drawer's scrim below wide, or Members replacing it):
+    /// the owner closes it.
     CloseSidePanel,
 }
 
@@ -156,7 +148,7 @@ pub struct Shell {
     pub(crate) focus_content: Cell<bool>,
     pub(crate) content: ContentSlot,
     pub(crate) voice_bar: Option<VoiceBarSlot>,
-    /// The update card, drawn over the connection chip (W13).
+    /// The update card, in the frame's banner row (W13).
     pub(crate) update_banner: Option<UpdateBannerSlot>,
     /// How many pinned messages the header's badge shows. Fed by the owner.
     pub pinned_count: u32,
@@ -221,7 +213,7 @@ impl Shell {
         self
     }
 
-    /// The update card in the bottom-left notice corner, above the connection chip.
+    /// The update card, in the frame's banner row under the connection notice.
     pub fn with_update_banner(mut self, slot: UpdateBannerSlot) -> Self {
         self.update_banner = Some(slot);
         self
@@ -241,8 +233,8 @@ impl Shell {
         cx.notify();
     }
 
-    /// Shows `panel` beside the messages (docked, a drawer, or a full-screen layer on a phone,
-    /// by window width), or closes it. While open it takes the members panel's place.
+    /// Shows `panel` beside the messages (the right island at wide, a drawer below it, a
+    /// full-screen layer on a phone), or closes it. While open it takes the members' place.
     pub fn set_side_panel(&mut self, panel: Option<AnyView>, cx: &mut Context<Self>) {
         self.side_panel = panel;
         cx.notify();
@@ -399,6 +391,7 @@ impl Shell {
     /// draw: `CommunityPage`'s loading and `PageError` states.
     pub(crate) fn content_element(
         &self,
+        centre_drawn: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -423,7 +416,6 @@ impl Shell {
                             "community-retry",
                             "Couldn't load this community",
                             "Check your connection and try again.",
-                            false,
                             cx,
                         ))
                         .into_any_element();
@@ -433,7 +425,7 @@ impl Shell {
         }
         let channel = self.channel();
         // Kept until a channel is drawn: a route still loading has nothing to focus yet.
-        let take_focus = channel.is_some() && self.focus_content.take();
+        let take_focus = channel.is_some() && centre_drawn && self.focus_content.take();
         let props = ContentProps {
             route: self.nav.current().clone(),
             channel,
@@ -445,7 +437,8 @@ impl Shell {
 
     /// The channel header, or `None` when the route has no channel.
     /// The channel header. On a phone it leads with Back to the left pane; its Members button
-    /// shows or hides the right content at every width (`right_shown`: whether it is showing).
+    /// shows or hides the members at every width (`right_shown`: whether they are showing), and
+    /// replaces an open side panel with them.
     pub(crate) fn header(
         &self,
         phone: bool,
@@ -551,7 +544,14 @@ impl Shell {
                                 .selected(right_shown)
                                 .on_click(move |_, _, cx| {
                                     view.update(cx, |shell, cx| {
-                                        shell.right_open = Some(!right_shown);
+                                        if shell.side_panel.is_some() {
+                                            // The members replace an open side panel, as on
+                                            // the web: the owner closes it.
+                                            shell.right_open = Some(true);
+                                            cx.emit(ShellEvent::CloseSidePanel);
+                                        } else {
+                                            shell.right_open = Some(!right_shown);
+                                        }
                                         cx.notify();
                                     })
                                     .ok();
@@ -562,16 +562,15 @@ impl Shell {
     }
 }
 
-/// `ErrorState` in `ListState`, compact and regular.
+/// `ErrorState` in `ListState`: the community that didn't load.
 pub(crate) fn error_state(
     id: &'static str,
     title: &str,
     description: &str,
-    compact: bool,
     cx: &mut Context<Shell>,
 ) -> Div {
     let sem = cx.sem();
-    let circle = if compact { 56. } else { 96. };
+    let circle = 96.;
     let error = sem.error;
     let tint = error.opacity(if sem.is_dark { 0.16 } else { 0.1 });
     let view = cx.entity().downgrade();
@@ -581,50 +580,32 @@ pub(crate) fn error_state(
         .flex_col()
         .items_center()
         .justify_center()
-        .px(px(if compact { 16. } else { 24. }))
-        .py(px(if compact { 24. } else { 48. }))
+        .px(px(24.))
+        .py(px(48.))
         .child(
             div()
                 .size(px(circle))
-                .mb(px(if compact { 12. } else { 20. }))
+                .mb(px(20.))
                 .flex()
                 .items_center()
                 .justify_center()
                 .rounded_full()
                 .bg(tint)
-                .child(
-                    Icon::new(IconName::Error)
-                        .size(if compact { 32. } else { 48. })
-                        .color(error),
-                ),
+                .child(Icon::new(IconName::Error).size(48.).color(error)),
         )
         .child(
-            text(
-                if compact {
-                    Variant::Subtitle2
-                } else {
-                    Variant::H6
-                },
-                title.to_owned(),
-            )
-            .font_weight(FontWeight(600.))
-            .text_color(primary)
-            .mb(px(4.))
-            .text_center(),
+            text(Variant::H6, title.to_owned())
+                .font_weight(FontWeight(600.))
+                .text_color(primary)
+                .mb(px(4.))
+                .text_center(),
         )
         .child(
-            text(
-                if compact {
-                    Variant::Caption
-                } else {
-                    Variant::Body2
-                },
-                description.to_owned(),
-            )
-            .text_color(secondary)
-            .max_w(px(300.))
-            .mb(px(if compact { 12. } else { 20. }))
-            .text_center(),
+            text(Variant::Body2, description.to_owned())
+                .text_color(secondary)
+                .max_w(px(300.))
+                .mb(px(20.))
+                .text_center(),
         )
         .child(
             Button::new(id, "Try again")

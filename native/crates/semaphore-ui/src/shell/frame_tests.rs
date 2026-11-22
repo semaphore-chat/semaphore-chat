@@ -1,0 +1,467 @@
+//! The Lounge frame as a view, at a phone's, a tablet's and a desktop's width: the dock, the
+//! sheet's foot, the Members button and the right content's close, the side panel's height, the
+//! phone's panes and focus, and the members' long press.
+
+use super::press::LONG_PRESS;
+use super::source::{Load, MemberRow, RailCounts, ShellSource};
+use super::{ContentSlot, Shell, ShellEvent};
+use crate::kit::PhonePane;
+use crate::messages::fixture::{self, Body};
+use crate::messages::{ListData, ListOptions, ListStatus, MessageList, NoMedia};
+use crate::nav::Route;
+use core::prelude::v1::test;
+use gpui_kit::test::TestWindowExt as _;
+use gpui_kit::*;
+use semaphore_core::ConnectionState;
+use semaphore_core::model::{
+    ChannelKind, ChannelRow, CommunityRow, SessionState, UserView, VoiceView,
+};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::time::Duration;
+
+const WIDTHS: [f32; 3] = [390., 900., 1280.];
+
+struct Couch;
+
+fn user(id: &str) -> UserView {
+    UserView {
+        id: id.into(),
+        username: id.into(),
+        display_name: None,
+        avatar_file_id: None,
+    }
+}
+
+fn channel(id: &str, kind: ChannelKind, position: i32) -> ChannelRow {
+    ChannelRow {
+        id: id.into(),
+        community_id: "c1".into(),
+        name: id.into(),
+        kind,
+        is_private: false,
+        position,
+        unread_count: 0,
+        mention_count: 0,
+        voice_users: Vec::new(),
+        slowmode_seconds: 0,
+        permissions: None,
+        preset: Default::default(),
+    }
+}
+
+impl ShellSource for Couch {
+    fn session(&self) -> SessionState {
+        SessionState::SignedIn { me: user("me") }
+    }
+    fn communities(&self) -> Load<Vec<CommunityRow>> {
+        Load::Ready(vec![CommunityRow {
+            id: "c1".into(),
+            name: "Couch Co-op".into(),
+            avatar_file_id: None,
+            unread_count: 0,
+            mention_count: 0,
+        }])
+    }
+    fn channels(&self, _: &str) -> Load<Vec<ChannelRow>> {
+        Load::Ready(vec![
+            channel("general", ChannelKind::Text, 0),
+            channel("squad", ChannelKind::Voice, 1),
+        ])
+    }
+    fn members(&self, _: &str) -> Load<Vec<MemberRow>> {
+        Load::Ready(vec![MemberRow {
+            user: user("ana"),
+            status: None,
+            online: true,
+            display_role: None,
+        }])
+    }
+    fn rail_counts(&self) -> RailCounts {
+        RailCounts::default()
+    }
+    fn voice(&self) -> VoiceView {
+        VoiceView::default()
+    }
+    fn can_create_community(&self) -> bool {
+        true
+    }
+}
+
+type Events = Rc<RefCell<Vec<ShellEvent>>>;
+type Asked = Rc<RefCell<Vec<bool>>>;
+
+/// A shell on `route` in a `width` x 800 window, recording its events and every content slot's
+/// `take_focus`.
+fn shell(
+    cx: &mut TestAppContext,
+    width: f32,
+    route: Route,
+) -> (Entity<Shell>, &mut VisualTestContext, Events, Asked) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::theme::init(cx);
+        crate::kit::set_reduced_motion(true, cx);
+        crate::messages::init(cx);
+    });
+    let asked: Asked = Rc::default();
+    let seen = asked.clone();
+    let content: ContentSlot = Rc::new(move |props, _, _| {
+        seen.borrow_mut().push(props.take_focus);
+        div().size_full().into_any_element()
+    });
+    let (view, cx) = cx.add_window_view(move |window, cx| {
+        Shell::new(
+            Rc::new(Couch),
+            route,
+            content,
+            ConnectionState::Connected,
+            window,
+            cx,
+        )
+        .with_instance_label("moss.social")
+    });
+    cx.simulate_resize(size(px(width), px(800.)));
+    let events: Events = Rc::default();
+    let sink = events.clone();
+    cx.update(|_, cx| {
+        cx.subscribe(&view, move |_, event: &ShellEvent, _| {
+            sink.borrow_mut().push(event.clone());
+        })
+        .detach();
+    });
+    draw(cx);
+    (view, cx, events, asked)
+}
+
+fn general() -> Route {
+    Route::Channel {
+        community_id: "c1".into(),
+        channel_id: "general".into(),
+    }
+}
+
+fn draw(cx: &mut VisualTestContext) {
+    cx.run_until_parked();
+    cx.update(|window, cx| window.draw(cx).clear(cx));
+    cx.run_until_parked();
+}
+
+fn has(cx: &mut VisualTestContext, id: &str) -> bool {
+    let id = id.to_owned();
+    cx.update(|window, _| window.try_find(id).is_some())
+}
+
+fn click(cx: &mut VisualTestContext, id: &str) {
+    let id = id.to_owned();
+    cx.update(|window, cx| window.click(id, cx));
+    draw(cx);
+}
+
+fn count(events: &Events, matches: impl Fn(&ShellEvent) -> bool) -> usize {
+    events
+        .borrow()
+        .iter()
+        .filter(|event| matches(event))
+        .count()
+}
+
+// ---------------------------------------------------------------------------------------------
+// The dock and the sheet
+
+#[gpui_kit::test]
+fn the_dock_opens_a_community_and_the_inbox_at_every_width(cx: &mut TestAppContext) {
+    for width in WIDTHS {
+        let (view, cx, _, _) = shell(cx, width, Route::DirectMessages);
+        click(cx, "community-c1");
+        let route = view.read_with(cx, |shell, _| shell.nav().current().clone());
+        assert_eq!(route.community_id(), Some("c1"), "at {width}");
+        click(cx, "dock-inbox");
+        let route = view.read_with(cx, |shell, _| shell.nav().current().clone());
+        assert_eq!(route, Route::DirectMessages, "at {width}");
+    }
+}
+
+#[gpui_kit::test]
+fn the_sheets_foot_has_notifications_everywhere_and_the_account_on_a_phone(
+    cx: &mut TestAppContext,
+) {
+    for width in WIDTHS {
+        let (_, cx, events, _) = shell(cx, width, general());
+        click(cx, "dock-all");
+        assert!(has(cx, "sheet-notifications"), "at {width}");
+        assert!(has(cx, "sheet-create-community"), "at {width}");
+        assert_eq!(has(cx, "sheet-settings"), width < 600., "at {width}");
+        click(cx, "sheet-notifications");
+        assert_eq!(
+            count(&events, |event| matches!(
+                event,
+                ShellEvent::OpenNotifications
+            )),
+            1,
+            "at {width}"
+        );
+        assert!(!has(cx, "sheet-notifications"), "the row closes the sheet");
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The members and the right content
+
+#[gpui_kit::test]
+fn the_members_show_beside_at_wide_and_on_request_below(cx: &mut TestAppContext) {
+    for width in WIDTHS {
+        let (_, cx, _, _) = shell(cx, width, general());
+        if width < 600. {
+            // A phone on a channel shows the centre, whose header has Members.
+            assert!(has(cx, "phone-back"));
+        }
+        assert_eq!(has(cx, "member-ana"), width >= 1200., "default at {width}");
+        click(cx, "members-toggle");
+        assert_eq!(has(cx, "member-ana"), width < 1200., "toggled at {width}");
+    }
+}
+
+#[gpui_kit::test]
+fn escape_closes_the_members_sheet_below_wide(cx: &mut TestAppContext) {
+    let (view, cx, _, _) = shell(cx, 900., general());
+    click(cx, "members-toggle");
+    assert!(has(cx, "member-ana"));
+    cx.update(|window, cx| window.press("escape", cx));
+    draw(cx);
+    assert!(!has(cx, "member-ana"));
+    assert_eq!(view.read_with(cx, |shell, _| shell.right_open), Some(false));
+}
+
+/// Stands in for pins: the side panel the owner opens.
+struct Pins;
+
+impl Render for Pins {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().id("pins-panel").test_support().size_full()
+    }
+}
+
+#[gpui_kit::test]
+fn members_replace_an_open_side_panel(cx: &mut TestAppContext) {
+    let (view, cx, events, _) = shell(cx, 1280., general());
+    cx.update(|window, cx| {
+        let pins = cx.new(|_| Pins);
+        view.update(cx, |shell, cx| shell.set_side_panel(Some(pins.into()), cx));
+        window.refresh();
+    });
+    draw(cx);
+    assert!(has(cx, "pins-panel"));
+    assert!(!has(cx, "member-ana"), "the panel takes the members' place");
+    click(cx, "members-toggle");
+    assert_eq!(
+        count(&events, |event| matches!(event, ShellEvent::CloseSidePanel)),
+        1
+    );
+    view.update(cx, |shell, cx| shell.set_side_panel(None, cx));
+    draw(cx);
+    assert!(
+        has(cx, "member-ana"),
+        "and the members show once it's closed"
+    );
+}
+
+#[gpui_kit::test]
+fn a_side_panels_scrim_asks_the_owner_to_close_it_below_wide(cx: &mut TestAppContext) {
+    for width in [390., 900.] {
+        let (view, cx, events, _) = shell(cx, width, general());
+        cx.update(|_, cx| {
+            let pins = cx.new(|_| Pins);
+            view.update(cx, |shell, cx| shell.set_side_panel(Some(pins.into()), cx));
+        });
+        draw(cx);
+        if width >= 600. {
+            click(cx, "side-panel-scrim");
+            assert_eq!(
+                count(&events, |event| matches!(event, ShellEvent::CloseSidePanel)),
+                1,
+                "at {width}"
+            );
+        } else {
+            // A phone's drawer is the whole window.
+            assert!(has(cx, "pins-panel"));
+        }
+    }
+}
+
+/// A thread's panel: a header over a real message list that fills the rest, as `ThreadPane`.
+struct Thread {
+    list: Entity<MessageList>,
+}
+
+impl Render for Thread {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(div().h(px(48.)).child("Thread"))
+            .child(div().flex_1().min_h_0().child(self.list.clone()))
+    }
+}
+
+#[gpui_kit::test]
+fn a_side_panels_list_gets_the_height_at_every_width(cx: &mut TestAppContext) {
+    for width in WIDTHS {
+        let (view, cx, _, _) = shell(cx, width, general());
+        cx.update(|_, cx| {
+            let list = cx.new(|cx| {
+                let rows = (0..20)
+                    .map(|seq| {
+                        fixture::message(
+                            seq,
+                            fixture::me(),
+                            fixture::NOW_MS + seq * 60_000,
+                            Body::default().text(&format!("reply {seq}")),
+                        )
+                    })
+                    .collect();
+                MessageList::new(
+                    ListData {
+                        me_id: "me".into(),
+                        rows,
+                        replies: HashMap::new(),
+                        status: ListStatus::Ready,
+                    },
+                    Rc::new(NoMedia),
+                    ListOptions {
+                        scrollbar: false,
+                        ..ListOptions::default()
+                    },
+                    cx,
+                )
+            });
+            let thread = cx.new(|_| Thread { list });
+            view.update(cx, |shell, cx| {
+                shell.set_side_panel(Some(thread.into()), cx)
+            });
+        });
+        draw(cx);
+        // A list with no height draws one row (its bottom padding is all it gets); with the
+        // panel's height it draws many.
+        let drawn = cx.update(|window, _| {
+            (0..20u64)
+                .filter(|index| {
+                    window
+                        .try_find(ElementId::NamedInteger("message".into(), *index))
+                        .is_some_and(|row| row.visible())
+                })
+                .count()
+        });
+        assert!(
+            drawn >= 10,
+            "the replies get the panel's height at {width}: {drawn} rows drawn"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The phone's panes and focus
+
+#[gpui_kit::test]
+fn a_phone_asks_the_composer_for_focus_only_when_the_centre_shows(cx: &mut TestAppContext) {
+    let (view, cx, _, asked) = shell(cx, 390., Route::DirectMessages);
+    asked.borrow_mut().clear();
+    // What the dock's community does: the community's home, its left pane.
+    click(cx, "community-c1");
+    assert_eq!(
+        view.read_with(cx, |shell, _| shell.phone_pane),
+        PhonePane::Left
+    );
+    assert!(
+        !asked.borrow().contains(&true),
+        "no focus for a centre that isn't drawn: {:?}",
+        asked.borrow()
+    );
+    // Tab still moves focus: the window's focus is on something drawn.
+    cx.update(|window, cx| window.press("tab", cx));
+    draw(cx);
+    // Its channel row shows the centre, which takes the focus then.
+    click(cx, "channel-general");
+    assert_eq!(
+        view.read_with(cx, |shell, _| shell.phone_pane),
+        PhonePane::Centre
+    );
+    assert!(asked.borrow().contains(&true), "{:?}", asked.borrow());
+}
+
+// ---------------------------------------------------------------------------------------------
+// The members' long press
+
+fn row_centre(cx: &mut VisualTestContext) -> Point<Pixels> {
+    cx.update(|window, _| {
+        window
+            .try_find("member-ana")
+            .expect("ana's row is drawn")
+            .bounds()
+            .center()
+    })
+}
+
+fn menus(events: &Events) -> usize {
+    count(
+        events,
+        |event| matches!(event, ShellEvent::MemberMenu { user_id, .. } if user_id == "ana"),
+    )
+}
+
+fn profiles(events: &Events) -> usize {
+    count(events, |event| {
+        matches!(event, ShellEvent::OpenProfile { .. })
+    })
+}
+
+#[gpui_kit::test]
+fn a_long_press_on_a_phone_opens_the_menu_and_its_release_isnt_a_click(cx: &mut TestAppContext) {
+    let (_, cx, events, _) = shell(cx, 390., general());
+    click(cx, "members-toggle");
+    let at = row_centre(cx);
+    cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+    cx.executor()
+        .advance_clock(LONG_PRESS - Duration::from_millis(1));
+    draw(cx);
+    assert_eq!(menus(&events), 0, "not yet");
+    cx.executor().advance_clock(Duration::from_millis(2));
+    draw(cx);
+    assert_eq!(menus(&events), 1, "held long enough");
+    cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+    draw(cx);
+    assert_eq!(
+        profiles(&events),
+        0,
+        "the release that ends it opens nothing"
+    );
+
+    // A short tap is a click: the profile, and no menu after it.
+    cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+    cx.executor().advance_clock(LONG_PRESS * 2);
+    draw(cx);
+    assert_eq!((menus(&events), profiles(&events)), (1, 1));
+
+    // A drag past the slop cancels it.
+    cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+    let away = point(at.x, at.y + px(40.));
+    cx.simulate_mouse_move(away, Some(MouseButton::Left), Modifiers::default());
+    cx.executor().advance_clock(LONG_PRESS * 2);
+    draw(cx);
+    assert_eq!(menus(&events), 1, "a drag isn't a long press");
+}
+
+#[gpui_kit::test]
+fn a_held_mouse_on_a_desktop_is_no_long_press(cx: &mut TestAppContext) {
+    let (_, cx, events, _) = shell(cx, 1280., general());
+    let at = row_centre(cx);
+    cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+    cx.executor().advance_clock(LONG_PRESS * 2);
+    draw(cx);
+    cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+    draw(cx);
+    assert_eq!((menus(&events), profiles(&events)), (0, 1));
+}

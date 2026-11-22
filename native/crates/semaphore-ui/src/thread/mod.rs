@@ -15,7 +15,7 @@
 //! holds (`set_reply_rows`), and any row there shows the list instead.
 
 #[cfg(feature = "stories")]
-mod stories;
+pub(crate) mod stories;
 #[cfg(test)]
 mod tests;
 

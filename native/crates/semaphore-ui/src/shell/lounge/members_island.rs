@@ -171,14 +171,16 @@ pub(crate) struct Pressing {
 
 impl Pressing {
     /// The menu opened from `id`'s press: its release is swallowed once.
+    /// A click ends the press, whatever it was: the press and its timer go (a short tap must not
+    /// open the menu after the profile). Whether the menu had opened from `id`'s press, so its
+    /// release is swallowed.
     fn take_fired(&mut self, id: &str) -> bool {
         let fired = self
             .press
             .as_ref()
             .is_some_and(|press| press.fired && press.user_id == id);
-        if fired {
-            self.press = None;
-        }
+        self.press = None;
+        self.timer = None;
         fired
     }
 

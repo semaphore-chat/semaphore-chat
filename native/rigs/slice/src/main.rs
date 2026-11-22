@@ -155,8 +155,8 @@ const DEFAULT_WITHIN: Duration = Duration::from_secs(15);
 /// The longest a wait sits without news before looking again. Something always moves within this
 /// while work is in flight; it bounds a look at a condition nothing will announce.
 const LOOK_EVERY: Duration = Duration::from_millis(100);
-/// The shell's connection banner: the "Reconnecting…" or "You're offline" pill, drawn exactly
-/// while core's connection is `Disconnected` or `Offline` (`Shell::connection_banner`). A static
+/// The shell's connection banner: the "Reconnecting" or "You're offline" notice in the frame's
+/// banner row, drawn exactly while core's connection is `Disconnected` or `Offline` (`Shell::banners`). A static
 /// shot waits for it to go, so a transient reconnect cannot reach a compared shot.
 const CONNECTION_BANNER: &str = "connection-banner";
 

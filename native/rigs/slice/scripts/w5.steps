@@ -289,7 +289,7 @@ wait idle
 shot 04-live-timeout-over
 
 # 4. A Member only: no settings entry, and the member menu says why each action is off.
-expect core no-element community-settings
+expect core no-element community-menu
 right-click member-$ID(u-kwame)
 wait core element moderation-menu
 wait core w5 disabled moderate-ban
