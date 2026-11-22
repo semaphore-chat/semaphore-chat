@@ -201,6 +201,15 @@ impl RenderOnce for ChatPane {
                     drop(paths.paths(), window, cx);
                 })
             })
+            .when_some(over.clone(), |base, over| {
+                let over_now = over_now.clone();
+                // A drag that leaves the window or is cancelled sends no mouse move.
+                base.on_file_drop_exit(move |_, window, cx| {
+                    if over_now.replace(false) {
+                        over(false, window, cx);
+                    }
+                })
+            })
             .when_some(over, |base, over| {
                 base.on_drag_move(move |event: &DragMoveEvent<ExternalPaths>, window, cx| {
                     let inside = event.bounds.contains(&event.event.position);

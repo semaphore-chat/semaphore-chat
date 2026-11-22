@@ -1496,7 +1496,9 @@ Stories: `kit-chat-pane--conversation`, `kit-chat-pane--conversation-light`,
 Under a `cover` the conversation is still rendered and laid out but not
 prepainted or painted, so it is not drawn, focusable, pressable or in the
 accessibility tree; a list that must keep its scroll under the cover keeps its
-`ListState` or `ScrollHandle` in the screen. `announcement` is a polite live
+`ListState` or `ScrollHandle` in the screen. A covered conversation still lays
+out, so the screen should not leave animated states (spinners, progress) under
+a cover. `announcement` is a polite live
 node, silent under a cover. Until the Composer lands, the native stories hold
 a stand-in field in the composer slot, and `kit-chat-pane-with-composer` comes
 with it. `kit-chat-pane-long-history` draws its 2,000 rows in GPUI's `list`

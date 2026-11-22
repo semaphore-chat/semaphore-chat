@@ -340,6 +340,116 @@ fn the_toolbar_shows_on_hover(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn the_part_of_a_toolbar_button_above_its_row_acts_on_its_own_row(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, |log, handles, _, _| toolbar_rows(log, handles, 0));
+    rig.with(cx, |_, window, cx| window.hover("third", cx));
+    let (third, button) = rig.with(cx, |_, window, _| {
+        (
+            window.find("third").bounds(),
+            window.find("third-Reply").bounds(),
+        )
+    });
+    let at = point(button.center().x, button.top() + px(3.));
+    assert!(at.y < third.top(), "the pointer is above the row");
+    let mut vcx = VisualTestContext::from_window(rig.window, cx);
+    vcx.simulate_mouse_move(at, None, Modifiers::default());
+    vcx.run_until_parked();
+    rig.with(cx, |_, window, _| {
+        assert!(
+            window.try_find("third-Reply").is_some(),
+            "its toolbar stays"
+        );
+        assert!(
+            window.try_find("second-Reply").is_none(),
+            "the row above is not hovered through it"
+        );
+    });
+    vcx.simulate_click(at, Modifiers::default());
+    vcx.run_until_parked();
+    assert_eq!(logged(&log), ["third Reply"]);
+}
+
+#[gpui_kit::test]
+fn a_lone_row_takes_no_focus(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, |log, _, _, _| {
+        let asked = log.clone();
+        div()
+            .w(px(640.))
+            .pt(px(40.))
+            .child(
+                MessageRow::new("solo", "aiko", "8:19 PM")
+                    .on_open_actions(move |request, _, _| {
+                        asked.borrow_mut().push(format!("{request:?}"))
+                    })
+                    .actions(toolbar(log, "solo"))
+                    .body(words("b1", "hello")),
+            )
+            .child(Button::new("after", "After the list").soft())
+            .into_any_element()
+    });
+    rig.with(cx, |_, window, cx| window.click("solo", cx));
+    rig.with(cx, |_, window, cx| window.hover("after", cx));
+    rig.with(cx, |_, window, _| {
+        assert!(window.find_all_by_role(Role::Toolbar).is_empty());
+        assert_ne!(window.find("solo").focused(), Some(true));
+    });
+    press(&rig, cx, "enter");
+    assert!(logged(&log).is_empty(), "{:?}", logged(&log));
+}
+
+#[gpui_kit::test]
+fn a_footer_button_keeps_its_own_width(cx: &mut TestAppContext) {
+    let (rig, _) = host(cx, |_, _, _, _| {
+        div()
+            .w(px(640.))
+            .child(
+                MessageRow::new("row", "aiko", "8:19 PM")
+                    .body(words("b1", "hello"))
+                    .footer(
+                        Button::new("replies", "3 replies")
+                            .text()
+                            .size(crate::kit::ControlSize::Sm),
+                    ),
+            )
+            .into_any_element()
+    });
+    rig.with(cx, |_, window, _| {
+        let row = window.find("row").bounds();
+        let button = window.find("replies").bounds();
+        assert!(
+            button.size.width < row.size.width / 2.,
+            "{button:?} in {row:?}"
+        );
+    });
+}
+
+#[gpui_kit::test]
+fn the_time_shows_its_full_date_as_a_tooltip(cx: &mut TestAppContext) {
+    let (rig, _) = host(cx, |_, _, _, _| {
+        div()
+            .w(px(640.))
+            .child(
+                MessageRow::new("row", "aiko", "8:19 PM")
+                    .time_label("Friday, 20 November 2026 at 8:19 PM")
+                    .body(words("b1", "hello")),
+            )
+            .into_any_element()
+    });
+    rig.with(cx, |_, window, cx| {
+        window.hover(child_id(&"row".into(), "time"), cx)
+    });
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(2));
+    rig.with(cx, |_, window, _| {
+        assert!(
+            window
+                .try_find_by_label("Friday, 20 November 2026 at 8:19 PM")
+                .is_some()
+        );
+    });
+}
+
+#[gpui_kit::test]
 fn tab_from_the_row_walks_its_toolbar_then_leaves_the_list(cx: &mut TestAppContext) {
     let (rig, log) = host(cx, |log, handles, _, _| toolbar_rows(log, handles, 0));
     tab(&rig, cx);
@@ -539,6 +649,23 @@ fn outside_a_row_every_control_is_a_tab_stop(cx: &mut TestAppContext) {
 // ---------------------------------------------------------------------------------------------
 // ChatPane
 
+type KeptSlot = Rc<RefCell<Option<Rc<std::cell::Cell<u32>>>>>;
+
+/// Keyed state inside the conversation, handed out so a test can read it.
+#[derive(IntoElement)]
+struct Keeper(KeptSlot);
+
+impl RenderOnce for Keeper {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let state = window
+            .use_keyed_state("keeper", cx, |_, _| Rc::new(std::cell::Cell::new(0)))
+            .read(cx)
+            .clone();
+        *self.0.borrow_mut() = Some(state);
+        div()
+    }
+}
+
 fn pane_frame(pane: ChatPane) -> AnyElement {
     div().w(px(390.)).h(px(640.)).child(pane).into_any_element()
 }
@@ -615,21 +742,40 @@ fn the_announcement_is_a_polite_status_and_silent_under_a_cover(cx: &mut TestApp
 
 #[gpui_kit::test]
 fn a_covered_conversation_is_kept_but_cannot_be_reached(cx: &mut TestAppContext) {
-    let (rig, log) = host(cx, |log, _, _, _| {
-        pane_frame(
-            ChatPane::new("pane")
-                .header(Button::new("channel-button", "Members").on_click({
-                    let log = log.clone();
-                    move |_, _, _| log.borrow_mut().push("members".into())
-                }))
-                .list(div().flex_1())
-                .cover(
-                    ChatPane::new("thread")
-                        .header(Button::new("thread-back", "Back to #lobby"))
-                        .list(div().flex_1()),
-                ),
-        )
+    let covered = Rc::new(std::cell::Cell::new(false));
+    let flag = covered.clone();
+    let slot: KeptSlot = Rc::default();
+    let kept_slot = slot.clone();
+    let (rig, log) = host(cx, move |log, _, _, _| {
+        let mut pane = ChatPane::new("pane")
+            .header(Button::new("channel-button", "Members").on_click({
+                let log = log.clone();
+                move |_, _, _| log.borrow_mut().push("members".into())
+            }))
+            .list(div().flex_1().child(Keeper(kept_slot.clone())));
+        if flag.get() {
+            pane = pane.cover(
+                ChatPane::new("thread")
+                    .header(Button::new("thread-back", "Back to #lobby"))
+                    .list(div().flex_1()),
+            );
+        }
+        pane_frame(pane)
     });
+    let at = rig.with(cx, |_, window, _| {
+        window.find_by_label("Members").bounds().center()
+    });
+    let state = slot.borrow().clone().expect("the list state was built");
+    state.set(7);
+    covered.set(true);
+    rig.with(cx, |view, _, cx| view.update(cx, |_, cx| cx.notify()));
+    let mut vcx = VisualTestContext::from_window(rig.window, cx);
+    vcx.simulate_click(at, Modifiers::default());
+    vcx.run_until_parked();
+    assert!(
+        logged(&log).is_empty(),
+        "a click on the cover reaches nothing under it"
+    );
     rig.with(cx, |_, window, _| {
         assert!(
             window.try_find_by_label("Members").is_none(),
@@ -653,6 +799,14 @@ fn a_covered_conversation_is_kept_but_cannot_be_reached(cx: &mut TestAppContext)
         Some("Members")
     );
     assert!(logged(&log).is_empty());
+    covered.set(false);
+    rig.with(cx, |view, _, cx| view.update(cx, |_, cx| cx.notify()));
+    let after = slot.borrow().clone().expect("still built");
+    assert!(
+        Rc::ptr_eq(&state, &after),
+        "the same state, not a fresh one"
+    );
+    assert_eq!(after.get(), 7, "keyed state survives the cover");
 }
 
 #[gpui_kit::test]
@@ -678,6 +832,15 @@ fn files_dropped_on_the_conversation_reach_the_screen(cx: &mut TestAppContext) {
     cx.simulate_event(FileDropEvent::Entered {
         position: inside,
         paths,
+    });
+    cx.simulate_event(FileDropEvent::Pending { position: inside });
+    cx.simulate_event(FileDropEvent::Exited);
+    cx.run_until_parked();
+    assert_eq!(logged(&log), ["over true", "over false"]);
+    log.borrow_mut().clear();
+    cx.simulate_event(FileDropEvent::Entered {
+        position: inside,
+        paths: ExternalPaths(vec![PathBuf::from("/tmp/a.png"), PathBuf::from("/tmp/b.txt")].into()),
     });
     cx.simulate_event(FileDropEvent::Pending { position: inside });
     cx.simulate_event(FileDropEvent::Submit { position: inside });

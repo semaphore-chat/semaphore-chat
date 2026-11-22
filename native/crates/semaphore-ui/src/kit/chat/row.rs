@@ -6,7 +6,7 @@ use super::{child_id, one_line};
 use crate::kit::controls::Button;
 use crate::kit::look::{ControlSize, focus_handle, focus_ring, shows_focus};
 use crate::kit::surface::{Surface, SurfaceScope, tint_base_token};
-use crate::kit::{Avatar, AvatarSize, Icon, ValueAction};
+use crate::kit::{Avatar, AvatarSize, Icon, ValueAction, with_tip};
 use crate::theme::SemTheme;
 use crate::theme::color::{blend, hsla_of};
 use gpui_kit::prelude::*;
@@ -304,17 +304,16 @@ impl RenderOnce for MessageRow {
         };
         let hover = rest.unwrap_or_else(|| hsla_of(blend(p.text, under, STATE_HOVER)));
 
-        // The row's own handle: the list's when it joins roving focus, else one kept here, so
-        // focus inside the row can be told.
+        // The row's own handle: the list's when it joins roving focus. A lone row takes no focus.
         let joins_list = self.focus.is_some();
-        let handle = self
-            .focus
-            .as_ref()
-            .map(|focus| focus.handle.clone())
-            .unwrap_or_else(|| focus_handle(&self.id, window, cx));
+        let handle = self.focus.as_ref().map(|focus| focus.handle.clone());
         let tab_stop = self.focus.as_ref().is_some_and(|focus| focus.tab_stop);
-        let focus_within = handle.contains_focused(window, cx);
-        let ring = joins_list && shows_focus(&handle, window);
+        let focus_within = handle
+            .as_ref()
+            .is_some_and(|handle| handle.contains_focused(window, cx));
+        let ring = handle
+            .as_ref()
+            .is_some_and(|handle| shows_focus(handle, window));
         let hovered = window
             .use_keyed_state(child_id(&self.id, "hovered"), cx, |_, _| {
                 Rc::new(Cell::new(false))
@@ -322,7 +321,13 @@ impl RenderOnce for MessageRow {
             .read(cx)
             .clone();
         // The quiet parts (toolbar, a continued row's gutter time) show on hover and focus.
-        let revealed = hovered.get() || focus_within;
+        let toolbar_hovered = window
+            .use_keyed_state(child_id(&self.id, "toolbar-hovered"), cx, |_, _| {
+                Rc::new(Cell::new(false))
+            })
+            .read(cx)
+            .clone();
+        let revealed = hovered.get() || toolbar_hovered.get() || focus_within;
         // Its controls are Tab stops in the list's Tab stop row and in a row focus is in.
         let tab_active = !joins_list || tab_stop || focus_within;
 
@@ -371,7 +376,12 @@ impl RenderOnce for MessageRow {
                 div()
                     .pt(px((TEXT_BODY.line_height - TEXT_SMALL.line_height) / 2.))
                     .when(!revealed, |time| time.invisible())
-                    .child(one_line(TEXT_SMALL, self.time.clone()).text_color(secondary))
+                    .child(timed(
+                        &self.id,
+                        &self.time,
+                        self.time_label.as_ref(),
+                        secondary,
+                    ))
                     .into_any_element()
             } else if let Some(open) = self.on_open_author.clone() {
                 // A pointer shortcut to the name's place; not a Tab stop of its own.
@@ -422,7 +432,12 @@ impl RenderOnce for MessageRow {
                 .gap(px(SPACE_SM))
                 .min_w_0()
                 .child(name)
-                .child(meta_owned(TEXT_SMALL, self.time.clone(), secondary))
+                .child(timed(
+                    &self.id,
+                    &self.time,
+                    self.time_label.as_ref(),
+                    secondary,
+                ))
                 .children(std::mem::take(&mut marks))
         });
         let continued_marks = (self.continued && !marks.is_empty()).then(|| {
@@ -481,7 +496,7 @@ impl RenderOnce for MessageRow {
                 }))
         });
 
-        let slot = |content: AnyElement| div().min_w_0().child(content);
+        let slot = |content: AnyElement| div().flex().min_w_0().child(content);
         let column = div()
             .flex_1()
             .min_w_0()
@@ -513,6 +528,12 @@ impl RenderOnce for MessageRow {
                 .role(Role::Toolbar)
                 .aria_label(format!("Actions for {}'s message", self.author))
                 .absolute()
+                .occlude()
+                .on_hover(move |is_hovered, window, _| {
+                    if toolbar_hovered.replace(*is_hovered) != *is_hovered {
+                        window.refresh();
+                    }
+                })
                 .top(px(-SPACE_MD))
                 .right(px(SPACE_MD))
                 .flex()
@@ -540,7 +561,9 @@ impl RenderOnce for MessageRow {
                 self.time_label.as_deref(),
             ))
             .when(pending, |row| row.aria_description("busy"))
-            .track_focus(&handle.clone().tab_stop(tab_stop))
+            .when_some(handle.clone(), |row, handle| {
+                row.track_focus(&handle.tab_stop(tab_stop))
+            })
             .relative()
             .flex()
             .gap(px(SPACE_MD))
@@ -581,15 +604,18 @@ impl RenderOnce for MessageRow {
                     );
                 })
             })
-            .when_some(on_open_actions, |row, open| {
-                row.on_key_down(move |event, window, cx| {
-                    // Only on the row itself: Enter on a control inside is that control's.
-                    if keys_handle.is_focused(window) && asks_for_actions(event) {
-                        cx.stop_propagation();
-                        open(OpenActionsRequest::Keyboard, window, cx);
-                    }
-                })
-            })
+            .when_some(
+                on_open_actions.zip(keys_handle),
+                |row, (open, keys_handle)| {
+                    row.on_key_down(move |event, window, cx| {
+                        // Only on the row itself: Enter on a control inside is that control's.
+                        if keys_handle.is_focused(window) && asks_for_actions(event) {
+                            cx.stop_propagation();
+                            open(OpenActionsRequest::Keyboard, window, cx);
+                        }
+                    })
+                },
+            )
             .child(gutter)
             .child(div().flex_1().min_w_0().flex().child(if pending {
                 column.opacity(STATE_DISABLED)
@@ -604,6 +630,19 @@ impl RenderOnce for MessageRow {
     }
 }
 
-fn meta_owned(style: semaphore_design::lounge::TextStyle, text: SharedString, colour: Hsla) -> Div {
-    one_line(style, text).flex_shrink_0().text_color(colour)
+/// The time, with the full date as its tooltip when the row has one.
+fn timed(
+    row: &ElementId,
+    time: &SharedString,
+    label: Option<&SharedString>,
+    colour: Hsla,
+) -> AnyElement {
+    let text = one_line(TEXT_SMALL, time.clone())
+        .flex_shrink_0()
+        .text_color(colour);
+    match label {
+        Some(label) => with_tip(text.id(child_id(row, "time")).test_support(), label.clone())
+            .into_any_element(),
+        None => text.into_any_element(),
+    }
 }
