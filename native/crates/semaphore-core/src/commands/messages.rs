@@ -38,6 +38,19 @@ impl Core {
         result
     }
 
+    /// Nothing is on screen in the main column any more (a phone showing a list instead of the
+    /// chat): the conversation's window is hidden, and its new messages count as unread and notify
+    /// again. [`Core::open_conversation`] puts it back on screen.
+    pub fn close_main_conversation(&self) {
+        self.write(|state, _| {
+            if let Some(previous) = state.main_conversation.take()
+                && let Some(window) = state.windows.get_mut(&previous)
+            {
+                window.hide();
+            }
+        });
+    }
+
     /// Loads older rows, sent as `ListOp::Insert { index: 0, .. }`. A no-op at the start.
     pub async fn load_older(&self, conversation: Conversation) -> Result<(), CoreError> {
         let begun = self.write(|state, _| {

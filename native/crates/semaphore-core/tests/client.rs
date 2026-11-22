@@ -675,6 +675,38 @@ async fn unread_counts_follow_the_web_rules() {
 }
 
 #[tokio::test]
+async fn a_closed_main_conversation_counts_new_messages_as_unread_until_opened_again() {
+    let rig = Rig::new();
+    rig.backend
+        .channels
+        .lock()
+        .unwrap()
+        .push(text_channel(CHANNEL, 1));
+    rig.backend
+        .unread
+        .lock()
+        .unwrap()
+        .push(json!({ "channelId": CHANNEL, "unreadCount": 0, "mentionCount": 0 }));
+    let mut rig = rig.signed_in().await.open_channel(history("m", 1)).await;
+    rig.core.channels("comm".into());
+    rig.core.run_until_idle().await;
+    // On screen and focused: a message doesn't bump.
+    rig.core.ingest(new_message("z", "someone", "x"));
+    assert_eq!(unread_of(&rig, CHANNEL), 0);
+
+    // A phone shows the channel list: nothing is on screen, so a message counts.
+    rig.core.close_main_conversation();
+    rig.core.ingest(new_message("a", "someone", "x"));
+    assert_eq!(unread_of(&rig, CHANNEL), 1);
+
+    // The chat again: on screen, and a message no longer bumps.
+    rig.core.open_conversation(channel()).await.unwrap();
+    rig.core.ingest(new_message("b", "someone", "x"));
+    assert_eq!(unread_of(&rig, CHANNEL), 1);
+    rig.sync();
+}
+
+#[tokio::test]
 async fn an_author_arrives_after_their_row_and_the_row_is_sent_again() {
     let mut rig = Rig::new()
         .signed_in()

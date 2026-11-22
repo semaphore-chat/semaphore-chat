@@ -906,3 +906,140 @@ fn typing_in_the_dock_jumps_to_a_community_by_name(cx: &mut TestAppContext) {
     }
     assert_eq!(entries(&log), ["c1", "c3"]);
 }
+
+// ---------------------------------------------------------------------------------------------
+// The community home (B12)
+
+#[test]
+fn the_homes_line_says_what_will_show_and_the_first_step() {
+    let ready = |text_channels, rooms| HomeState::Ready {
+        text_channels,
+        rooms,
+    };
+    assert_eq!(
+        home_line(&ready(true, true), false),
+        Some("Pick a channel or a room on the left.")
+    );
+    assert_eq!(
+        home_line(&ready(true, false), true),
+        Some("Pick a channel on the left.")
+    );
+    assert_eq!(
+        home_line(&ready(false, true), true),
+        Some("No text channels yet. Pick a room on the left, or create a channel.")
+    );
+    assert_eq!(
+        home_line(&ready(false, true), false),
+        Some("No text channels yet. Pick a room on the left to talk.")
+    );
+    assert_eq!(
+        home_line(&ready(false, false), true),
+        Some("No channels yet. Create the first one to get everyone talking.")
+    );
+    assert_eq!(
+        home_line(&ready(false, false), false),
+        Some("No channels yet. They show here once someone creates one.")
+    );
+    assert!(home_line(&HomeState::NotMember, true).is_some());
+    assert_eq!(home_line(&HomeState::Loading, true), None);
+}
+
+fn home(log: &Log, state: HomeState, can_create: bool, members_shown: bool) -> AnyElement {
+    let (show, create) = (logs(log, "members"), logs(log, "create"));
+    CommunityHome::new(Some("Couch Co-op"), state)
+        .can_create_channel(can_create)
+        .members_shown(members_shown)
+        .on_show_members(move |window, cx| show(window, cx))
+        .on_create_channel(move |window, cx| create(window, cx))
+        .into_any_element()
+}
+
+#[gpui_kit::test]
+fn the_home_offers_create_channel_only_when_allowed_and_there_is_no_text_channel(
+    cx: &mut TestAppContext,
+) {
+    let cases = [
+        (false, true, true),
+        (false, false, false),
+        (true, true, false),
+    ];
+    for (text_channels, can_create, offered) in cases {
+        let (rig, log) = host(cx, 1280., move |log, _, _, _| {
+            home(
+                log,
+                HomeState::Ready {
+                    text_channels,
+                    rooms: true,
+                },
+                can_create,
+                true,
+            )
+        });
+        assert!(rig.has(cx, "community-home-title"));
+        assert_eq!(rig.has(cx, "community-home-create"), offered);
+        if offered {
+            rig.click(cx, "community-home-create");
+            assert_eq!(entries(&log), ["create"]);
+        }
+    }
+}
+
+#[gpui_kit::test]
+fn the_homes_members_button_shows_while_they_are_not_on_screen(cx: &mut TestAppContext) {
+    for shown in [false, true] {
+        let (rig, log) = host(cx, 900., move |log, _, _, _| {
+            home(
+                log,
+                HomeState::Ready {
+                    text_channels: false,
+                    rooms: true,
+                },
+                false,
+                shown,
+            )
+        });
+        assert_eq!(rig.has(cx, "community-home-members"), !shown);
+        if !shown {
+            rig.click(cx, "community-home-members");
+            assert_eq!(entries(&log), ["members"]);
+        }
+    }
+}
+
+#[gpui_kit::test]
+fn a_not_member_or_failed_home_has_no_actions_and_a_failed_one_tries_again(
+    cx: &mut TestAppContext,
+) {
+    let (rig, _) = host(cx, 900., |log, _, _, _| {
+        home(log, HomeState::NotMember, true, false)
+    });
+    assert!(rig.has(cx, "community-home-line"));
+    assert!(!rig.has(cx, "community-home-members"));
+    assert!(!rig.has(cx, "community-home-create"));
+    for community in [true, false] {
+        let (rig, log) = host(cx, 900., move |log, _, _, _| {
+            let retry = logs(log, "retry");
+            let retry = Retry::new(move |window, cx| retry(window, cx));
+            let state = if community {
+                HomeState::CommunityError("down".into(), retry)
+            } else {
+                HomeState::ChannelsError("down".into(), retry)
+            };
+            home(log, state, true, false)
+        });
+        assert!(!rig.has(cx, "community-home-create"));
+        // Only a member's home offers the members.
+        assert_eq!(rig.has(cx, "community-home-members"), !community);
+        rig.click(cx, "community-home-load-error-action");
+        assert_eq!(entries(&log), ["retry"]);
+    }
+}
+
+#[gpui_kit::test]
+fn a_loading_home_shows_the_skeleton(cx: &mut TestAppContext) {
+    let (rig, _) = host(cx, 1280., |log, _, _, _| {
+        home(log, HomeState::Loading, true, true)
+    });
+    assert!(rig.has(cx, "community-home-face"));
+    assert!(!rig.has(cx, "community-home-line"));
+}
