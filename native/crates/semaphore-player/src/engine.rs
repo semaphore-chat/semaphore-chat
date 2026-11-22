@@ -16,7 +16,8 @@
 //!   target shows even when paused, and a [`PlayerEvent::Position`] reports where it landed.
 //! - **Pause.** The pause is given to the output callback as a generation too, and reported only
 //!   once a callback has acknowledged it with a buffer of silence: no frame computed while
-//!   playing reaches the device after [`PlayerEvent::State`] says Paused.
+//!   playing is written by the callback after [`PlayerEvent::State`] says Paused. A resampling
+//!   device backend may still play up to one chunk it buffered before acknowledging.
 //! - **One active player.** Playing one pauses whichever was playing.
 //! - **Unmount.** Dropping a [`Player`] stops its thread, closes the output and removes its
 //!   video surface. The device stays open while paused (cheap; reopening costs a glitch).
@@ -137,6 +138,19 @@ impl Shared {
     fn registry(&self) -> MutexGuard<'_, Registry> {
         self.registry.lock().unwrap_or_else(|p| p.into_inner())
     }
+
+    /// `player` starts: it becomes the one playing, and whoever held it is told to pause. Called
+    /// when a view asks to play, and again when the engine handles that play: a pause queued
+    /// ahead of it may have released the registration after the view made it, and the play must
+    /// put it back.
+    fn activate(&self, player: u64) {
+        let mut registry = self.registry();
+        if let Some(previous) = registry.exclusive.activate(player)
+            && let Some(other) = registry.players.get(&previous)
+        {
+            let _ = other.send(Command::Pause);
+        }
+    }
 }
 
 /// Opens players that share an output device, a source opener and the one-active rule.
@@ -255,14 +269,7 @@ impl Player {
 
 impl MediaPlayer for Player {
     fn play(&self) {
-        {
-            let mut registry = self.shared.registry();
-            if let Some(previous) = registry.exclusive.activate(self.id)
-                && let Some(other) = registry.players.get(&previous)
-            {
-                let _ = other.send(Command::Pause);
-            }
-        }
+        self.shared.activate(self.id);
         let _ = self.commands.send(Command::Play);
     }
 
@@ -562,6 +569,9 @@ impl Engine {
     }
 
     fn start(&mut self) {
+        // `play()` registered this player from the view's thread; a `Pause` queued ahead of that
+        // `Play` may have released it since, so register it again here, in command order.
+        self.context.shared.activate(self.context.id);
         self.playing = true;
         self.wall.start(Instant::now());
         if self.audio.is_some() && self.output.is_none() && !self.output_failed {
@@ -581,8 +591,9 @@ impl Engine {
     }
 
     /// Stops the sound, and waits (bounded) for the output callback to confirm it plays
-    /// silence. Only then does the state machine report Paused, so a frame computed while
-    /// playing can't reach the device after that report.
+    /// silence. Only then does the state machine report Paused, so no frame computed while
+    /// playing is written by the callback after that report; a resampling device backend may
+    /// still play up to one chunk it buffered before acknowledging.
     fn stop(&mut self) {
         self.playing = false;
         self.wall.stop(Instant::now());
@@ -603,7 +614,7 @@ impl Engine {
                 log::warn!("player: the audio output did not confirm the pause in {PAUSE_ACK:?}");
                 return;
             }
-            std::thread::yield_now();
+            std::thread::sleep(Duration::from_millis(1));
         }
     }
 
