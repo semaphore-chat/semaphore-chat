@@ -921,3 +921,73 @@ fn a_toast_is_at_most_400_wide_and_its_message_wraps(cx: &mut TestAppContext) {
         }
     }
 }
+
+actions!(probe_toast, [PaneEscape]);
+
+/// A pane with its own Escape binding, and the toast region drawn inside it, as a screen's
+/// ToastAnchor puts it.
+struct EscapeBench {
+    log: Log,
+    focus: FocusHandle,
+}
+
+impl EventEmitter<()> for EscapeBench {}
+
+impl Render for EscapeBench {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let log = self.log.clone();
+        BehaviourRoot::new(
+            div()
+                .id("pane")
+                .size_full()
+                .relative()
+                .key_context("PaneCtx")
+                .track_focus(&self.focus)
+                .on_action(move |_: &PaneEscape, _, _| log.borrow_mut().push("pane".into()))
+                .child(ToastRegion::new()),
+        )
+    }
+}
+
+#[gpui_kit::test]
+fn escape_in_a_focused_toast_stays_there(cx: &mut TestAppContext) {
+    cx.update(|cx| cx.bind_keys([KeyBinding::new("escape", PaneEscape, Some("PaneCtx"))]));
+    let log: Log = Rc::default();
+    let shared = log.clone();
+    let rig: Rig<EscapeBench, ()> = rig(cx, 900., move |_, cx| EscapeBench {
+        log: shared,
+        focus: cx.focus_handle(),
+    });
+    rig.with(cx, |_, window, _| window.activate_window());
+    let toasts = rig.with(cx, |_, window, cx| Toasts::of(window, cx).expect("toasts"));
+    cx.update(|cx| {
+        toasts.show(ToastRequest::new("Clip shared").id("replay"), cx);
+    });
+    rig.with(cx, |_, _, _| {});
+    let escape = |cx: &mut TestAppContext| {
+        rig.with(cx, |_, window, cx| window.key_down("escape", false, cx));
+        rig.with(cx, |_, _, _| {});
+        rig.with(cx, |_, window, cx| window.key_up("escape", cx));
+        rig.with(cx, |_, _, _| {});
+    };
+    // Focus in the pane: its Escape runs.
+    rig.with(cx, |bench, window, cx| {
+        let focus = bench.read(cx).focus.clone();
+        window.focus(&focus, cx);
+    });
+    escape(cx);
+    assert_eq!(*log.borrow(), ["pane"]);
+    // Focus in the toast: Escape stops there, and doesn't dismiss it (as the web's).
+    rig.with(cx, |_, window, cx| {
+        let host = super::BehaviourHost::of(window, cx).expect("host");
+        let region = host.read(cx).toasts.region.clone().expect("region");
+        window.focus(&region, cx);
+    });
+    rig.with(cx, |_, _, _| {});
+    escape(cx);
+    assert_eq!(*log.borrow(), ["pane"], "the pane never saw it");
+    assert!(
+        cx.update(|cx| toasts.showing(cx)).is_some(),
+        "still showing"
+    );
+}

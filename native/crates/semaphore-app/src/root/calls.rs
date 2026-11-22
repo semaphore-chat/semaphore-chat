@@ -652,7 +652,8 @@ impl AppRoot {
                     .h(relative(ratio))
                     .min_h_0()
                     .flex_shrink_0()
-                    .child(stage),
+                    // Toasts clear the composer at the pane's foot, not the stage's bar.
+                    .child(semaphore_ui::kit::WithoutToastAnchor::new(stage)),
             )
             .child(
                 div()

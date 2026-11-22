@@ -246,6 +246,14 @@ impl Toasts {
                 window
                     .update(cx, |_, window, cx| {
                         if let Some(host) = BehaviourHost::of(window, cx) {
+                            if !cx.has_global::<ToastKeysBound>() {
+                                cx.bind_keys([KeyBinding::new(
+                                    "escape",
+                                    ToastEscape,
+                                    Some(TOAST_CONTEXT),
+                                )]);
+                                cx.set_global(ToastKeysBound);
+                            }
                             sync_pause(&host, window, cx);
                         }
                     })
@@ -359,6 +367,14 @@ fn tone_of(tone: ToastQueueTone) -> ToastTone {
     }
 }
 
+actions!(kit_toast, [ToastEscape]);
+
+/// The toast area's key context: Escape there is the area's, never an ancestor's.
+const TOAST_CONTEXT: &str = "KitToastRegion";
+
+struct ToastKeysBound;
+impl Global for ToastKeysBound {}
+
 /// The window's toast area: the showing toast, centred at the foot of what holds it (put it in a
 /// `relative` element that fills the window). Draws nothing without a host or a toast.
 #[derive(IntoElement, Default)]
@@ -429,6 +445,11 @@ impl RenderOnce for ToastRegion {
                 div()
                     .id("kit-toast-region")
                     .test_support()
+                    // The region is drawn where a screen placed it, inside that screen's key
+                    // context. With focus in the toast, Escape stops here: it neither dismisses
+                    // the toast (the web's doesn't) nor reaches the pane (its Escape chain).
+                    .key_context(TOAST_CONTEXT)
+                    .on_action(|_: &ToastEscape, _, _| {})
                     .track_focus(&region)
                     .relative()
                     .w_full()
