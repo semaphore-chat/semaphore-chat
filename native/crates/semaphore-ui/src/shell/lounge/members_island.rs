@@ -10,6 +10,7 @@
 use super::lines::{MemberGroups, around_line, member_line};
 use super::{Face, IdAct, MemberSummary, Rows, column, focused, text_line};
 use crate::kit::{Avatar, ListRow, Pill, PillSize, Presence, RowSize};
+use crate::shell::press::{LONG_PRESS, Press, moved_too_far};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
@@ -83,6 +84,7 @@ fn member_row(
     rows: &Rows,
     on_profile: Option<IdAct>,
     on_menu: Option<MenuAct>,
+    press: Option<&Entity<Pressing>>,
     cx: &App,
 ) -> AnyElement {
     let away = !member.online;
@@ -116,21 +118,123 @@ fn member_row(
     }
     if let Some(open) = on_profile {
         let id = member.id.clone();
-        row = row.on_click(move |window, cx| open(&id, window, cx));
+        let press = press.cloned();
+        row = row.on_click(move |window, cx| {
+            // The release of a long press that opened the menu isn't a click.
+            if let Some(press) = &press
+                && press.update(cx, |state, _| state.take_fired(&id))
+            {
+                return;
+            }
+            open(&id, window, cx)
+        });
     }
     let row = focused(row, rows, &member.id, cx);
     let id = member.id.clone();
+    let long_press = press.cloned().zip(on_menu.clone());
     div()
         .id(SharedString::from(format!("member-{}", member.id)))
         .test_support()
         .when_some(on_menu, |wrapper, menu| {
+            let id = id.clone();
             wrapper.on_mouse_down(MouseButton::Right, move |event, window, cx| {
                 cx.stop_propagation();
                 menu(&id, event.position, window, cx);
             })
         })
+        // On a phone a long press opens the menu, as the web's `useLongPress` (W5).
+        .when_some(long_press, |wrapper, (press, menu)| {
+            let (down, moved, left) = (press.clone(), press.clone(), press);
+            wrapper
+                .on_mouse_down(MouseButton::Left, move |event, window, cx| {
+                    start_press(&down, &id, event.position, menu.clone(), window, cx);
+                })
+                .on_mouse_move(move |event: &MouseMoveEvent, _, cx| {
+                    moved.update(cx, |state, _| state.drag_to(event.position));
+                })
+                .on_hover(move |hovered, _, cx| {
+                    if !*hovered {
+                        left.update(cx, |state, _| state.cancel());
+                    }
+                })
+        })
         .child(row)
         .into_any_element()
+}
+
+/// A press on a member row, on a phone, until it is released, dragged or long enough.
+#[derive(Default)]
+pub(crate) struct Pressing {
+    press: Option<Press>,
+    timer: Option<Task<()>>,
+}
+
+impl Pressing {
+    /// The menu opened from `id`'s press: its release is swallowed once.
+    fn take_fired(&mut self, id: &str) -> bool {
+        let fired = self
+            .press
+            .as_ref()
+            .is_some_and(|press| press.fired && press.user_id == id);
+        if fired {
+            self.press = None;
+        }
+        fired
+    }
+
+    fn drag_to(&mut self, at: Point<Pixels>) {
+        if self
+            .press
+            .as_ref()
+            .is_some_and(|press| !press.fired && moved_too_far(press.at, at))
+        {
+            self.cancel();
+        }
+    }
+
+    fn cancel(&mut self) {
+        if self.press.as_ref().is_some_and(|press| !press.fired) {
+            self.press = None;
+            self.timer = None;
+        }
+    }
+}
+
+fn start_press(
+    state: &Entity<Pressing>,
+    id: &str,
+    at: Point<Pixels>,
+    menu: MenuAct,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let weak = state.downgrade();
+    let user_id = id.to_owned();
+    let timer = window.spawn(cx, async move |cx| {
+        cx.background_executor().timer(LONG_PRESS).await;
+        cx.update(|window, cx| {
+            let Some(state) = weak.upgrade() else { return };
+            let due = state.update(cx, |state, _| match &mut state.press {
+                Some(press) if press.user_id == user_id && !press.fired => {
+                    press.fired = true;
+                    Some(press.at)
+                }
+                _ => None,
+            });
+            if let Some(at) = due {
+                menu(&user_id, at, window, cx);
+            }
+        })
+        .ok();
+    });
+    state.update(cx, |state, _| {
+        state.press = Some(Press {
+            user_id: id.to_owned(),
+            at,
+            fired: false,
+        });
+        state.timer = Some(timer);
+    });
 }
 
 impl RenderOnce for MembersIsland {
@@ -141,6 +245,9 @@ impl RenderOnce for MembersIsland {
             ("Around", &self.groups.around),
             ("Away", &self.groups.away),
         ];
+        // A phone's long press (W5), kept while the island is drawn.
+        let phone = crate::kit::WidthRange::current(window).is_phone();
+        let press = window.use_keyed_state("members-press", cx, |_, _| Pressing::default());
         let rows = Rows::new(
             "members-list",
             groups
@@ -166,6 +273,7 @@ impl RenderOnce for MembersIsland {
                             &rows,
                             self.on_profile.clone(),
                             self.on_menu.clone(),
+                            phone.then_some(&press),
                             cx,
                         )
                     }))

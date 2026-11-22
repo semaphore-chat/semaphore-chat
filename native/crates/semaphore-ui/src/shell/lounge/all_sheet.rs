@@ -7,8 +7,8 @@
 //! out… (a phone has no user card). One keyboard list over the rows.
 
 use super::lines::{
-    ALL_LABEL, CommunityState, FILTER_THRESHOLD, matches_filter, mention_text,
-    notification_count_text, state_line,
+    ALL_LABEL, CommunityState, FILTER_ANNOUNCE_DELAY_MS, FILTER_THRESHOLD, filter_announcement,
+    matches_filter, mention_text, notification_count_text, state_line,
 };
 use super::{Face, IdAct, Rows, column, focused, text_line};
 use crate::kit::{
@@ -208,6 +208,7 @@ impl RenderOnce for AllCommunitiesSheet {
         } else {
             Vec::new()
         };
+        speak_filter_result(filtering && ready, &query, shown.len(), window, cx);
         let foot = foot_rows(self.can_create, self.phone_foot);
         // The body's scroll, kept while the sheet is open: rows that take focus are brought into
         // view, and the current community is in the middle when the list first shows.
@@ -363,4 +364,45 @@ impl RenderOnce for AllCommunitiesSheet {
                 }
             })
     }
+}
+
+/// What the filter last said, and the pause before it says the next.
+#[derive(Default)]
+struct FilterSpeech {
+    query: String,
+    pause: Option<Task<()>>,
+}
+
+/// Says the filter's result once typing pauses (`FILTER_ANNOUNCE_DELAY_MS`): the count, or that
+/// nothing matches, as the web's sheet does. A cleared field says nothing.
+fn speak_filter_result(
+    filtering: bool,
+    query: &str,
+    count: usize,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let state = window.use_keyed_state("all-communities-filter-speech", cx, |_, _| {
+        FilterSpeech::default()
+    });
+    let query = query.trim().to_owned();
+    if !filtering || state.read(cx).query == query {
+        return;
+    }
+    let words = (!query.is_empty()).then(|| filter_announcement(&query, count));
+    let pause = words.map(|words| {
+        window.spawn(cx, async move |cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(FILTER_ANNOUNCE_DELAY_MS))
+                .await;
+            cx.update(|window, cx| {
+                crate::kit::announce(words, crate::kit::Politeness::Polite, window, cx)
+            })
+            .ok();
+        })
+    });
+    state.update(cx, |state, _| {
+        state.query = query;
+        state.pause = pause;
+    });
 }

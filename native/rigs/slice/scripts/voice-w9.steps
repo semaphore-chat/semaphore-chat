@@ -76,7 +76,7 @@ shot 04-left
 
 # 4. Priya, timed out in Couch Co-op: "you can listen", and the one join is listen-only.
 server moderate_as "{\"moderatorId\": \"$ID(u-marcus)\", \"action\": \"timeout\", \"communityId\": \"$ID(c-couch)\", \"userId\": \"$ID(u-priya)\", \"durationSeconds\": 3600}"
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out

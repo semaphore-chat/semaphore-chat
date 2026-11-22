@@ -582,7 +582,7 @@ fn a_header_without_settings_has_no_menu_button(cx: &mut TestAppContext) {
             .can_settings(false)
             .into_any_element()
     });
-    assert!(rig.has(cx, "community-name"));
+    assert!(rig.has(cx, "community-header-name"));
     assert!(!rig.has(cx, "community-menu"));
 }
 

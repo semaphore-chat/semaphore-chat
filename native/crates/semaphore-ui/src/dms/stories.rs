@@ -393,7 +393,7 @@ fn found_people() -> Found {
 }
 
 /// The DM sidebar in the real shell, on `/direct-messages`, with a header over the conversation.
-fn in_shell(env: &crate::stories::StoryEnv, cx: &mut App) -> AnyView {
+fn in_shell(env: &crate::stories::StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
     let view = sidebar(
         LoadState::Ready,
         mixed_rows(),
@@ -432,6 +432,7 @@ fn in_shell(env: &crate::stories::StoryEnv, cx: &mut App) -> AnyView {
             )),
             ..Options::default()
         },
+        window,
         cx,
     )
 }
@@ -562,6 +563,6 @@ pub fn stories() -> Vec<Story> {
                 cx,
             )
         }),
-        Story::new("dms-in-shell", |env, _, cx| in_shell(env, cx)),
+        Story::new("dms-in-shell", in_shell),
     ]
 }

@@ -74,7 +74,7 @@ wait core label "Turn on camera"
 
 # The settings page's camera test: the selected camera's picture in the preview, nothing published,
 # then Stop lets the camera go.
-click rail-account
+click user-card-menu
 wait core label "Settings"
 click account-settings
 click settings-tab-voice

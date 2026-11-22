@@ -33,10 +33,12 @@ expect label "GIF from media.gifs.example"
 
 # 3. Select across rows and copy. Aimed at the rows' text, so a taller row above (a GIF card)
 # can't move the selection.
-drag-text "are we doing friday or not" "are" "yeah i'll bring it friday" "friday"
+# Two rows in view in the Lounge frame at this size (its islands show fewer rows than the old
+# shell's columns did).
+drag-text "yeah i'll bring it friday" "yeah" "found this from last time" "time"
 press ctrl-c
-expect clipboard "are we doing friday or not"
 expect clipboard "yeah i'll bring it friday"
+expect clipboard "found this from last time"
 wait idle
 shot 04-selection
 press escape
@@ -208,7 +210,7 @@ shot 24-preview-image-on
 link-images off
 
 # 12. Sign out from the account menu: the stored session goes, the server is remembered.
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 wait idle
 shot 14-account

@@ -1336,6 +1336,11 @@ impl AppRoot {
         let route_sidebar = self.build_inbox(window, cx);
         let root_update_banner = self.update_banner_slot();
         let bar_root = cx.entity().downgrade();
+        let instance_label = self
+            .server
+            .as_ref()
+            .map(|(url, _)| server_label(url))
+            .unwrap_or_default();
         let shell = cx.new(|cx| {
             // The call's bar under the columns, wherever the user is but the call's own channel.
             let bar: semaphore_ui::shell::VoiceBarSlot = Rc::new(move |window, cx| {
@@ -1351,11 +1356,13 @@ impl AppRoot {
                 if showing.get() {
                     return None;
                 }
-                let narrow = window.viewport_size().width < px(600.);
+                // The call slot is the left column (288 px) at compact and wide, and a phone's
+                // width below: the bar's narrow layout fits both.
+                let _ = window;
                 Some(voice_bar_element_with(
                     &model,
                     &soundboard,
-                    narrow,
+                    true,
                     controller,
                 ))
             });
@@ -1364,8 +1371,10 @@ impl AppRoot {
                 Route::Home,
                 content,
                 connection,
+                window,
                 cx,
             )
+            .with_instance_label(instance_label)
             .with_voice_bar(bar)
             .with_route_sidebar(route_sidebar)
             .with_update_banner(root_update_banner)
@@ -1467,7 +1476,14 @@ impl AppRoot {
             ShellEvent::OpenNotifications => self.toggle_centre(cx),
             // WP: a voice row only selects its channel; the route shows the pre-join, whose Join
             // joins (`prejoin.rs`), as the web's row does.
-            ShellEvent::JoinVoice { .. } => {}
+            // A voice room card's Join joins from the left island (design PA-2); its name
+            // opens the room's pre-join or call view.
+            ShellEvent::JoinVoice { channel_id } => self.join_voice(channel_id.clone(), cx),
+            ShellEvent::LeaveVoice => {
+                if let Some(voice) = &self.voice {
+                    voice.leave();
+                }
+            }
             ShellEvent::OpenPins => {
                 if let Some(pane) = &self.pane {
                     pane.update(cx, |pane, cx| pane.toggle_pins(window, cx));
@@ -2003,12 +2019,16 @@ impl Render for AppRoot {
     /// that has nowhere else to go is on the root's own handle.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let sink = self.root_focus.clone();
-        // The window's toast area over the app, at its foot (the root fills the window).
+        // The window's toast area over the app, at its foot (the root fills the window). The
+        // shell's AppFrame places its own (in the main pane), so only the screens without one
+        // (sign-in, onboarding, the loader) get this.
         let app = div()
             .size_full()
             .relative()
             .child(self.render_app(window, cx))
-            .child(semaphore_ui::kit::ToastRegion::new());
+            .when(self.shell.is_none(), |app| {
+                app.child(semaphore_ui::kit::ToastRegion::new())
+            });
         semaphore_ui::kit::BehaviourRoot::new(app).focus_sink(&sink)
     }
 }

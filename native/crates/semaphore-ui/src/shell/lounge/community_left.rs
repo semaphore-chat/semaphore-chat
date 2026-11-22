@@ -29,12 +29,14 @@ pub struct CommunityHeader {
     file: Option<String>,
     around: Option<u32>,
     can_settings: bool,
+    can_create_channel: bool,
     menu_open: bool,
     members_shown: bool,
     on_show_members: Option<Act>,
     on_menu: Option<Act>,
     on_menu_close: Option<Act>,
     on_settings: Option<Act>,
+    on_create_channel: Option<Act>,
 }
 
 impl CommunityHeader {
@@ -44,12 +46,14 @@ impl CommunityHeader {
             file: None,
             around: None,
             can_settings: false,
+            can_create_channel: false,
             menu_open: false,
             members_shown: false,
             on_show_members: None,
             on_menu: None,
             on_menu_close: None,
             on_settings: None,
+            on_create_channel: None,
         }
     }
 
@@ -102,6 +106,18 @@ impl CommunityHeader {
         self.on_settings = Some(Rc::new(handler));
         self
     }
+
+    /// Native (W5): you may create a channel here, so the menu offers "Create channel" (the old
+    /// channel list's "+"); the web's menu has only Community settings.
+    pub fn can_create_channel(mut self, can: bool) -> Self {
+        self.can_create_channel = can;
+        self
+    }
+
+    pub fn on_create_channel(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_create_channel = Some(Rc::new(handler));
+        self
+    }
 }
 
 impl RenderOnce for CommunityHeader {
@@ -141,7 +157,7 @@ impl RenderOnce for CommunityHeader {
                 })
                 .unwrap_or_else(|| div().into_any_element()),
         };
-        let menu = self.can_settings.then(|| {
+        let menu = (self.can_settings || self.can_create_channel).then(|| {
             let toggle = self.on_menu.clone();
             let button = IconButton::new(
                 "community-menu",
@@ -160,17 +176,33 @@ impl RenderOnce for CommunityHeader {
             let open = self.menu_open.then(|| {
                 let settings = self.on_settings.clone();
                 let close = self.on_menu_close.clone();
-                let item = MenuItem::new(
-                    "community-settings",
-                    "Community settings",
-                    move |window, cx| {
-                        if let Some(settings) = &settings {
-                            settings(window, cx);
-                        }
-                    },
-                )
-                .icon(I::Settings);
-                let menu = Menu::new(format!("{name} menu"), [item])
+                let create = self.on_create_channel.clone();
+                let mut items = Vec::new();
+                if self.can_settings {
+                    items.push(
+                        MenuItem::new(
+                            "community-settings",
+                            "Community settings",
+                            move |window, cx| {
+                                if let Some(settings) = &settings {
+                                    settings(window, cx);
+                                }
+                            },
+                        )
+                        .icon(I::Settings),
+                    );
+                }
+                if self.can_create_channel {
+                    items.push(
+                        MenuItem::new("channels-create", "Create channel", move |window, cx| {
+                            if let Some(create) = &create {
+                                create(window, cx);
+                            }
+                        })
+                        .icon(I::Add),
+                    );
+                }
+                let menu = Menu::new(format!("{name} menu"), items)
                     .id("community-menu-list")
                     .on_close(move |_, window, cx| {
                         if let Some(close) = &close {
@@ -216,7 +248,7 @@ impl RenderOnce for CommunityHeader {
                         .gap(px(SPACE_XS))
                         .child(
                             text_line(t::TEXT_TITLE, name)
-                                .id("community-name")
+                                .id("community-header-name")
                                 .test_support()
                                 .w_full()
                                 .truncate(),

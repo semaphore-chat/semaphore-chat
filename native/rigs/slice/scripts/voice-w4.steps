@@ -100,7 +100,7 @@ wait core voice unmuted
 
 # 5. Push to talk: switched on in settings (the key captured there), the key opens the mic only
 # while it is held, with no mic click needed. The bar shows the held state.
-click rail-account
+click user-card-menu
 click account-settings
 click settings-tab-voice
 wait core route settings/voice
@@ -120,7 +120,7 @@ wait core engine ptt-pressed off
 
 # W19: the root takes the key in the capture phase, before the focused element sees it. Space as
 # the key (recorded by the settings' key box, which the root leaves every key to while it listens).
-click rail-account
+click user-card-menu
 click account-settings
 click settings-tab-voice
 wait core route settings/voice

@@ -2,7 +2,9 @@
 # (the instance owner may pin and remove anywhere; the fake server gives everyone else a moderator
 # role), so pins and removals are offered. Each part checks the server and core, then takes a shot.
 
-app 1280 800
+# Taller than the old 800: the Lounge frame's islands show fewer rows, and the rows and controls
+# these steps use must be in view.
+app 1280 1000
 wait idle
 click auth-connect
 wait core session signed-out within 5

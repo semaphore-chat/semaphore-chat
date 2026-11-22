@@ -20,7 +20,7 @@ wait core connection connected
 window activate
 
 # 1. The DM with Priya: my message, then her read.
-click rail-dm
+click dock-inbox
 wait core element dm-sidebar
 click dm-row-$ID(dm-priya)
 wait core dm $ID(dm-priya)
