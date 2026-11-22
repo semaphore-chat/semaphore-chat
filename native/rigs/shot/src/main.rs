@@ -3,7 +3,7 @@
 //!   rig-shot <story> <width> <height> <out.png> [--theme <mode>-<intensity>-<rrggbb>]
 //!   rig-shot --script <file.steps> --out <dir>
 //!   rig-shot --list
-//!   rig-shot --compare <jobs.tsv> --composites <dir> [--fuzz <percent>]
+//!   rig-shot --compare <jobs.tsv> --composites <dir> [--fuzz <percent>] [--threads <n>]
 //!
 //! Stories come from `semaphore_ui::stories`. Run it from `native/`, where it finds
 //! `fixtures/scenarios`. See [`script`] for the step language.
@@ -257,14 +257,18 @@ fn main() -> Result<()> {
             Some(value) => value.parse().context("--fuzz")?,
             None => 0.0,
         };
+        let threads: Option<usize> = match take_flag(&mut args, "--threads")? {
+            Some(value) => Some(value.parse().context("--threads")?),
+            None => None,
+        };
         let composites = composites.as_deref().map(Path::new);
-        return compare::run(Path::new(&jobs), composites, fuzz);
+        return compare::run(Path::new(&jobs), composites, fuzz, threads);
     }
 
     let theme = take_flag(&mut args, "--theme")?;
     let [story, width, height, out] = args.as_slice() else {
         bail!(
-            "usage: rig-shot <story> <width> <height> <out.png> [--theme <name>] | rig-shot --script <file> --out <dir> | rig-shot --list | rig-shot --compare <jobs.tsv> --composites <dir> [--fuzz <percent>]"
+            "usage: rig-shot <story> <width> <height> <out.png> [--theme <name>] | rig-shot --script <file> --out <dir> | rig-shot --list | rig-shot --compare <jobs.tsv> --composites <dir> [--fuzz <percent>] [--threads <n>]"
         );
     };
     let width: f32 = width.parse().context("width")?;

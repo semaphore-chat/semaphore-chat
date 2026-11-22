@@ -1,6 +1,6 @@
 //! Comparing the same story as rendered on two sides, for the native UI review.
 //!
-//! `rig-shot --compare <jobs> --composites <dir> [--fuzz <percent>]` reads a tab-separated jobs
+//! `rig-shot --compare <jobs> --composites <dir> [--fuzz <percent>] [--threads <n>]` reads a tab-separated jobs
 //! file, one line per story and size: `<story> <size> <base> <head> <head2>`. Each of the last
 //! three is `absent` (the story does not exist on that side) or a PNG path that must exist; the
 //! second head render (`head2`) is what tells a real change from a story that renders
@@ -11,11 +11,23 @@
 //! A story that differs between the two head renders is `unstable`, not `changed`: the difference
 //! can't be attributed to the change under review. Exits non-zero when any shot could not be
 //! compared (a missing or damaged PNG), after printing the results of the ones that could.
+//!
+//! The jobs are spread over `--threads` workers (default: the machine's cores) and the results are
+//! printed in jobs-file order, so the output doesn't depend on the thread count. Each PNG is
+//! decoded at most once per job. A run with nearly every shot changed is bound by PNG decoding and
+//! encoding: ui-review.sh runs a debug build, so the workspace builds the image codecs optimised
+//! even in dev (`native/Cargo.toml`, rig-shot itself too), or 2000 changed shots took over an
+//! hour (#885).
 
 use anyhow::{Context as _, Result, bail};
 use image::{Rgba, RgbaImage};
+use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc;
+use std::thread;
 
 /// Space between the panels of a composite, in pixels, filled with [`GAP_COLOUR`].
 const GAP: u32 = 4;
@@ -94,15 +106,40 @@ struct Diff {
     same_size: bool,
 }
 
-pub fn run(jobs: &Path, composites: Option<&Path>, fuzz: f64) -> Result<()> {
+pub fn run(
+    jobs: &Path,
+    composites: Option<&Path>,
+    fuzz: f64,
+    threads: Option<usize>,
+) -> Result<()> {
     if !(0.0..=100.0).contains(&fuzz) {
         bail!("--fuzz takes a percentage of pixels, from 0 to 100");
     }
     let source = fs::read_to_string(jobs).with_context(|| format!("reading {}", jobs.display()))?;
+    let shots = parse(&source, jobs)?;
     if let Some(dir) = composites {
         fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     }
+    let threads = threads
+        .unwrap_or_else(|| thread::available_parallelism().map_or(1, |n| n.get()))
+        .max(1);
+    let mut stdout = std::io::stdout().lock();
     let mut failed = 0usize;
+    compare_all(&shots, composites, fuzz, threads, |line, status| {
+        if status == Status::Failed {
+            failed += 1;
+        }
+        writeln!(stdout, "{line}").context("writing the results")
+    })?;
+    stdout.flush().context("writing the results")?;
+    if failed > 0 {
+        bail!("{failed} shot(s) could not be compared");
+    }
+    Ok(())
+}
+
+fn parse(source: &str, jobs: &Path) -> Result<Vec<Shot>> {
+    let mut shots = Vec::new();
     for (number, line) in source.lines().enumerate() {
         if line.trim().is_empty() || line.starts_with('#') {
             continue;
@@ -116,42 +153,108 @@ pub fn run(jobs: &Path, composites: Option<&Path>, fuzz: f64) -> Result<()> {
                 fields.len()
             );
         }
-        let shot = Shot {
+        shots.push(Shot {
             story: fields[0].to_owned(),
             size: fields[1].to_owned(),
             base: Side::parse(fields[2]),
             head: Side::parse(fields[3]),
             head2: Side::parse(fields[4]),
-        };
-        let outcome = judge(&shot, composites, fuzz).unwrap_or_else(|error| Outcome {
-            status: Status::Failed,
-            pixels: 0,
-            total: 0,
-            composite: None,
-            note: one_line(&format!("{error:#}")),
         });
-        if outcome.status == Status::Failed {
-            failed += 1;
+    }
+    Ok(shots)
+}
+
+/// Judges every shot on `threads` workers and hands each result line to `emit` in `shots` order,
+/// as soon as it and every line before it are done.
+fn compare_all(
+    shots: &[Shot],
+    composites: Option<&Path>,
+    fuzz: f64,
+    threads: usize,
+    mut emit: impl FnMut(&str, Status) -> Result<()>,
+) -> Result<()> {
+    let next = AtomicUsize::new(0);
+    let (sender, receiver) = mpsc::channel::<(usize, String, Status)>();
+    thread::scope(|scope| {
+        for _ in 0..threads.min(shots.len()) {
+            let (next, sender) = (&next, sender.clone());
+            scope.spawn(move || {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(shot) = shots.get(index) else { break };
+                    let (line, status) = guarded_line(shot, composites, fuzz);
+                    if sender.send((index, line, status)).is_err() {
+                        break;
+                    }
+                }
+            });
         }
-        println!(
-            "{}\t{}\t{}\t{}\t{}\t{:.4}\t{}\t{}",
-            shot.story,
-            shot.size,
-            outcome.status.as_str(),
-            outcome.pixels,
-            outcome.total,
-            percent(outcome.pixels, outcome.total),
-            outcome
-                .composite
-                .as_ref()
-                .map_or_else(|| "-".to_owned(), |path| path.display().to_string()),
-            outcome.note
-        );
+        drop(sender);
+        let mut pending = BTreeMap::new();
+        let mut printed = 0usize;
+        for (index, line, status) in receiver {
+            pending.insert(index, (line, status));
+            while let Some((line, status)) = pending.remove(&printed) {
+                emit(&line, status)?;
+                printed += 1;
+            }
+        }
+        Ok(())
+    })
+}
+
+/// [`result_line`], with a panic in one job reported as that shot `failed` instead of taking the
+/// whole run (and every result after it) down.
+fn guarded_line(shot: &Shot, composites: Option<&Path>, fuzz: f64) -> (String, Status) {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        result_line(shot, composites, fuzz)
+    }))
+    .unwrap_or_else(|payload| {
+        let message = payload
+            .downcast_ref::<&str>()
+            .map(|text| (*text).to_owned())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic".to_owned());
+        format_line(shot, &failed(format!("panicked: {message}")))
+    })
+}
+
+fn failed(note: String) -> Outcome {
+    Outcome {
+        status: Status::Failed,
+        pixels: 0,
+        total: 0,
+        composite: None,
+        note: one_line(&note),
     }
-    if failed > 0 {
-        bail!("{failed} shot(s) could not be compared");
+}
+
+fn result_line(shot: &Shot, composites: Option<&Path>, fuzz: f64) -> (String, Status) {
+    #[cfg(test)]
+    if shot.story == tests::PANICS {
+        panic!("a test job that panics");
     }
-    Ok(())
+    let outcome =
+        judge(shot, composites, fuzz).unwrap_or_else(|error| failed(format!("{error:#}")));
+    format_line(shot, &outcome)
+}
+
+fn format_line(shot: &Shot, outcome: &Outcome) -> (String, Status) {
+    let line = format!(
+        "{}\t{}\t{}\t{}\t{}\t{:.4}\t{}\t{}",
+        shot.story,
+        shot.size,
+        outcome.status.as_str(),
+        outcome.pixels,
+        outcome.total,
+        percent(outcome.pixels, outcome.total),
+        outcome
+            .composite
+            .as_ref()
+            .map_or_else(|| "-".to_owned(), |path| path.display().to_string()),
+        outcome.note
+    );
+    (line, outcome.status)
 }
 
 fn judge(shot: &Shot, composites: Option<&Path>, fuzz: f64) -> Result<Outcome> {
@@ -187,10 +290,13 @@ fn judge(shot: &Shot, composites: Option<&Path>, fuzz: f64) -> Result<Outcome> {
             })
         }
         (Some(base), Some(head)) => {
-            let diff = compare_files(base, head)?;
+            let (mut base, mut head) = (Render::new(base), Render::new(head));
+            let diff = compare_renders(&mut base, &mut head)?;
             let allowed = allowed(diff.total, fuzz);
             let unstable = match shot.head2.path() {
-                Some(second) => compare_files(head, second)?.pixels > allowed,
+                Some(second) => {
+                    compare_renders(&mut head, &mut Render::new(second))?.pixels > allowed
+                }
                 None => false,
             };
             let status = if unstable {
@@ -203,11 +309,11 @@ fn judge(shot: &Shot, composites: Option<&Path>, fuzz: f64) -> Result<Outcome> {
             let composite = if status == Status::Unchanged {
                 None
             } else {
-                let (before, after) = (load(base)?, load(head)?);
+                let (before, after) = (base.image()?, head.image()?);
                 composite(
                     composites,
                     shot,
-                    &[&before, &after, &highlight(&before, &after)],
+                    &[before, after, &highlight(before, after)],
                 )?
             };
             let note = if diff.same_size {
@@ -256,10 +362,34 @@ fn dimensions(path: &Path) -> Result<(u32, u32)> {
         .with_context(|| format!("reading the header of {}", path.display()))
 }
 
+/// A PNG on disk, decoded the first time its pixels are needed and then kept.
+struct Render<'a> {
+    path: &'a Path,
+    image: Option<RgbaImage>,
+}
+
+impl<'a> Render<'a> {
+    fn new(path: &'a Path) -> Self {
+        Render { path, image: None }
+    }
+
+    fn image(&mut self) -> Result<&RgbaImage> {
+        if self.image.is_none() {
+            self.image = Some(load(self.path)?);
+        }
+        Ok(self.image.as_ref().expect("decoded above"))
+    }
+}
+
 /// Two renders of the same code: no pixels to read when the files match, which is most of them.
+#[cfg(test)]
 fn compare_files(a: &Path, b: &Path) -> Result<Diff> {
-    if same_bytes(a, b)? {
-        let (width, height) = dimensions(a)?;
+    compare_renders(&mut Render::new(a), &mut Render::new(b))
+}
+
+fn compare_renders(a: &mut Render, b: &mut Render) -> Result<Diff> {
+    if same_bytes(a.path, b.path)? {
+        let (width, height) = dimensions(a.path)?;
         return Ok(Diff {
             pixels: 0,
             total: u64::from(width) * u64::from(height),
@@ -267,9 +397,10 @@ fn compare_files(a: &Path, b: &Path) -> Result<Diff> {
             same_size: true,
         });
     }
-    let (first, second) = (load(a)?, load(b)?);
+    a.image()?;
+    let (first, second) = (a.image.as_ref().expect("decoded above"), b.image()?);
     if first.dimensions() != second.dimensions() {
-        let total = pixels(&second);
+        let total = pixels(second);
         return Ok(Diff {
             pixels: total,
             total,
@@ -277,17 +408,35 @@ fn compare_files(a: &Path, b: &Path) -> Result<Diff> {
             same_size: false,
         });
     }
-    let differing = first
-        .pixels()
-        .zip(second.pixels())
-        .filter(|(one, other)| one != other)
-        .count() as u64;
     Ok(Diff {
-        pixels: differing,
-        total: pixels(&first),
+        pixels: differing(first, second),
+        total: pixels(first),
         identical: false,
         same_size: true,
     })
+}
+
+/// Pixels that differ between two images of the same size. Rows are compared whole first (a
+/// `memcmp`), so only the rows that changed are walked pixel by pixel.
+fn differing(first: &RgbaImage, second: &RgbaImage) -> u64 {
+    let row = first.width() as usize * 4;
+    if row == 0 {
+        return 0;
+    }
+    first
+        .as_raw()
+        .chunks_exact(row)
+        .zip(second.as_raw().chunks_exact(row))
+        .filter(|(one, other)| one != other)
+        .map(|(one, other)| {
+            one.as_chunks::<4>()
+                .0
+                .iter()
+                .zip(other.as_chunks::<4>().0)
+                .filter(|(a, b)| a != b)
+                .count() as u64
+        })
+        .sum()
 }
 
 fn same_bytes(a: &Path, b: &Path) -> Result<bool> {
@@ -306,37 +455,61 @@ fn size(path: &Path) -> Result<u64> {
 
 /// The after shot, dimmed, with every pixel that differs from the before shot marked.
 fn highlight(before: &RgbaImage, after: &RgbaImage) -> RgbaImage {
-    let mut out = RgbaImage::new(after.width(), after.height());
-    for (x, y, pixel) in out.enumerate_pixels_mut() {
-        let after = *after.get_pixel(x, y);
-        let same = x < before.width() && y < before.height() && *before.get_pixel(x, y) == after;
-        let [red, green, blue, _] = after.0;
-        *pixel = if same {
-            Rgba([red / 3, green / 3, blue / 3, 0xff])
-        } else {
-            MARK
-        };
+    let (width, height) = (after.width() as usize, after.height() as usize);
+    if width == 0 || height == 0 {
+        return RgbaImage::new(after.width(), after.height());
     }
-    out
+    let before_width = before.width() as usize;
+    let mut out = Vec::with_capacity(width * height * 4);
+    for (y, row) in after.as_raw().chunks_exact(width * 4).enumerate() {
+        let before_row = (y < before.height() as usize).then(|| {
+            let start = y * before_width * 4;
+            &before.as_raw()[start..start + before_width.min(width) * 4]
+        });
+        for (x, pixel) in row.as_chunks::<4>().0.iter().enumerate() {
+            let same =
+                before_row.is_some_and(|before| before.get(x * 4..x * 4 + 4) == Some(&pixel[..]));
+            if same {
+                out.extend_from_slice(&[pixel[0] / 3, pixel[1] / 3, pixel[2] / 3, 0xff]);
+            } else {
+                out.extend_from_slice(&MARK.0);
+            }
+        }
+    }
+    RgbaImage::from_raw(after.width(), after.height(), out).expect("one pixel per pixel")
 }
 
+/// The panels side by side, top-aligned, `GAP` apart, written as a PNG named after the shot.
 fn composite(dir: Option<&Path>, shot: &Shot, panels: &[&RgbaImage]) -> Result<Option<PathBuf>> {
     let Some(dir) = dir else {
         return Ok(None);
     };
-    let width = panels.iter().map(|panel| panel.width()).sum::<u32>()
-        + GAP * panels.len().saturating_sub(1) as u32;
-    let height = panels.iter().map(|panel| panel.height()).max().unwrap_or(0);
-    let mut out = RgbaImage::from_pixel(width, height, GAP_COLOUR);
-    let mut x = 0;
-    for panel in panels {
-        image::imageops::replace(&mut out, *panel, i64::from(x), 0);
-        x += panel.width() + GAP;
-    }
+    let out = side_by_side(panels);
     let path = dir.join(format!("{}-{}.png", shot.story, shot.size));
     out.save(&path)
         .with_context(|| format!("writing {}", path.display()))?;
     Ok(Some(path))
+}
+
+fn side_by_side(panels: &[&RgbaImage]) -> RgbaImage {
+    let width = panels.iter().map(|panel| panel.width()).sum::<u32>()
+        + GAP * panels.len().saturating_sub(1) as u32;
+    let height = panels.iter().map(|panel| panel.height()).max().unwrap_or(0);
+    let mut out = RgbaImage::from_pixel(width, height, GAP_COLOUR);
+    let stride = width as usize * 4;
+    let raw: &mut [u8] = &mut out;
+    let mut x = 0usize;
+    for panel in panels {
+        let row = panel.width() as usize * 4;
+        if row > 0 {
+            for (y, source) in panel.as_raw().chunks_exact(row).enumerate() {
+                let start = y * stride + x * 4;
+                raw[start..start + row].copy_from_slice(source);
+            }
+        }
+        x += panel.width() as usize + GAP as usize;
+    }
+    out
 }
 
 fn one_line(text: &str) -> String {
@@ -347,6 +520,50 @@ fn one_line(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A job with this story id panics inside [`result_line`].
+    pub(super) const PANICS: &str = "test-job-that-panics";
+
+    /// One job panicking is that shot `failed`; the jobs after it still print, in order.
+    #[test]
+    fn a_panicking_job_is_reported_failed_and_the_rest_still_run() {
+        let dir = std::env::temp_dir().join("rig-shot-compare-panic");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("one.png");
+        flat([1, 2, 3, 255], 2, 2).save(&path).unwrap();
+        let png = path.display().to_string();
+        let source = [
+            format!("first\tdesktop\t{png}\t{png}\tabsent"),
+            format!("{PANICS}\tdesktop\t{png}\t{png}\tabsent"),
+            format!("last\tdesktop\t{png}\t{png}\tabsent"),
+        ]
+        .join("\n");
+        let shots = parse(&source, Path::new("jobs.tsv")).unwrap();
+        for threads in [1, 3] {
+            let mut out = Vec::new();
+            compare_all(&shots, None, 0.0, threads, |line, status| {
+                out.push((line.to_owned(), status));
+                Ok(())
+            })
+            .unwrap();
+            let statuses: Vec<Status> = out.iter().map(|(_, status)| *status).collect();
+            assert_eq!(
+                statuses,
+                [Status::Unchanged, Status::Failed, Status::Unchanged]
+            );
+            assert!(
+                out[1]
+                    .0
+                    .starts_with(&format!("{PANICS}\tdesktop\tfailed\t"))
+            );
+            assert!(
+                out[1].0.ends_with("panicked: a test job that panics"),
+                "{}",
+                out[1].0
+            );
+            assert!(out[2].0.starts_with("last\t"));
+        }
+    }
 
     #[test]
     fn a_differing_pixel_is_counted_once() {
@@ -381,6 +598,125 @@ mod tests {
         let marked = highlight(&before, &after);
         assert_eq!(*marked.get_pixel(0, 0), Rgba([0, 0, 0, 255]));
         assert_eq!(*marked.get_pixel(1, 0), MARK);
+    }
+
+    #[test]
+    fn the_highlight_marks_pixels_outside_a_smaller_before_shot() {
+        let before = flat([5, 5, 5, 255], 1, 1);
+        let after = flat([5, 5, 5, 255], 2, 2);
+        let marked = highlight(&before, &after);
+        assert_eq!(*marked.get_pixel(0, 0), Rgba([1, 1, 1, 255]));
+        assert_eq!(*marked.get_pixel(1, 0), MARK);
+        assert_eq!(*marked.get_pixel(0, 1), MARK);
+        assert_eq!(*marked.get_pixel(1, 1), MARK);
+    }
+
+    #[test]
+    fn differing_counts_pixels_not_rows_or_bytes() {
+        let before = flat([0, 0, 0, 255], 5, 3);
+        let mut after = before.clone();
+        after.put_pixel(0, 0, Rgba([0, 0, 0, 254]));
+        after.put_pixel(4, 0, Rgba([1, 1, 1, 255]));
+        after.put_pixel(2, 2, Rgba([0, 9, 0, 255]));
+        assert_eq!(differing(&before, &after), 3);
+        assert_eq!(differing(&before, &before), 0);
+    }
+
+    /// The composite is the same picture `imageops::replace` made before it was rewritten.
+    #[test]
+    fn side_by_side_matches_placing_each_panel() {
+        let panels = [gradient(3, 2, 0), gradient(2, 4, 50), gradient(4, 1, 100)];
+        let refs: Vec<&RgbaImage> = panels.iter().collect();
+        let width = 3 + 2 + 4 + 2 * GAP;
+        let mut expected = RgbaImage::from_pixel(width, 4, GAP_COLOUR);
+        let mut x = 0;
+        for panel in &panels {
+            image::imageops::replace(&mut expected, panel, i64::from(x), 0);
+            x += panel.width() + GAP;
+        }
+        assert_eq!(side_by_side(&refs), expected);
+    }
+
+    /// The result lines come out in jobs order and say the same thing however many threads run.
+    #[test]
+    fn a_parallel_run_prints_what_a_serial_run_prints() {
+        let dir = std::env::temp_dir().join("rig-shot-compare-parallel");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let png = |name: &str, image: &RgbaImage| {
+            let path = dir.join(format!("{name}.png"));
+            image.save(&path).unwrap();
+            path.display().to_string()
+        };
+        let mut lines = Vec::new();
+        for index in 0..24u8 {
+            let base = gradient(6, 5, index);
+            let mut changed = base.clone();
+            changed.put_pixel(u32::from(index % 6), 1, Rgba([255, 0, 0, 255]));
+            let mut wobble = changed.clone();
+            wobble.put_pixel(0, 4, Rgba([0, 255, 0, 255]));
+            let (b, c, w) = (
+                png(&format!("base-{index}"), &base),
+                png(&format!("changed-{index}"), &changed),
+                png(&format!("wobble-{index}"), &wobble),
+            );
+            let missing = dir.join("missing.png").display().to_string();
+            let (head, head2, base) = match index % 6 {
+                0 => (b.clone(), b.clone(), b),             // unchanged
+                1 => (c.clone(), c.clone(), b),             // changed
+                2 => (c, w, b),                             // unstable
+                3 => (c, "absent".into(), "absent".into()), // new
+                4 => ("absent".into(), "absent".into(), b), // removed
+                _ => (missing, "absent".into(), b),         // failed
+            };
+            lines.push(format!("story-{index}\tdesktop\t{base}\t{head}\t{head2}"));
+        }
+        let shots = parse(&lines.join("\n"), Path::new("jobs.tsv")).unwrap();
+        let run = |threads: usize, composites: &Path| {
+            let mut out = Vec::new();
+            compare_all(&shots, Some(composites), 0.0, threads, |line, _| {
+                out.push(line.replace(&composites.display().to_string(), "<dir>"));
+                Ok(())
+            })
+            .unwrap();
+            out
+        };
+        let (serial_dir, parallel_dir) = (dir.join("serial"), dir.join("parallel"));
+        fs::create_dir_all(&serial_dir).unwrap();
+        fs::create_dir_all(&parallel_dir).unwrap();
+        let serial = run(1, &serial_dir);
+        let parallel = run(8, &parallel_dir);
+        assert_eq!(serial, parallel);
+        let statuses: Vec<&str> = serial
+            .iter()
+            .map(|line| line.split('\t').nth(2).unwrap())
+            .collect();
+        assert_eq!(
+            &statuses[..6],
+            [
+                "unchanged",
+                "changed",
+                "unstable",
+                "new",
+                "removed",
+                "failed"
+            ]
+        );
+        for (index, line) in serial.iter().enumerate() {
+            assert!(line.starts_with(&format!("story-{index}\t")), "{line}");
+        }
+        for name in fs::read_dir(&serial_dir).unwrap() {
+            let name = name.unwrap().file_name();
+            let one = image::open(serial_dir.join(&name)).unwrap().into_rgba8();
+            let other = image::open(parallel_dir.join(&name)).unwrap().into_rgba8();
+            assert_eq!(one, other, "{name:?}");
+        }
+    }
+
+    fn gradient(width: u32, height: u32, seed: u8) -> RgbaImage {
+        RgbaImage::from_fn(width, height, |x, y| {
+            Rgba([seed.wrapping_add(x as u8 * 17), y as u8 * 29, seed, 255])
+        })
     }
 
     fn flat(colour: [u8; 4], width: u32, height: u32) -> RgbaImage {
