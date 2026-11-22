@@ -53,6 +53,7 @@ fn open_with_replies(
 ) -> (Entity<MessageList>, &mut VisualTestContext) {
     cx.update(|cx| {
         gpui_kit::init(cx);
+        crate::theme::init(cx);
         init(cx);
     });
     let (view, cx) = cx.add_window_view(move |_, cx| {
@@ -248,7 +249,7 @@ fn c_selection_survives_unmount_and_copies_everything_in_order(cx: &mut TestAppC
     let emoji: usize = (0..24u16)
         .map(|e| expected.matches(&format!(":{}:", emoji_name(e))).count())
         .sum();
-    let links = expected.matches("issue ").count();
+    let links = expected.matches("https://example.com/issues/").count();
     assert!(emoji > 10 && links > 5, "emoji {emoji}, links {links}");
 
     // Scroll far away. Every selected row is unmounted, and nothing about the selection changes.
@@ -376,7 +377,7 @@ fn link_row(seq: i64) -> MessageRow {
         NOW_MS - 60_000 + seq,
         Body::default()
             .text("see ")
-            .link("the docs page", "https://example.com/docs")
+            .link("https://example.com/docs", "https://example.com/docs")
             .text(" for more about this"),
     )
 }
@@ -420,7 +421,7 @@ fn a_shaky_click_still_opens_and_an_unsafe_link_never_does(cx: &mut TestAppConte
         2,
         fixture::me(),
         NOW_MS,
-        Body::default().link("click me", "javascript:alert(1)"),
+        Body::default().link("javascript:alert(1)", "javascript:alert(1)"),
     );
     let (view, cx) = open_list(cx, vec![link_row(1), unsafe_row], Rc::new(NoMedia));
     let events = record_events(&view, cx);
@@ -452,6 +453,88 @@ fn a_shaky_click_still_opens_and_an_unsafe_link_never_does(cx: &mut TestAppConte
     cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
     draw(cx);
     assert_eq!(opens(&events), 1, "javascript: must not reach the app");
+}
+
+/// Every link in a row is drawn by its checked label and opens its checked address: a lookalike
+/// host as punycode. `javascript:` and an address with a user name or password are plain text,
+/// and a press on them opens nothing.
+#[gpui_kit::test]
+fn links_draw_and_open_as_checked_and_refused_ones_open_nothing(cx: &mut TestAppContext) {
+    let lookalike = "https://\u{0430}pple.com/login";
+    let rows = vec![
+        fixture::message(
+            1,
+            fixture::me(),
+            NOW_MS - 3,
+            Body::default().text("go ").link(lookalike, lookalike),
+        ),
+        fixture::message(
+            2,
+            fixture::me(),
+            NOW_MS - 2,
+            Body::default().link("javascript:alert(1)", "javascript:alert(1)"),
+        ),
+        fixture::message(
+            3,
+            fixture::me(),
+            NOW_MS - 1,
+            Body::default().link(
+                "https://user:pw@example.com/",
+                "https://user:pw@example.com/",
+            ),
+        ),
+    ];
+    let (view, cx) = open_list(cx, rows, Rc::new(NoMedia));
+    let events = record_events(&view, cx);
+    let press = |seq: i64, byte: u32, cx: &mut VisualTestContext| {
+        let at = view
+            .read_with(cx, |view, _| view.point_of(Pos { seq, byte }))
+            .expect("painted");
+        cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+        draw(cx);
+    };
+    // The lookalike: the press lands on its label, which is drawn longer than it was written.
+    let label = "https://xn--pple-43d.com/login";
+    let painted = view.read_with(cx, |view, _| {
+        view.point_of(Pos { seq: 1, byte: 3 })
+            .zip(view.point_of(Pos {
+                seq: 1,
+                byte: 3 + lookalike.len() as u32,
+            }))
+    });
+    let (start, end) = painted.expect("painted");
+    let at = point((start.x + end.x) / 2., start.y);
+    cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+    draw(cx);
+    let opened: Vec<String> = events
+        .borrow()
+        .iter()
+        .filter_map(|event| match event {
+            MessageListEvent::OpenLink { url } => Some(url.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(opened, [label.to_owned()]);
+    // What is drawn and copied is the label, never the lookalike.
+    view.update(cx, |view, cx| view.select_all(cx));
+    let copied = selected(&view, cx);
+    assert!(copied.contains(&format!("go {label}")), "{copied:?}");
+    assert!(!copied.contains('\u{0430}'), "{copied:?}");
+    assert!(copied.contains("javascript:alert(1)"));
+    assert!(copied.contains("https://user:pw@example.com/"));
+    view.update(cx, |view, cx| view.set_selection(None, cx));
+
+    // The refused ones: plain text, and a press opens nothing.
+    press(2, 4, cx);
+    press(3, 10, cx);
+    let opens = events
+        .borrow()
+        .iter()
+        .filter(|event| matches!(event, MessageListEvent::OpenLink { .. }))
+        .count();
+    assert_eq!(opens, 1, "refused addresses must not reach the app");
 }
 
 // ------------------------------------------------------------------ multi-click and keyboard
@@ -1261,6 +1344,7 @@ fn a_row_reads_out_who_when_and_what() {
 fn a_press_on_the_scrollbar_does_not_start_a_selection(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_kit::init(cx);
+        crate::theme::init(cx);
         init(cx);
     });
     let (view, cx) = cx.add_window_view(move |_, cx| {
@@ -1406,6 +1490,7 @@ impl Render for EscapeWatcher {
 fn escape_with_nothing_to_do_propagates(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_kit::init(cx);
+        crate::theme::init(cx);
         init(cx);
     });
     let seen = Rc::new(std::cell::Cell::new(0usize));
@@ -1587,5 +1672,33 @@ fn a_channel_switch_drops_the_pending_batch(cx: &mut TestAppContext) {
     assert!(
         view.read_with(cx, |view, _| view.announcement().cloned())
             .is_none()
+    );
+}
+
+/// The slice rig's `click-text`: a drag that ends where it began, on a link to this server.
+#[gpui_kit::test]
+fn a_rig_click_on_an_in_app_link_opens_it(cx: &mut TestAppContext) {
+    let url = "http://127.0.0.1:3999/#/community/c1/channel/ch2?highlight=m3";
+    let text = format!("the lfg post: {url}");
+    let row = fixture::message(
+        1,
+        fixture::user("u-priya", "priya", None),
+        NOW_MS,
+        Body::default().text("the lfg post: ").link(url, url),
+    );
+    let (view, cx) = open_list(cx, vec![row], Rc::new(NoMedia));
+    let events = record_events(&view, cx);
+    let byte = text.find("/#/community").unwrap() as u32 + 3;
+    let at = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 1, byte }))
+        .expect("painted");
+    cx.update(|window, cx| window.drag(at, at, cx));
+    draw(cx);
+    assert!(
+        events
+            .borrow()
+            .contains(&MessageListEvent::OpenLink { url: url.into() }),
+        "{:?}",
+        events.borrow()
     );
 }

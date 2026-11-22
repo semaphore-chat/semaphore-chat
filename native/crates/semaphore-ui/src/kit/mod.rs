@@ -7,7 +7,7 @@
 mod assets;
 mod behaviour;
 mod bus;
-mod chat;
+pub(crate) mod chat;
 mod controls;
 mod display;
 #[cfg(feature = "stories")]

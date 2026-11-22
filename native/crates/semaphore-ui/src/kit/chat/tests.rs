@@ -165,6 +165,40 @@ fn a_code_block_stands_alone_between_paragraphs() {
     assert!(plan(&[S::text("")]).is_empty());
 }
 
+/// The list's selection maps display bytes to the words as drawn through `shown_len`: it must
+/// agree with what the plan lays out, block by block.
+#[test]
+fn shown_lengths_add_up_to_the_planned_blocks() {
+    let segments = [
+        S::text("see "),
+        S::link("https://\u{0430}pple.com/"),
+        S::link("javascript:alert(1)\u{202E}"),
+        S::code("x"),
+        S::emoji("party", None),
+        S::code_block("let a = 1;"),
+        S::mention(MentionSegment::new(MentionKind::User, "@sam")),
+        S::text(""),
+    ];
+    let blocks = super::text::plan_with(&segments, true);
+    let planned: usize = blocks
+        .iter()
+        .map(|block| match block {
+            Block::Inline { text, .. } => text.len(),
+            Block::Code(code) => code.len(),
+        })
+        .sum();
+    let shown: usize = segments.iter().map(super::text::shown_len).sum();
+    assert_eq!(planned, shown);
+    assert_eq!(
+        super::text::block_starts(&blocks),
+        [
+            0,
+            planned - "@sam".len() - "let a = 1;".len(),
+            planned - "@sam".len()
+        ]
+    );
+}
+
 #[test]
 fn an_emoji_without_a_picture_is_its_shortcode() {
     let (text, kinds) = inline(&[S::emoji("gone", None)]);

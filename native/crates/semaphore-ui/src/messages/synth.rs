@@ -186,8 +186,9 @@ fn rich(rng: &mut Rng, word_count: u64, animated: bool) -> Vec<Inline> {
             0 => inlines.push(Inline::Bold(format!("{} ", words(rng, 2)))),
             1 => {
                 let n = rng.below(10_000);
+                // Core links only an address written out, so its text is the address.
                 inlines.push(Inline::Link {
-                    text: format!("issue {n}"),
+                    text: format!("https://example.com/issues/{n}"),
                     url: format!("https://example.com/issues/{n}"),
                 });
                 inlines.push(Inline::Text(" ".into()));

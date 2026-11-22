@@ -47,7 +47,7 @@ shot 01-second-sign-in-sent
 
 # 2. A profile from a message's author: the card, the page, then editing my own name and avatar.
 # The avatar comes from the file picker, which the rig answers.
-click-row message-author "before signing out"
+click-row message/name "before signing out"
 wait core profile-open $ID(me)
 wait core element profile-modal
 wait idle

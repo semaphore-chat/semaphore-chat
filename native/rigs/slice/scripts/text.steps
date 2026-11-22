@@ -79,14 +79,14 @@ press enter
 wait core failed "second try works" within 3
 wait idle
 shot 07-failed
-click-row retry "second try works"
+click-row message/retry "second try works"
 wait core sent "second try works"
 expect core count "second try works" 1
 server fail_next_send "{\"code\": \"RATE_LIMITED\", \"retryable\": true}"
 type "this one goes away"
 press enter
 wait core failed "this one goes away" within 3
-click-row discard "this one goes away"
+click-row message/delete "this one goes away"
 wait core no-text "this one goes away"
 
 # 8. A message from someone else arrives live.

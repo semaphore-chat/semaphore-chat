@@ -30,6 +30,7 @@ pub struct ChatPane {
     announcement: Option<SharedString>,
     composer: Option<AnyElement>,
     cover: Option<AnyElement>,
+    list_foot: Option<AnyElement>,
     on_drop_files: Option<DropHandler>,
     on_files_over: Option<OverHandler>,
 }
@@ -46,9 +47,17 @@ impl ChatPane {
             announcement: None,
             composer: None,
             cover: None,
+            list_foot: None,
             on_drop_files: None,
             on_files_over: None,
         }
+    }
+
+    /// Something placed in the list region, which is `relative` and ends where the composer
+    /// starts: the screen's toast anchor, so the window's toasts sit above the composer (#900).
+    pub fn list_foot(mut self, element: impl IntoElement) -> Self {
+        self.list_foot = Some(element.into_any_element());
+        self
     }
 
     /// The conversation's header: Back, its name, its buttons. Stays at the top.
@@ -161,6 +170,7 @@ impl RenderOnce for ChatPane {
                     .map(|typing| div().absolute().left_0().right_0().bottom_0().child(typing)),
             )
             .children(self.jump)
+            .children(self.list_foot)
             .children(
                 self.announcement
                     .filter(|words| !covered && !words.is_empty())

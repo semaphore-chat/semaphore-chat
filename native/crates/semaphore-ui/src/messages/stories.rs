@@ -235,6 +235,59 @@ fn link_preview(cx: &mut App) -> AnyView {
     .view(cx)
 }
 
+/// Links as drawn: each by its checked label (a lookalike host as punycode), and the refused ones
+/// (`javascript:`, a user name and password) as plain text. The selection runs through the
+/// lookalike, highlighting its label.
+fn checked_links(cx: &mut App) -> AnyView {
+    let ava = fixture::user("u-ava", "ava", Some("Ava Chen"));
+    let lookalike = "https://\u{0430}pple.com/login";
+    let rows = vec![
+        fixture::message(
+            1,
+            ava.clone(),
+            NOW_MS - 240_000,
+            fixture::Body::default()
+                .text("the notes are at ")
+                .link("https://example.com/notes", "https://example.com/notes")
+                .text(" if you need them"),
+        ),
+        fixture::message(
+            2,
+            ava.clone(),
+            NOW_MS - 180_000,
+            fixture::Body::default()
+                .text("log in here: ")
+                .link(lookalike, lookalike)
+                .text(" before friday"),
+        ),
+        fixture::message(
+            3,
+            fixture::me(),
+            NOW_MS - 120_000,
+            fixture::Body::default()
+                .text("not a link: ")
+                .link("javascript:alert(1)", "javascript:alert(1)")
+                .text(" and ")
+                .link(
+                    "https://user:pw@example.com/",
+                    "https://user:pw@example.com/",
+                ),
+        ),
+    ];
+    let selection = Selection {
+        anchor: Pos { seq: 2, byte: 4 },
+        cursor: Pos {
+            seq: 2,
+            byte: 13 + lookalike.len() as u32 + 7,
+        },
+    };
+    StoryList {
+        selection: Some(selection),
+        ..StoryList::new(rows)
+    }
+    .view(cx)
+}
+
 fn conversation(top_seq: Option<i64>, cx: &mut App) -> AnyView {
     let (views, replies) = fixture::scenario();
     let rows = busiest(&views).cloned().unwrap_or_default();
@@ -744,5 +797,10 @@ fn base_stories() -> Vec<Story> {
         }),
         Story::new("messages-uploads", |_, _, cx| uploads(cx)),
         Story::new("messages-link-preview", |_, _, cx| link_preview(cx)),
+        Story::new("messages-links-checked", |_, _, cx| checked_links(cx)),
+        Story::new("messages-links-checked-phone", |_, _, cx| {
+            let view = checked_links(cx);
+            narrow(view, cx)
+        }),
     ]
 }

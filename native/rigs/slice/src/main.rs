@@ -2583,13 +2583,26 @@ impl Rig {
             .find(|row| row.display.contains(text))
             .map(|row| row.seq)
             .ok_or_else(|| anyhow!("no row contains {text:?}"))?;
+        // `parent/child`: a part the kit names under the row's own id (`message/name` is the
+        // author's name in the kit's MessageRow).
+        let (parent, child) = match name.split_once('/') {
+            Some((parent, child)) => (parent, Some(child)),
+            None => (name, None),
+        };
         let id = ElementId::NamedInteger(
-            name.to_owned().into(),
+            parent.to_owned().into(),
             match index {
                 Some(index) => (seq as u64) << 8 | index,
                 None => seq as u64,
             },
         );
+        let id = match child {
+            Some(child) => ElementId::NamedChild(
+                std::sync::Arc::new(id),
+                SharedString::from(child.to_owned()),
+            ),
+            None => id,
+        };
         self.driver.update(|window, cx| match (gesture, offset) {
             (RowGesture::Click, Some((x, y))) => window.click_at(id, point(px(x), px(y)), cx),
             (RowGesture::Click, None) => window.click(id, cx),

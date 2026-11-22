@@ -80,7 +80,8 @@ pub fn blocks(row: &MessageRow) -> Vec<Block> {
 }
 
 /// The source text for a byte range: an inline emoji copies as its `:name:`, whole or not at all,
-/// and a link as its text. Blocks are separated by one newline, as they read on screen.
+/// and a link as it is drawn, its checked label (`check_link`), as on the web. Part of a link copies
+/// as that part when the label reads as the link was written, else as the whole label. Blocks are separated by one newline, as they read on screen.
 pub fn copy_range(row: &MessageRow, range: Range<u32>) -> String {
     let display = row.display.as_str();
     // Outward, so a range inside a placeholder or a character still means that whole thing.
@@ -105,6 +106,18 @@ pub fn copy_range(row: &MessageRow, range: Range<u32>) -> String {
                 out.push_str(name);
                 out.push(':');
             }
+            SegKind::Link { url } => {
+                let written = &display[span.range.start as usize..span.range.end as usize];
+                let label = semaphore_core::links::check_link(url).map_or_else(
+                    || semaphore_design::chat::strip_bidi(url),
+                    |link| link.label,
+                );
+                if label == written {
+                    out.push_str(&display[from as usize..to as usize]);
+                } else {
+                    out.push_str(&label);
+                }
+            }
             _ => out.push_str(&display[from as usize..to as usize]),
         }
     }
@@ -114,27 +127,6 @@ pub fn copy_range(row: &MessageRow, range: Range<u32>) -> String {
 /// The whole message as text. What copy gives, and what a screen reader hears.
 pub fn plain_text(row: &MessageRow) -> String {
     copy_range(row, 0..row.display.len() as u32)
-}
-
-pub fn link_at(row: &MessageRow, byte: u32) -> Option<&str> {
-    spans(row).into_iter().find_map(|span| match span.kind {
-        SegKind::Link { url } if span.range.contains(&byte) => Some(url.as_str()),
-        _ => None,
-    })
-}
-
-/// The user an @mention at this byte names.
-pub fn mention_at(row: &MessageRow, byte: u32) -> Option<&str> {
-    spans(row).into_iter().find_map(|span| match span.kind {
-        SegKind::UserMention { user_id } if span.range.contains(&byte) => Some(user_id.as_str()),
-        _ => None,
-    })
-}
-
-/// Whether a link may leave the app. The web client only ever links `http(s)` URLs, and a span's
-/// target comes from another user.
-pub fn is_openable_url(url: &str) -> bool {
-    semaphore_core::links::is_web_url(url)
 }
 
 /// Whether the row addresses this user, which highlights it. Alias mentions are left out: whether
@@ -315,27 +307,34 @@ mod tests {
     }
 
     #[test]
-    fn a_link_copies_as_its_text_and_is_found_by_byte() {
+    fn a_link_copies_as_its_checked_label() {
         let url = "https://example.com/1";
-        let row = row(
-            "see issue 1",
+        let message = row(
+            "see https://example.com/1",
             vec![
                 seg(4, SegKind::Text),
-                seg(11, SegKind::Link { url: url.into() }),
+                seg(25, SegKind::Link { url: url.into() }),
             ],
         );
-        assert_eq!(plain_text(&row), "see issue 1");
-        assert_eq!(link_at(&row, 5), Some(url));
-        assert_eq!(link_at(&row, 1), None);
-    }
-
-    #[test]
-    fn only_web_links_may_open() {
-        assert!(is_openable_url("https://example.com"));
-        assert!(is_openable_url("HTTP://example.com"));
-        assert!(!is_openable_url("javascript:alert(1)"));
-        assert!(!is_openable_url("file:///etc/passwd"));
-        assert!(!is_openable_url(""));
+        assert_eq!(plain_text(&message), "see https://example.com/1");
+        // Part of a link that reads as written copies as that part.
+        assert_eq!(copy_range(&message, 0..12), "see https://");
+        // A lookalike host copies as its punycode label, even in part.
+        let url = "https://\u{0430}pple.com/";
+        let display = format!("see {url}");
+        let message = row(
+            &display,
+            vec![
+                seg(4, SegKind::Text),
+                seg(display.len(), SegKind::Link { url: url.into() }),
+            ],
+        );
+        assert_eq!(plain_text(&message), "see https://xn--pple-43d.com/");
+        assert_eq!(copy_range(&message, 6..10), "https://xn--pple-43d.com/");
+        // A refused address copies as its text, without bidi controls.
+        let url = "javascript:alert(1)\u{202E}";
+        let message = row(url, vec![seg(url.len(), SegKind::Link { url: url.into() })]);
+        assert_eq!(plain_text(&message), "javascript:alert(1)");
     }
 
     #[test]
