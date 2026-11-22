@@ -115,6 +115,7 @@ pub(crate) fn card_name(title: Option<&str>, site: &str, link: bool) -> String {
 
 impl RenderOnce for LinkCard {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let row_tab = super::RowTabScope::active(cx);
         let sem = cx.sem().clone();
         let p = sem.roles;
         let on = Surface::or_current(self.on, cx);
@@ -213,6 +214,7 @@ impl RenderOnce for LinkCard {
                 let handler = self.on_link.expect("a link card has a handler");
                 // The card's look on a wrapper the button fills: a base button centres its content.
                 base::Button::new(self.id)
+                    .when(!row_tab, |button| button.tab_stop(false))
                     .track_focus(&focus)
                     .role(Role::Link)
                     .accessibility_label(name)

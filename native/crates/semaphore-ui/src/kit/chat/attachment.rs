@@ -202,6 +202,7 @@ impl RenderOnce for LoadFailed {
 
 impl RenderOnce for AttachmentTile {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let row_tab = super::RowTabScope::active(cx);
         let sem = cx.sem().clone();
         let p = sem.roles;
         let on = Surface::or_current(self.on, cx);
@@ -304,6 +305,7 @@ impl RenderOnce for AttachmentTile {
         let busy = self.busy;
         let hover = hsla_of(blend(p.text, tint_base_token(&p, on), STATE_HOVER));
         let button = base::Button::new(self.id.clone())
+            .when(!row_tab, |button| button.tab_stop(false))
             .track_focus(&focus)
             .accessibility_label(name)
             .when(busy, |button| button.aria_description("busy"))
