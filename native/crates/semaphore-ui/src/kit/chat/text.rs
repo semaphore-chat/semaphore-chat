@@ -769,14 +769,8 @@ fn range_quads(
 fn chip_box(quad: Bounds<Pixels>, spill: bool) -> Bounds<Pixels> {
     let side = if spill { px(SPACE_2XS) } else { px(0.) };
     Bounds::from_corners(
-        point(
-            quad.left() - side,
-            quad.top() + px(BORDER_HAIRLINE),
-        ),
-        point(
-            quad.right() + side,
-            quad.bottom() - px(BORDER_HAIRLINE),
-        ),
+        point(quad.left() - side, quad.top() + px(BORDER_HAIRLINE)),
+        point(quad.right() + side, quad.bottom() - px(BORDER_HAIRLINE)),
     )
 }
 
@@ -890,7 +884,9 @@ impl Element for InlineText {
                 _ => chip.rest,
             };
             for quad in range_quads(&lines, &chip.range, bounds, line_height) {
-                window.paint_quad(fill(chip_box(quad, chip.spill), colour).corner_radii(px(RADIUS_SM)));
+                window.paint_quad(
+                    fill(chip_box(quad, chip.spill), colour).corner_radii(px(RADIUS_SM)),
+                );
             }
         }
         for target in self.targets.iter().filter(|target| target.focused) {
