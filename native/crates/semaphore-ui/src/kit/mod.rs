@@ -17,11 +17,17 @@ mod display_tests;
 mod fields;
 #[cfg(test)]
 mod keyboard_tests;
+mod layout;
 mod list_separator;
 mod lists;
 mod live;
 mod look;
 mod lounge;
+mod media;
+#[cfg(feature = "stories")]
+mod media_stories;
+#[cfg(test)]
+mod media_tests;
 mod modal;
 mod overlays;
 mod sheet;
@@ -30,11 +36,15 @@ mod stories;
 #[cfg(feature = "stories")]
 mod stories_controls;
 #[cfg(feature = "stories")]
+mod stories_layout;
+#[cfg(feature = "stories")]
 mod stories_lists_overlays;
 #[cfg(feature = "stories")]
 mod stories_lounge;
 mod surface;
 mod tabs;
+#[cfg(test)]
+mod tests_layout;
 #[cfg(test)]
 mod tests_lists_overlays;
 #[cfg(test)]
@@ -66,6 +76,10 @@ pub use display::{
 };
 pub use fields::{FieldShape, SelectField, TextField, select_state, text_state};
 pub(crate) use fields::{floating_label, notched};
+pub use layout::{
+    AppFrame, CallSlot, CallStack, PANE_MIN, PhonePane, SettingsLayout, SettingsPane, StageLayout,
+    ThreeIslands, WidthRange,
+};
 pub use list_separator::{ListSeparator, ListSeparatorVariant};
 pub use lists::{Align, ListRow, RowSize, Table, TableColumn, TableRow};
 pub use live::{HIDDEN_SIZE, LiveElement, Said, Speaker, live_node};
@@ -73,6 +87,10 @@ pub use look::{ButtonVariant, ControlSize};
 pub use lounge::{
     Card, DOCK_FADE, Dock, DockDivider, DockEntry, DockItem, Island, Landmark, Padding, card_name,
     dock_fades, dock_item_name, reveal_scroll,
+};
+pub use media::{
+    MediaKind, MediaStep, MediaTile, VideoFit, VideoSlot, media_step, media_tile_breakpoints,
+    media_tile_label,
 };
 pub use overlays::{
     ANCHOR_GAP, Dialog, DialogCloseReason, DialogSize, Menu, MenuCloseReason, MenuEntry, MenuItem,
@@ -101,7 +119,9 @@ pub fn stories() -> Vec<crate::stories::Story> {
     all.extend(stories_lists_overlays::stories());
     all.extend(stories_controls::stories());
     all.extend(stories_lounge::stories());
+    all.extend(media_stories::stories());
     all.extend(behaviour::stories::stories());
     all.extend(chat::stories::stories());
+    all.extend(stories_layout::stories());
     all
 }
