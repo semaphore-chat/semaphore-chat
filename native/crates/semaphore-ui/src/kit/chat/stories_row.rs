@@ -532,10 +532,10 @@ impl LongHistory {
             "message {index}: {}",
             "words that fill a line or two of a phone column ".repeat(index % 3 + 1)
         );
-        let day = index % 200 == 0;
+        let day = index.is_multiple_of(200);
         let mut row = MessageRow::new(("long-row", index), author, time)
             .avatar_colour(colour(hex))
-            .continued(index % 3 != 0 && !day)
+            .continued(!index.is_multiple_of(3) && !day)
             .focus(RowFocus {
                 handle: self.handles[index].clone(),
                 tab_stop: index == self.focused,
