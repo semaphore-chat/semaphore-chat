@@ -98,6 +98,7 @@ pub struct Button {
     unavailable: bool,
     on: Option<Surface>,
     on_click: Option<ClickHandler>,
+    name: Option<SharedString>,
 }
 
 impl Button {
@@ -115,7 +116,15 @@ impl Button {
             unavailable: false,
             on: None,
             on_click: None,
+            name: None,
         }
+    }
+
+    /// The accessible name, when the visible label alone doesn't say it ("Join Squad Up" on a
+    /// button that shows "Join"). Default: the label.
+    pub fn accessibility_label(mut self, name: impl Into<SharedString>) -> Self {
+        self.name = Some(name.into());
+        self
     }
 
     pub fn variant(mut self, variant: ButtonVariant) -> Self {
@@ -253,7 +262,7 @@ impl RenderOnce for Button {
         let look = button_look(&p, self.variant, Surface::or_current(self.on, cx));
         let label_color = c(look.label);
         let mut button = pill(self.id, self.focus, look, &p, state, window, cx)
-            .accessibility_label(self.label.clone())
+            .accessibility_label(self.name.clone().unwrap_or_else(|| self.label.clone()))
             .h(px(self.size.height()))
             .max_w_full()
             .px(px(self.size.padding()))
@@ -405,6 +414,9 @@ pub struct IconButton {
     on: Option<Surface>,
     tab_stop: Option<bool>,
     on_click: Option<ClickHandler>,
+    lounge: Option<LoungeIcon>,
+    badge: Option<(u32, SharedString)>,
+    current: bool,
 }
 
 impl IconButton {
@@ -424,7 +436,45 @@ impl IconButton {
             on: None,
             tab_stop: None,
             on_click: None,
+            lounge: None,
+            badge: None,
+            current: false,
         }
+    }
+
+    /// Draws a Lounge glyph in place of `icon` (the web kit's lucide names: Inbox, LayoutGrid).
+    pub fn lounge_icon(mut self, icon: LoungeIcon) -> Self {
+        self.lounge = Some(icon);
+        self
+    }
+
+    /// The place you are in (the web kit's `current`, `aria-current`): an accent ring, and
+    /// ", current" in the name after the label. Not a toggle: that is [`IconButton::selected`].
+    pub fn current(mut self, current: bool) -> Self {
+        self.current = current;
+        self
+    }
+
+    pub fn is_current(&self) -> bool {
+        self.current
+    }
+
+    /// The Lounge glyph drawn in place of the icon, if any.
+    #[cfg(test)]
+    pub(crate) fn lounge_glyph(&self) -> Option<LoungeIcon> {
+        self.lounge
+    }
+
+    /// The visible-less label, the button's name before its state.
+    pub fn label(&self) -> &SharedString {
+        &self.label
+    }
+
+    /// A danger count at the top-right corner, as the web kit's `badge`; nothing for 0. `words`
+    /// say it ("9 unread") and are added to the button's name.
+    pub fn badge(mut self, count: u32, words: impl Into<SharedString>) -> Self {
+        self.badge = (count > 0).then(|| (count, words.into()));
+        self
     }
 
     pub fn size(mut self, size: ControlSize) -> Self {
@@ -518,14 +568,57 @@ impl RenderOnce for IconButton {
             .filter(|_| !self.selected)
             .unwrap_or(c(look.label));
         let icon_size = icon_size(self.size);
+        let label = icon_button_name(
+            &self.label,
+            self.current,
+            self.badge.as_ref().map(|(_, words)| words.as_ref()),
+        );
         let mut button = pill(self.id, self.focus, look, &p, state, window, cx)
             .selected(self.selected)
-            .accessibility_label(self.label)
+            .accessibility_label(label)
             .when_some(self.tab_stop, |button, stop| button.tab_stop(stop))
             .size(px(self.size.height()));
         if let Some(handler) = self.on_click.filter(|_| state.acts()) {
             button = button.on_click(move |event, window, cx| handler(event, window, cx));
         }
+        if self.current {
+            let accent = cx.sem().role.accent;
+            let gap = semaphore_design::lounge::BORDER_SELECTED;
+            button = button.relative().child(
+                div()
+                    .absolute()
+                    .top(px(-2. * gap))
+                    .left(px(-2. * gap))
+                    .right(px(-2. * gap))
+                    .bottom(px(-2. * gap))
+                    .rounded_full()
+                    .border(px(gap))
+                    .border_color(accent),
+            );
+        }
+        if let Some((count, words)) = self.badge {
+            let ring = cx.sem().role.surface;
+            button = button.relative().child(
+                div()
+                    .absolute()
+                    .top(px(-semaphore_design::lounge::SPACE_XS))
+                    .right(px(-semaphore_design::lounge::SPACE_XS))
+                    .flex()
+                    .rounded_full()
+                    .border(px(semaphore_design::lounge::BORDER_SELECTED))
+                    .border_color(ring)
+                    .child(
+                        super::Badge::new(words)
+                            .count(count)
+                            .tone(super::BadgeTone::Danger)
+                            .decorative(true),
+                    ),
+            );
+        }
+        let glyph = match self.lounge {
+            Some(lounge) => Icon::lounge(lounge),
+            None => Icon::new(self.icon),
+        };
         if state.busy {
             button.child(
                 Spinner::new("icon-button-spinner")
@@ -533,9 +626,22 @@ impl RenderOnce for IconButton {
                     .color(ink),
             )
         } else {
-            button.child(Icon::new(self.icon).size(icon_size).color(ink))
+            button.child(glyph.size(icon_size).color(ink))
         }
     }
+}
+
+/// An icon button's accessible name: the label, ", current", then the badge's words.
+pub fn icon_button_name(label: &str, current: bool, badge: Option<&str>) -> SharedString {
+    let mut name = label.to_owned();
+    if current {
+        name.push_str(", current");
+    }
+    if let Some(words) = badge {
+        name.push_str(", ");
+        name.push_str(words);
+    }
+    name.into()
 }
 
 /// One keyboard key as a small outlined tag (`KeyCap`): "Ctrl", "K", "Esc".
