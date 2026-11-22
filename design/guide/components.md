@@ -1121,10 +1121,20 @@ Stories: `kit-call-stack--bounded`, `kit-call-stack--bounded-light`,
 ## Chat pieces
 
 The pieces a conversation is built from: MessageRow, MessageText,
-ListSeparator, ReactionChip, Composer and JumpToLatest. They are web only so
-far; the native kit follows (issue #805). They hold no chat logic: the screen
-brings the data, the message list's scrolling and roving focus, drafts,
-mentions and sending.
+ListSeparator, ReactionChip, Composer and JumpToLatest. They hold no chat logic:
+the screen brings the data, the message list's scrolling and roving focus,
+drafts, mentions and sending.
+
+The native kit (`native/crates/semaphore-ui/src/kit/chat/`) has MessageText,
+ListSeparator, ReactionChip, JumpToLatest, MessageQuote, AttachmentTile,
+LinkCard and TypingLine, with the same names, props and words (B7 part 1).
+MessageRow, ChatPane, Composer and SuggestionList are web kit only so far; the
+native kit has not caught up (see
+[Extending the system](extending.md#the-native-kit-is-catching-up)). The pure
+rules are shared Rust: `semaphore_design::chat` (counts, the typing line, the
+jump control's words, image boxes, which mention addresses stay in the app) and
+`semaphore_core::links::check_link` (the link check and its label). A native
+story id is the web id with `--` written `-` (`kit-message-text-segments`).
 
 ### MessageRow
 
@@ -1258,6 +1268,18 @@ messages are drawn at text size, as in the classic chat.
 Stories: `kit-message-text--segments`, `kit-message-text--segments-light`,
 `kit-message-text--segments-tinted`.
 
+**Native.** GPUI lays a paragraph out as one run of text, so a link or a
+pressable mention is not an element: each gets a hidden focusable node over its
+first line, with the link's or the mention's name, so Tab and a screen reader
+reach it and Enter or Space follows it; its focus ring is drawn around its
+words on every line. A link opens in the browser. There is no text selection in
+the native MessageText yet: the old message list's selection stays until the
+chat screen is converted (B13). A channel mention with an internal `href` is
+pressable only with `on_mention`: the kit has no router. Inline code is drawn
+at the body size (a run cannot change size), the text is laid out left to
+right (GPUI has no bidi), and a custom emoji whose picture cannot be drawn is a
+quiet square rather than its `:name:`.
+
 ### ListSeparator
 
 A break in a list of messages.
@@ -1307,6 +1329,9 @@ count. Pill was not made a toggle: it is a static tag and has no pressed state.
 
 Stories: `kit-reaction-chip--states`, `kit-reaction-chip--states-light`,
 `kit-reaction-chip--states-tinted`.
+
+**Native.** `aria-disabled` is `unavailable(true)`. Who reacted is asked for by
+a right-click, the Menu key or Shift+F10: the desktop has no long press.
 
 ### Composer
 
@@ -1498,6 +1523,15 @@ Stories: `kit-attachment-tile--states`, `kit-attachment-tile--states-light`,
 `kit-attachment-tile--queued-light`, `kit-attachment-tile--media-states`,
 `kit-attachment-tile--media-states-light`.
 
+**Native.** A video or audio file plays through `player`, a builder that gets a
+`PlayerSlot` (the box and its corner radius), the pattern of MediaTile's
+`video`: the screen brings the player (`semaphore-player`) once the reader has
+pressed Play, in place of the web's `src`. `width` and `height` are `size(w,
+h)`. `remote` changes nothing (a native request sends no Referer). Queued and
+uploading tiles (`onRemove`, `progress`, `error`, `onRetry`) are web kit only
+so far, and so is moving focus from Play to the player. Native also has
+`kit-attachment-tile-press-to-play`.
+
 ### LinkCard
 
 A link's preview under a message (MessageRow's `attachments`): the site with
@@ -1511,7 +1545,8 @@ picture.
 link with a picture.
 
 The whole card is one link that opens in a new tab ("The ridge loop, Trailheads,
-opens in a new tab"), with no opener and no Referer. Only an http or https
+opens in a new tab"; natively it opens in the browser and says "opens in your
+browser"), with no opener and no Referer. Only an http or https
 address without a user name is a link (the same check as MessageText); anything
 else is drawn as a plain group. The picture sits in a box of fixed shape
 (1.91:1, the shape preview pictures are made for), so it never changes the
@@ -1533,6 +1568,10 @@ its row; the message list follows the growth when the reader is at the bottom.
 Stories: `kit-link-card--states`, `kit-link-card--states-light`,
 `kit-link-card--states-tinted`.
 
+**Native.** `imageSrc` and `iconSrc` are `image` and `icon`, an image source:
+one given by address must pass the link's check (and is drawn at its parsed
+address); a picture the screen already decoded is drawn as it is.
+
 ### TypingLine
 
 Who is typing, one quiet line at the bottom of the message list (ChatPane's
@@ -1547,6 +1586,8 @@ while nobody types.
 
 Stories: `kit-typing-line--states`, `kit-typing-line--states-light`,
 `kit-typing-line--states-tinted`.
+
+**Native.** The line is a status node named by its words.
 
 ### SuggestionList
 

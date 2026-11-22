@@ -7,6 +7,7 @@
 mod assets;
 mod behaviour;
 mod bus;
+mod chat;
 mod controls;
 mod display;
 #[cfg(feature = "stories")]
@@ -16,6 +17,7 @@ mod display_tests;
 mod fields;
 #[cfg(test)]
 mod keyboard_tests;
+mod list_separator;
 mod lists;
 mod live;
 mod look;
@@ -47,6 +49,11 @@ pub use behaviour::{
     screen_focus_target, use_load_state,
 };
 pub use bus::{emit_core_event, on_core_event};
+pub use chat::{
+    AttachmentKind, AttachmentTile, JumpToLatest, LINK_CARD_BANNER_RATIO, LinkCard, MentionKind,
+    MentionSegment, MessageQuote, MessageSegment, MessageText, PlayerSlot, ReactionChip,
+    SegmentStyle, TypingLine,
+};
 pub use controls::{
     Button, ButtonSize, CheckState, Checkbox, IconButton, IconButtonVariant, KeyCap, Orientation,
     Radio, RadioGroup, RadioOption, Slider, Switch,
@@ -59,6 +66,7 @@ pub use display::{
 };
 pub use fields::{FieldShape, SelectField, TextField, select_state, text_state};
 pub(crate) use fields::{floating_label, notched};
+pub use list_separator::{ListSeparator, ListSeparatorVariant};
 pub use lists::{Align, ListRow, RowSize, Table, TableColumn, TableRow};
 pub use live::{HIDDEN_SIZE, LiveElement, Said, Speaker, live_node};
 pub use look::{ButtonVariant, ControlSize};
@@ -94,5 +102,6 @@ pub fn stories() -> Vec<crate::stories::Story> {
     all.extend(stories_controls::stories());
     all.extend(stories_lounge::stories());
     all.extend(behaviour::stories::stories());
+    all.extend(chat::stories::stories());
     all
 }

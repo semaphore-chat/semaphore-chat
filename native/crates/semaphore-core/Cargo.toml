@@ -38,3 +38,7 @@ getrandom = "0.4"
 sha2 = { version = "0.10", default-features = false }
 # Notification previews cut between graphemes, not code points. Pure Rust, no C.
 unicode-segmentation = "1"
+# Link checking for what a message shows (`links::check_link`): the WHATWG parser, so the label
+# drawn is the address the OS opens (punycode host, path percent-encoded as parsed). Pure Rust
+# (idna included), no C. Inline for scripts/test-policy.sh, as jiff above.
+url = "2.5"

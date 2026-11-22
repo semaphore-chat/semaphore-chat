@@ -110,6 +110,8 @@ fn query_value<'a>(query: &'a str, name: &str) -> Option<&'a str> {
 /// so that what is checked is what the OS reads: the URL standard (and the OS handlers that follow
 /// it) strips leading control characters and spaces, drops tabs and newlines anywhere, reads `\`
 /// as `/` and `http:host` as `http://host`, so any of those is refused rather than normalised.
+/// A link with user info (`https://bank.example@evil.example/`) is refused too: what a reader
+/// takes for the host is not where it goes.
 pub fn is_web_url(url: &str) -> bool {
     if url
         .chars()
@@ -128,7 +130,12 @@ pub fn is_web_url(url: &str) -> bool {
     // The authority ends at the path, query or fragment; the host follows any user info and
     // comes before any port.
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    let host = authority.rsplit('@').next().unwrap_or_default();
+    // User info (`https://bank.example@evil.example/`) reads as one host and goes to another:
+    // refused, as the web kit's `checkLink` refuses it.
+    if authority.contains('@') {
+        return false;
+    }
+    let host = authority;
     let host = if host.starts_with('[') {
         host.split_inclusive(']').next().unwrap_or_default()
     } else {
@@ -342,6 +349,175 @@ mod tests {
     }
 }
 
+/// A web link a message may show and open: the address to follow and the label to draw.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckedLink {
+    /// The parsed address, serialised: punycode host, percent-encoded path, query and fragment.
+    pub href: String,
+    /// What is drawn: the parsed address as the parser serialises it, never decoded, so a space,
+    /// an invisible character or a bidi control stays `%xx`; any bidi control left is removed.
+    pub label: String,
+}
+
+/// Bidi controls: embeddings, overrides, isolates and marks (`semaphore_design::chat::strip_bidi`,
+/// which core does not depend on).
+fn strip_bidi(text: &str) -> String {
+    text.chars()
+        .filter(|c| {
+            !matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+        })
+        .collect()
+}
+
+/// A message link checked, and the label drawn for it: the web kit's `checkLink`
+/// (`frontend/src/kit/chat/messageSegments.ts`). `None` for anything not drawn as a link: any
+/// scheme but http and https, and any address with a user name or password. The label is built
+/// from the parsed address (`protocol//host[:port]` + path + query + fragment), so a lookalike
+/// host reads as punycode (`xn--pple-43d.com`) and nothing in it is decoded.
+pub fn check_link(href: &str) -> Option<CheckedLink> {
+    let url = url::Url::parse(href).ok()?;
+    let scheme = url.scheme();
+    if scheme != "http" && scheme != "https" {
+        return None;
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return None;
+    }
+    let host = url.host_str()?;
+    let port = url
+        .port()
+        .map(|port| format!(":{port}"))
+        .unwrap_or_default();
+    let query = url
+        .query()
+        .filter(|q| !q.is_empty())
+        .map(|q| format!("?{q}"))
+        .unwrap_or_default();
+    let fragment = url
+        .fragment()
+        .filter(|f| !f.is_empty())
+        .map(|f| format!("#{f}"))
+        .unwrap_or_default();
+    let label = format!("{scheme}://{host}{port}{}{query}{fragment}", url.path());
+    Some(CheckedLink {
+        href: url.as_str().to_owned(),
+        label: strip_bidi(&label),
+    })
+}
+
+#[cfg(test)]
+mod check_link_tests {
+    use super::{CheckedLink, check_link, is_web_url};
+
+    fn label(href: &str) -> Option<String> {
+        check_link(href).map(|link| link.label)
+    }
+
+    #[test]
+    fn a_plain_link_shows_its_parsed_address() {
+        assert_eq!(
+            check_link("https://docs.semaphorechat.app"),
+            Some(CheckedLink {
+                href: "https://docs.semaphorechat.app/".into(),
+                label: "https://docs.semaphorechat.app/".into(),
+            })
+        );
+        assert_eq!(
+            check_link("https://example.com:8443"),
+            Some(CheckedLink {
+                href: "https://example.com:8443/".into(),
+                label: "https://example.com:8443/".into(),
+            })
+        );
+        // A default port is dropped, as the parser drops it.
+        assert_eq!(
+            label("https://example.com:443/a").as_deref(),
+            Some("https://example.com/a")
+        );
+        assert_eq!(
+            label("HTTP://EXAMPLE.com/A?b=c#d").as_deref(),
+            Some("http://example.com/A?b=c#d")
+        );
+        assert_eq!(
+            label("https://[2001:db8::1]/x").as_deref(),
+            Some("https://[2001:db8::1]/x")
+        );
+    }
+
+    #[test]
+    fn a_lookalike_host_shows_as_punycode() {
+        let link = check_link("https://\u{0430}pple.com/login").unwrap();
+        assert_eq!(link.label, "https://xn--pple-43d.com/login");
+        assert_eq!(link.href, "https://xn--pple-43d.com/login");
+    }
+
+    #[test]
+    fn nothing_in_the_address_is_decoded() {
+        let spaced = "https://evil.example/%20%20%20%20https://bank.example/login";
+        assert_eq!(label(spaced).as_deref(), Some(spaced));
+        assert_eq!(
+            label("https://example.com/a%E2%80%8Bb").as_deref(),
+            Some("https://example.com/a%E2%80%8Bb")
+        );
+        assert_eq!(
+            label("https://example.com/%E2%80%AE?q=%E2%80%AE#%E2%80%AE").as_deref(),
+            Some("https://example.com/%E2%80%AE?q=%E2%80%AE#%E2%80%AE")
+        );
+        assert_eq!(
+            label("https://example.com/\u{65E5}").as_deref(),
+            Some("https://example.com/%E6%97%A5")
+        );
+        let rlo = check_link("https://example.com/\u{202E}gnp.exe").unwrap();
+        assert_eq!(rlo.label, "https://example.com/%E2%80%AEgnp.exe");
+        assert_eq!(rlo.href, "https://example.com/%E2%80%AEgnp.exe");
+        // An empty query or fragment is not drawn, as the web's `search` and `hash` are empty.
+        assert_eq!(
+            label("https://example.com/a?#").as_deref(),
+            Some("https://example.com/a")
+        );
+    }
+
+    #[test]
+    fn user_info_or_another_scheme_is_never_a_link() {
+        for href in [
+            "https://aaaaaaaaaaaa.bank.example@evil.example/login",
+            "https://user:pass@evil.example/",
+            "https://:pass@evil.example/",
+            "https://user@evil.example/",
+            "javascript:alert(1)",
+            "javascript:\u{202E}alert(1)",
+            "data:text/html,x",
+            "file:///etc/passwd",
+            "ftp://example.com/",
+            "mailto:a@example.com",
+            "not a url",
+            "",
+            "https://",
+        ] {
+            assert_eq!(check_link(href), None, "{href:?} is a link");
+        }
+    }
+
+    #[test]
+    fn every_checked_link_is_one_the_os_may_open() {
+        for href in [
+            "https://docs.semaphorechat.app",
+            "https://\u{0430}pple.com/login",
+            "https://example.com/\u{202E}gnp.exe",
+            "https://example.com/a b",
+            "https://exa\tmple.com",
+            "http://example.com:8080/x?y#z",
+        ] {
+            let link = check_link(href).unwrap();
+            assert!(
+                is_web_url(&link.href),
+                "{href:?} -> {:?} cannot be opened",
+                link.href
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod web_url_tests {
     use super::is_web_url;
@@ -354,7 +530,6 @@ mod web_url_tests {
             "HTTPS://EXAMPLE.COM/",
             "hTtP://example.com/a?b=c#d",
             "https://example.com:8443/path",
-            "https://user@example.com/",
             "https://[2001:db8::1]/",
             "https://203.0.113.5/x",
             "https://example.com/a%20b",
@@ -417,6 +592,13 @@ mod web_url_tests {
             "https://exa\tmple.com",
             "https://example.com/a b",
             "https://example.com/\u{85}",
+            // User info: it fakes the host (`bank.example` in front, `evil.example` the real one).
+            "https://user@example.com/",
+            "https://bank.example@evil.example/login",
+            "https://user:pass@evil.example/",
+            "https://:pass@evil.example/",
+            "https://aaaaaaaaaaaa.bank.example@evil.example/login",
+            "http://a@b/",
             // No host.
             "https://@",
             "https://user@/x",
