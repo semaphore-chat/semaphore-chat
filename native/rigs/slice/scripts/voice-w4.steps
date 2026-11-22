@@ -53,7 +53,8 @@ click community-$ID(c-couch)
 click channel-$ID(cc-general)
 wait core channel $ID(cc-general)
 wait core float shown
-wait core label "Share screen"
+# The bar in the frame's call slot: its narrow layout, Share screen under More (B11 replaces it).
+wait core element voice-more
 tick 100
 snap 02-live-float
 
@@ -217,6 +218,10 @@ wait core requests LivekitController_captureReplay >= 1
 wait core dialog capture closed
 wait core label "Recording saved"
 save-as replay.mp4
+# The frame's toasts sit at the foot of the centre island, over the right end of the stage's bar
+# (Capture) while they show: wait for it to go by itself (B11 gives toasts room above the bar).
+tick 5000
+wait core no-element replay-toast
 click voice-capture
 wait core dialog capture open
 click capture-target-download

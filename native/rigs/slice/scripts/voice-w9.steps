@@ -56,7 +56,8 @@ wait core w9v prejoin user "kwam3"
 # The call's float card stays off the pre-join (its joins sit where the card goes); the bar shows
 # the call.
 wait core float hidden
-wait core label "Share screen"
+# The bar in the frame's call slot: its narrow layout, Share screen under More (B11 replaces it).
+wait core element voice-more
 expect core voice room channel $ID(vc-squad)
 tick 100
 snap 03-live-moves-you

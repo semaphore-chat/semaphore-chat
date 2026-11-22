@@ -140,10 +140,12 @@ wait core label "Screen 1"
 click picker-cancel
 expect core voice screen off
 
-# Elsewhere in the app, the call's bar stays under the columns.
+# Elsewhere in the app, the call's bar stays in the frame's call slot. It is the bar's narrow
+# layout there (the slot is the left column), where Share screen is under More (B11 replaces it).
 click channel-$ID(cc-general)
 wait core channel $ID(cc-general)
-wait core label "Share screen"
+wait core element voice-more
+wait core element voice-leave
 expect core voice connected
 tick 100
 snap 05-live-bar-elsewhere

@@ -705,6 +705,8 @@ pub struct StackPerson {
     pub colour: Option<Token>,
     pub speaking: bool,
     pub file: Option<SharedString>,
+    /// The face's element id, for a test to find it.
+    pub id: Option<SharedString>,
 }
 
 impl StackPerson {
@@ -714,7 +716,14 @@ impl StackPerson {
             colour: None,
             speaking: false,
             file: None,
+            id: None,
         }
+    }
+
+    /// The face's element id (`voice-user-speaking-<id>` on a speaker in your room).
+    pub fn id(mut self, id: impl Into<SharedString>) -> Self {
+        self.id = Some(id.into());
+        self
     }
 
     pub fn colour(mut self, colour: impl Into<Option<Token>>) -> Self {
@@ -872,15 +881,23 @@ impl RenderOnce for AvatarStack {
             .iter()
             .enumerate()
             .map(|(index, person)| {
-                slot(index, person.speaking).child(
-                    Avatar::new(person.name.clone())
-                        .size(self.size)
-                        .colour(person.colour)
-                        .file(person.file.as_deref())
-                        .presence(person.speaking.then_some(Presence::Speaking))
-                        .on_surface(Surface::or_current(self.on, cx))
-                        .decorative(true),
-                )
+                let face = Avatar::new(person.name.clone())
+                    .size(self.size)
+                    .colour(person.colour)
+                    .file(person.file.as_deref())
+                    .presence(person.speaking.then_some(Presence::Speaking))
+                    .on_surface(Surface::or_current(self.on, cx))
+                    .decorative(true);
+                let face = match &person.id {
+                    Some(id) => div()
+                        .id(ElementId::Name(id.clone()))
+                        .test_support()
+                        .flex()
+                        .child(face)
+                        .into_any_element(),
+                    None => face.into_any_element(),
+                };
+                slot(index, person.speaking).child(face)
             })
             .collect::<Vec<_>>();
         let more = (extra > 0).then(|| {

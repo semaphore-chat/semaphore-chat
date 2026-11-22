@@ -339,7 +339,10 @@ impl Shell {
         let speaking: HashSet<String> = voice
             .participants
             .iter()
-            .filter(|participant| participant.speaking)
+            // Only someone who can be heard, as the old voice row's ring.
+            .filter(|participant| {
+                participant.speaking && !participant.muted && !participant.deafened
+            })
             .map(|participant| participant.user.id.clone())
             .collect();
         let rooms = voice_rows
