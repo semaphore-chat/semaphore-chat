@@ -163,7 +163,10 @@ In the native kit a screen puts a `kit::ToastAnchor` in the `relative` box that 
 where its pinned part starts (the messages above the composer, the call view's tiles
 above its bar). Inside a three-islands main pane the toasts then sit at that box's
 foot, and the template's own region draws nothing; anywhere else the anchor draws
-nothing, so there is always one region.
+nothing, so there is always one region. The first anchor in a pane wins: a screen
+that embeds another above its own pinned part (a DM's call above its conversation)
+wraps the upper one in `kit::WithoutToastAnchor`. Escape pressed in a focused toast
+stops there: it neither dismisses the toast nor reaches the screen.
 
 Stories: `kit-toast-region--in-call`, `kit-toast-region--in-call-light`,
 `kit-toast-region--phone-keyboard`, `kit-toast-region--sticky-danger`,

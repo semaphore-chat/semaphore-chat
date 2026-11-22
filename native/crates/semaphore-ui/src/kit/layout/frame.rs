@@ -81,6 +81,51 @@ impl RenderOnce for TemplateToasts {
     }
 }
 
+/// A screen embedded above other content in the same pane (the call's stage above a DM's
+/// conversation): any [`ToastAnchor`] inside `child` draws nothing, so the anchor of the content
+/// below it (above the composer) places the toasts.
+///
+/// Anchors are claimed in tree order, the first in a pane winning. Wrap the upper screen in this
+/// so the lowest pinned part is the one toasts clear.
+#[derive(IntoElement)]
+pub struct WithoutToastAnchor {
+    child: AnyElement,
+}
+
+impl WithoutToastAnchor {
+    pub fn new(child: impl IntoElement) -> Self {
+        Self {
+            child: child.into_any_element(),
+        }
+    }
+}
+
+impl RenderOnce for WithoutToastAnchor {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        // The child renders after this and before `Reopen`, in tree order.
+        let (open, claimed) = scope(cx);
+        set_scope(false, claimed, cx);
+        div()
+            .size_full()
+            .child(self.child)
+            .child(Reopen { open, claimed })
+    }
+}
+
+/// Puts the scope back the way [`WithoutToastAnchor`] found it, after its child.
+#[derive(IntoElement)]
+struct Reopen {
+    open: bool,
+    claimed: bool,
+}
+
+impl RenderOnce for Reopen {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        set_scope(self.open, self.claimed, cx);
+        div()
+    }
+}
+
 /// Where a screen's toasts sit when the screen pins something to the bottom of a template's main
 /// pane (a composer, call controls): the native `useToastClearance`.
 ///
@@ -89,8 +134,8 @@ impl RenderOnce for TemplateToasts {
 /// the template's own region at the pane's foot draws nothing.
 ///
 /// It works inside the main pane of a [`super::ThreeIslands`] (the centre, or a phone's shown
-/// pane). Anywhere else (a pane laid out but not shown, outside a template, a second anchor in
-/// the same pane) it draws nothing and the template's or the frame's region is used, so there is
+/// pane). Anywhere else (a pane laid out but not shown, outside a template, a later anchor in
+/// the same pane, inside a [`WithoutToastAnchor`]) it draws nothing and the template's or the frame's region is used, so there is
 /// always exactly one.
 #[derive(IntoElement, Default)]
 pub struct ToastAnchor;

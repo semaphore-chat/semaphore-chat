@@ -5,7 +5,7 @@
 use super::layout::focus::{FocusMove, decide};
 use super::{
     AppFrame, BehaviourRoot, CallStack, PANE_MIN, PhonePane, SettingsLayout, SettingsPane,
-    StageLayout, ThreeIslands, ToastAnchor, ToastRequest, Toasts, WidthRange,
+    StageLayout, ThreeIslands, ToastAnchor, ToastRequest, Toasts, WidthRange, WithoutToastAnchor,
 };
 use crate::dms::rig::{Rig, rig_sized};
 use core::prelude::v1::test;
@@ -39,6 +39,9 @@ struct Cfg {
     side_open: bool,
     /// The centre pins a 60 px footer and puts two ToastAnchors above it; Plain gets one too.
     anchor: bool,
+    /// With `anchor`: an embedded screen above the anchored box, with an anchor of its own,
+    /// wrapped in WithoutToastAnchor when `Some(true)`.
+    upper: Option<bool>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -73,6 +76,7 @@ impl Default for Cfg {
             strip: true,
             side_open: false,
             anchor: false,
+            upper: None,
         }
     }
 }
@@ -173,11 +177,26 @@ impl Host {
                 made: probes.made.clone(),
             })
             .child(block("centre-body", 100.));
+        let upper = cfg.upper.map(|wrapped| {
+            let upper = div()
+                .id("upper")
+                .test_support()
+                .relative()
+                .size_full()
+                .child(ToastAnchor::new());
+            let upper = if wrapped {
+                WithoutToastAnchor::new(upper).into_any_element()
+            } else {
+                upper.into_any_element()
+            };
+            div().flex_none().h(px(300.)).child(upper)
+        });
         let centre = if cfg.anchor {
             div()
                 .size_full()
                 .flex()
                 .flex_col()
+                .children(upper)
                 .child(
                     div()
                         .id("anchored")
@@ -1175,6 +1194,32 @@ fn a_toast_anchor_lifts_the_toasts_above_what_the_screen_pins(cx: &mut TestAppCo
     let centre = t.bounds(cx, "three-islands-centre");
     assert!(centre.contains(&toast.origin) && toast.bottom() <= centre.bottom());
     assert!(!t.has(cx, "pinned"));
+}
+
+#[gpui_kit::test]
+fn the_first_anchor_wins_unless_its_screen_is_embedded_without_one(cx: &mut TestAppContext) {
+    // Two anchors in different boxes: the upper one (an embedded screen, as the DM call's stage
+    // above the conversation) comes first in tree order and wins.
+    let t = open(
+        cx,
+        1280.,
+        800.,
+        Cfg {
+            anchor: true,
+            upper: Some(false),
+            ..Cfg::default()
+        },
+    );
+    let toast = show_toast(&t, cx);
+    let upper = t.bounds(cx, "upper");
+    assert!(upper.contains(&toast.origin) && toast.bottom() <= upper.bottom());
+    // Wrapped in WithoutToastAnchor: the lower box's anchor places it, above the pinned part.
+    t.set(cx, |cfg| cfg.upper = Some(true));
+    let toast = show_toast(&t, cx);
+    let anchored = t.bounds(cx, "anchored");
+    assert!(anchored.contains(&toast.origin) && toast.bottom() <= anchored.bottom());
+    assert!(toast.bottom() <= t.bounds(cx, "pinned").origin.y);
+    assert!(!t.bounds(cx, "upper").contains(&toast.origin));
 }
 
 #[gpui_kit::test]

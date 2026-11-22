@@ -31,7 +31,7 @@ mod three_islands;
 mod width;
 
 pub use call_stack::{CallSlot, CallStack, PANE_MIN};
-pub use frame::{AppFrame, ToastAnchor};
+pub use frame::{AppFrame, ToastAnchor, WithoutToastAnchor};
 pub use settings::{SettingsLayout, SettingsPane};
 pub use stage::StageLayout;
 pub use three_islands::{PhonePane, ThreeIslands};

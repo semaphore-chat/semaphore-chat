@@ -360,6 +360,8 @@ enum Condition {
     Dms(usize),
     /// An element with this id is drawn (`element ID`), or isn't (`no-element ID`).
     Element(String, bool),
+    /// `above A B`: both are drawn, and A's bottom edge is at or above B's top edge.
+    Above(String, String),
     /// W3's.
     Route(String),
     Theme(String),
@@ -512,6 +514,9 @@ enum RowGesture {
 
 #[derive(Debug, Clone, PartialEq)]
 enum Step {
+    /// `toast WORD`: a toast through the window's queue, as any screen shows one (B11: where it
+    /// sits, not who raised it). `toast off` dismisses it.
+    Toast(String),
     Shot(script::Step),
     /// `shot NAME while-away`: taken as the window is, even with the connection banner up.
     ShotWhileAway(script::Step),
@@ -716,6 +721,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["search-hits", ">=", count] => Condition::SearchHits(number(count)?),
         ["element", id] => Condition::Element((*id).into(), true),
         ["no-element", id] => Condition::Element((*id).into(), false),
+        ["above", upper, lower] => Condition::Above((*upper).into(), (*lower).into()),
         ["dm", id] => Condition::Dm((*id).into()),
         ["notified", tag] => Condition::Notified((*tag).into()),
         ["withdrawn", tag] => Condition::Withdrawn((*tag).into()),
@@ -943,6 +949,7 @@ fn parse(source: &str) -> Result<Vec<Step>> {
                     .map_err(|_| at(anyhow!("share-volume percent")))?,
             },
             ["save-as", name] => Step::SaveAs((*name).into()),
+            ["toast", text] => Step::Toast((*text).into()),
             ["clock", state @ ("hold" | "run")] => Step::ClockHold(*state == "hold"),
             ["core", "revoke-other-sessions"] => Step::RevokeOtherSessions,
             ["pick-file", path] => Step::PickFile(PathBuf::from(path)),
@@ -1868,6 +1875,18 @@ impl Rig {
             let showing = self.driver.cx.update(|cx| app.read(cx).viewer_open());
             return Ok(showing == *open);
         }
+        if let Condition::Above(upper, lower) = condition {
+            let (upper, lower) = (
+                ElementId::Name(upper.clone().into()),
+                ElementId::Name(lower.clone().into()),
+            );
+            let edges = self.driver.query(|window| {
+                let upper = window.try_find(upper)?.bounds();
+                let lower = window.try_find(lower)?.bounds();
+                Some((upper.bottom(), lower.origin.y))
+            })?;
+            return Ok(edges.is_some_and(|(bottom, top)| bottom <= top));
+        }
         if let Condition::Element(id, drawn) = condition {
             let id = ElementId::Name(id.clone().into());
             let found = self.driver.query(|window| window.try_find(id).is_some())?;
@@ -1990,6 +2009,7 @@ impl Rig {
             | Condition::Friend(_)
             | Condition::Dms(_)
             | Condition::Element(..)
+            | Condition::Above(..)
             | Condition::Route(_)
             | Condition::Theme(_)
             | Condition::Engine(..)
@@ -2696,6 +2716,26 @@ impl Rig {
                         self.clock_moves.run(elapsed);
                     }
                     Ok(())
+                }
+                Step::Toast(text) => {
+                    let window = self
+                        .driver
+                        .window
+                        .ok_or_else(|| anyhow!("toast: no window"))?;
+                    let text = text.clone();
+                    self.driver.cx.update(|cx| {
+                        let toasts = semaphore_ui::kit::Toasts::for_window(window);
+                        // `toast off` takes it away again (an inactive window holds a toast).
+                        if text == "off" {
+                            toasts.dismiss("rig-toast", cx);
+                        } else {
+                            toasts.show(
+                                semaphore_ui::kit::ToastRequest::new(text).id("rig-toast"),
+                                cx,
+                            );
+                        }
+                    });
+                    self.driver.settle()
                 }
                 Step::SaveAs(name) => {
                     let directory = self.data_dir.join("saved");

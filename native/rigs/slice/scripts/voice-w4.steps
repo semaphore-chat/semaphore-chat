@@ -7,6 +7,10 @@ app 1280 800
 # The replay toasts go through the window's queue, which holds a toast while the window is
 # inactive: the user is at this window.
 window activate
+# The sign-in screen first: right after start the app shows its spinner, with no Connect yet.
+wait idle
+wait core session signed-out within 5
+wait idle
 click auth-connect
 wait core label "Username" within 5
 click auth-username
@@ -227,6 +231,9 @@ wait core requests LivekitController_streamReplay >= 1
 wait core saved replay.mp4
 wait core dialog capture closed
 wait core label "Replay clip downloaded successfully!"
+# It goes by itself (the queue's timer), and no later shot has it.
+tick 5000
+wait core no-element replay-toast
 
 # W14: the trim's preview plays the buffer (the fake server's six 10 s segments) with its sound:
 # this build has the player, and with it AAC-LC. It opens paused at the selection's start (0:00 of
