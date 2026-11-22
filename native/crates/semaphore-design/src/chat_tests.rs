@@ -196,3 +196,34 @@ fn an_unknown_size_gets_the_fallback_box() {
         }
     );
 }
+
+#[test]
+fn the_caps_give_2_4_and_10_lines_and_desktop_is_the_default() {
+    assert_eq!(cap_rows(ComposerCap::Keyboard), 2);
+    assert_eq!(cap_rows(ComposerCap::Phone), 4);
+    assert_eq!(cap_rows(ComposerCap::Desktop), 10);
+    assert_eq!(ComposerCap::default(), ComposerCap::Desktop);
+}
+
+#[test]
+fn the_submit_button_is_named_for_its_mode() {
+    assert_eq!(submit_label(ComposerMode::Send), "Send message");
+    assert_eq!(submit_label(ComposerMode::Save), "Save changes");
+    assert_eq!(ComposerMode::default(), ComposerMode::Send);
+}
+
+#[test]
+fn blank_text_is_nothing_to_send() {
+    for blank in ["", " ", "\n\t ", "\u{3000}"] {
+        assert!(!has_text_to_send(blank), "{blank:?}");
+    }
+    assert!(has_text_to_send(" hi "));
+}
+
+#[test]
+fn a_file_on_its_way_names_its_buttons_and_bar() {
+    assert_eq!(remove_name("notes.txt"), "Remove notes.txt");
+    assert_eq!(uploading_name("notes.txt"), "Uploading notes.txt");
+    assert_eq!(retry_name("notes.txt"), "Retry uploading notes.txt");
+    assert_eq!(SUGGESTIONS_SHOWN, 6);
+}

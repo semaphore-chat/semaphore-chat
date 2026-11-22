@@ -854,6 +854,37 @@ fn attachment_body(_: &mut Window, cx: &mut App) -> AnyElement {
                 ],
                 cx,
             ),
+            row(
+                "a6",
+                "me",
+                0x8e75ff,
+                "8:23 PM",
+                vec![
+                    words(
+                        "a6b",
+                        "sent, its files still on their way: uploading, failed with Retry, a picture uploading",
+                    ),
+                    stack(vec![
+                        AttachmentTile::new("up-recording", File, "recording.mp3")
+                            .detail("38.4 MB")
+                            .progress(42.)
+                            .on_remove(|_, _| {})
+                            .into_any_element(),
+                        AttachmentTile::new("up-too-big", File, "too-big.zip")
+                            .detail("2 GB")
+                            .error("Upload failed: File too large")
+                            .on_retry(|_, _| {})
+                            .on_remove(|_, _| {})
+                            .into_any_element(),
+                        AttachmentTile::new("up-sunset", File, "sunset.png")
+                            .detail("1.2 MB")
+                            .src(picture(1600, 900, 0xffa366))
+                            .progress(90.)
+                            .into_any_element(),
+                    ]),
+                ],
+                cx,
+            ),
         ],
     )
 }

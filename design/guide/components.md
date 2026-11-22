@@ -1148,12 +1148,12 @@ drafts, mentions and sending.
 
 The native kit (`native/crates/semaphore-ui/src/kit/chat/`) has MessageRow,
 ChatPane, MessageText, ListSeparator, ReactionChip, JumpToLatest, MessageQuote,
-AttachmentTile, LinkCard and TypingLine, with the same names, props and words
-(B7 parts 1 and 2). Composer and SuggestionList are web kit only so far; the
-native kit has not caught up (see
-[Extending the system](extending.md#the-native-kit-is-catching-up)). The pure
+AttachmentTile, LinkCard, TypingLine, Composer and SuggestionList, with the
+same names, props and words (B7 parts 1 to 3; each piece's **Native** note says
+where it differs). The pure
 rules are shared Rust: `semaphore_design::chat` (counts, the typing line, the
-jump control's words, image boxes, which mention addresses stay in the app) and
+jump control's words, image boxes, which mention addresses stay in the app, the
+composer's caps and button names) and
 `semaphore_core::links::check_link` (the link check and its label). A native
 story id is the web id with `--` written `-` (`kit-message-text-segments`).
 
@@ -1258,7 +1258,7 @@ shows on hover and while focus is in the row, which includes a Menu opened
 from the toolbar. `onOpenActions` gets `OpenActionsRequest::Pointer` with the
 window position for a right-click and `Keyboard` for Enter, the Menu key and
 Shift+F10 on the row itself; the desktop has no long press, so `Touch` is never
-sent. The editing stories come with the Composer (B7 part 3).
+sent.
 
 ### MessageText
 
@@ -1445,6 +1445,28 @@ Inside a MessageRow (inline editing) the field owns its keys: ↑, ↓, Home, En
 and Escape move its caret or cancel the edit and never reach the list's roving
 focus.
 
+**Native.** `Composer::new(id, label, state)` takes the screen's
+`Entity<TextareaState>`: the draft, caret, undo and input method stay with the
+screen, and the composer sets how far the field grows (`cap`, from
+`semaphore_design::chat::cap_rows`). `value`/`onChange` are that state, and
+`onKeyDown` is `on_key`: it gets a `ComposerKey` (↑, ↓, Enter with or without
+Shift, Tab, Escape), taken with `capture_action` before the field's own
+handlers, and returns true to claim the key. While the field has marked text
+(an input method composing) neither `on_key` nor a submit runs. `onCaretMove`
+is `on_caret_move`, called when the field's text or selection changes.
+`dropTarget` is `drop_target(label)`, given while files are over the
+conversation (ChatPane's `on_files_over`); `emoji`, `attachments` and
+`suggestions` take elements. `attach_unavailable` and Send with nothing to send
+read as unavailable, but `onSendUnavailablePress`, `onAttachUnavailablePress`
+and `onPasteFiles` are web kit only so far, and so is `popup` (the field's
+`aria-activedescendant`; the native list marks its active option selected).
+Toasts stay clear of it through the layout templates (the `ToastRegion` sits
+above what is pinned to the pane's foot), so it has no clearance of its own. Stories: `kit-composer-states`, `kit-composer-states-light`,
+`kit-composer-states-tinted`, `kit-composer-mention-list`,
+`kit-composer-mention-list-light`, `kit-composer-mention-list-tinted`,
+`kit-composer-mention-list-loading`, `kit-composer-at-cap`,
+`kit-composer-at-phone-cap`, `kit-composer-at-keyboard-cap`.
+
 ### JumpToLatest
 
 The floating control that takes the reader back to the newest message.
@@ -1504,9 +1526,7 @@ accessibility tree; a list that must keep its scroll under the cover keeps its
 `ListState` or `ScrollHandle` in the screen. A covered conversation still lays
 out, so the screen should not leave animated states (spinners, progress) under
 a cover. `announcement` is a polite live
-node, silent under a cover. Until the Composer lands, the native stories hold
-a stand-in field in the composer slot, and `kit-chat-pane-with-composer` comes
-with it. `kit-chat-pane-long-history` draws its 2,000 rows in GPUI's `list`
+node, silent under a cover. `kit-chat-pane-long-history` draws its 2,000 rows in GPUI's `list`
 with roving focus (the last row is the Tab stop; the arrows move it).
 
 ### MessageQuote
@@ -1577,8 +1597,8 @@ Stories: `kit-attachment-tile--states`, `kit-attachment-tile--states-light`,
 `video`: the screen brings the player (`semaphore-player`) once the reader has
 pressed Play, in place of the web's `src`. `width` and `height` are `size(w,
 h)`. `remote` changes nothing (a native request sends no Referer). Queued and
-uploading tiles (`onRemove`, `progress`, `error`, `onRetry`) are web kit only
-so far, and so is moving focus from Play to the player. Native also has
+uploading tiles are `on_remove`, `progress`, `error` and `on_retry`. Moving
+focus from Play to the player is web kit only so far. Native also has
 `kit-attachment-tile-press-to-play`.
 
 ### LinkCard
@@ -1648,7 +1668,7 @@ through the field's `aria-activedescendant`), Enter or Tab picks and Escape
 closes, all in the screen's keys. A press on an option picks it without taking
 focus from the field, so the on-screen keyboard stays up. A person shows their
 avatar, anything else (`@here`, a mention group) an icon; a long name gives way.
-About six rows show, then it scrolls. Web only so far (native follows, #805).
+About six rows show, then it scrolls.
 
 **Use it when** a field offers completions as the reader types. **Do not use
 it** for a list of actions (use Menu) or a choice in a form (use SelectField).
@@ -1665,6 +1685,13 @@ it** for a list of actions (use Menu) or a choice in a form (use SelectField).
 
 Stories: `kit-composer--mention-list`, `kit-composer--mention-list-light`,
 `kit-composer--mention-list-tinted`, `kit-composer--mention-list-loading`.
+
+**Native.** `SuggestionList::new(id, label, options, active_index)` with
+`active_index` an `Option<usize>` (the web's -1 is `None`); a `Suggestion` is
+`Suggestion::new(key, label)` with `detail`, `avatar(src, colour)` or `icon`.
+There is no `optionId`: the field does not point at the active option, which is
+marked selected and kept in view as it moves. `loading` gives the list the
+description "busy".
 
 ## Which overlay
 
