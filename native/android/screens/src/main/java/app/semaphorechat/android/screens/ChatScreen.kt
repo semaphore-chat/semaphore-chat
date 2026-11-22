@@ -1,0 +1,314 @@
+// Semaphore Chat's Android screens. Copyright (C) 2026 the Semaphore Chat authors.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// This program is free software: you can redistribute it and/or modify it under the terms of the
+// GNU Affero General Public License, version 3, as published by the Free Software Foundation. It
+// is distributed without any warranty. See LICENSE.md at the repository root.
+
+package app.semaphorechat.android.screens
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import app.semaphorechat.android.design.Icons
+import app.semaphorechat.android.design.Tokens
+import app.semaphorechat.android.kit.AvatarSize
+import app.semaphorechat.android.kit.Button
+import app.semaphorechat.android.kit.ButtonSize
+import app.semaphorechat.android.kit.Icon
+import app.semaphorechat.android.kit.IconButton
+import app.semaphorechat.android.kit.IconSize
+import app.semaphorechat.android.kit.Island
+import app.semaphorechat.android.kit.Skeleton
+import app.semaphorechat.android.kit.SkeletonShape
+import app.semaphorechat.android.kit.Spinner
+import app.semaphorechat.android.kit.SpinnerSize
+import app.semaphorechat.android.kit.SurfacePadding
+import app.semaphorechat.android.kit.Text
+import app.semaphorechat.android.kit.TextTone
+import app.semaphorechat.android.kit.TextVariant
+import app.semaphorechat.android.kit.chat.DayDivider
+import app.semaphorechat.android.kit.chat.JumpToLatest
+import app.semaphorechat.android.kit.chat.MentionTarget
+import app.semaphorechat.android.kit.chat.MessageQuoteItem
+import app.semaphorechat.android.kit.chat.MessageRow
+import app.semaphorechat.android.kit.chat.RowState
+import app.semaphorechat.android.kit.chat.TypingLine
+import kotlinx.coroutines.launch
+
+/** The chat screen's texts, shared with the tests. */
+object ChatText {
+    const val LOADING = "Loading messages"
+    const val EMPTY_TITLE = "No messages yet."
+    const val EMPTY_LINE = "Start the conversation!"
+    const val FAILED = "Couldn't load messages"
+    const val OLDER_FAILED = "Couldn't load older messages"
+    const val TRY_AGAIN = "Try again"
+    const val RECONNECTING = "Reconnecting…"
+    const val OFFLINE = "You're offline. New messages arrive once you're back."
+    const val LIST_TAG = "chat-list"
+    fun start(name: String) = "This is the start of #$name."
+}
+
+/** Rows from the oldest loaded at which older ones are fetched, and from the newest for newer. */
+private const val PAGE_AHEAD = 10
+
+/** What the chat screen asks of the app. */
+class ChatActions(
+    val onBack: () -> Unit = {},
+    /** "Try again" after the first page failed. */
+    val onRetry: () -> Unit = {},
+    val onLoadOlder: () -> Unit = {},
+    val onLoadNewer: () -> Unit = {},
+    val onJump: () -> Unit = {},
+    /** The reader scrolled away from the newest row (`true`), or back to it. */
+    val onAwayChanged: (Boolean) -> Unit = {},
+    /** The newest row is on screen, at the live edge: it may be marked read. */
+    val onSeenNewest: () -> Unit = {},
+    /** A link was tapped: its checked address (`check_link`'s, never the text it was written as). */
+    val onOpenLink: (String) -> Unit = {},
+    val onOpenChannel: (String) -> Unit = {},
+)
+
+/**
+ * A text channel on a phone (the web Lounge's `ChannelChat` at phone width): the header with Back,
+ * the connection line, the message list or why there is none, "Jump to latest" and the typing
+ * line. The list is newest at the bottom ([LazyColumn] with `reverseLayout`), keyed by core's row
+ * `seq`, so older pages land above what is read without moving it, and new messages land below.
+ */
+@Composable
+fun ChatScreen(
+    header: ChatHeaderModel,
+    chat: ChatModel,
+    format: ChatFormat,
+    actions: ChatActions,
+    listState: LazyListState = rememberLazyListState(),
+) {
+    Column(Modifier.fillMaxSize().safeDrawingPadding().padding(Tokens.Space.Sm)) {
+        Island(modifier = Modifier.fillMaxSize(), padding = SurfacePadding.None) {
+            ChatHeader(header, actions.onBack)
+            ConnectionLine(chat.connection)
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (val face = chat.face) {
+                    ChatFace.Loading -> LoadingRows()
+                    is ChatFace.Failed -> StateMessage(ChatText.FAILED, face.message) {
+                        Button(ChatText.TRY_AGAIN, onClick = actions.onRetry)
+                    }
+                    ChatFace.Ready -> if (chat.messages.isEmpty()) {
+                        StateMessage(ChatText.EMPTY_TITLE, ChatText.EMPTY_LINE)
+                    } else {
+                        ChatList(header.name, chat, format, actions, listState)
+                    }
+                }
+            }
+            TypingLine(chat.typing)
+        }
+    }
+}
+
+@Composable
+private fun ChatHeader(header: ChatHeaderModel, onBack: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(Tokens.Space.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Xs),
+    ) {
+        IconButton(Icons.ArrowLeft, label = LoungeText.BACK, onClick = onBack)
+        Icon(
+            when (header.icon) {
+                ChannelIcon.Hash -> Icons.Hash
+                ChannelIcon.Lock -> Icons.Lock
+                ChannelIcon.Megaphone -> Icons.Megaphone
+            },
+            size = IconSize.Md,
+        )
+        Column(Modifier.weight(1f)) {
+            Text(header.name, variant = TextVariant.Name, heading = true, truncate = true)
+            if (header.community.isNotEmpty()) {
+                Text(header.community, variant = TextVariant.Meta, tone = TextTone.Secondary, truncate = true)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectionLine(connection: ChatConnection) {
+    val text = when (connection) {
+        ChatConnection.Live -> return
+        ChatConnection.Reconnecting -> ChatText.RECONNECTING
+        ChatConnection.Offline -> ChatText.OFFLINE
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = Tokens.Space.Md, vertical = Tokens.Space.Xs)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm),
+    ) {
+        if (connection == ChatConnection.Reconnecting) Spinner(size = SpinnerSize.Sm) else Icon(Icons.Info, size = IconSize.Sm)
+        Text(text, variant = TextVariant.Small, tone = TextTone.Secondary)
+    }
+}
+
+@Composable
+private fun LoadingRows() {
+    Column(
+        Modifier.fillMaxSize().padding(Tokens.Space.Md),
+        verticalArrangement = Arrangement.spacedBy(Tokens.Space.Lg),
+    ) {
+        Text(ChatText.LOADING, variant = TextVariant.Small, tone = TextTone.Secondary)
+        repeat(6) { index ->
+            Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Md)) {
+                Skeleton(SkeletonShape.Circle(AvatarSize.Md))
+                Skeleton(SkeletonShape.TextLines(if (index % 2 == 0) 2 else 1), Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun StateMessage(title: String, line: String?, action: (@Composable () -> Unit)? = null) {
+    Column(
+        Modifier.fillMaxSize().padding(Tokens.Space.Lg),
+        verticalArrangement = Arrangement.spacedBy(Tokens.Space.Sm, Alignment.Bottom),
+    ) {
+        Text(title, variant = TextVariant.Title, heading = true)
+        line?.let { Text(it, tone = TextTone.Secondary) }
+        action?.invoke()
+    }
+}
+
+@Composable
+private fun ChatList(
+    name: String,
+    chat: ChatModel,
+    format: ChatFormat,
+    actions: ChatActions,
+    listState: LazyListState,
+) {
+    val entries = remember(chat.messages, format) { chatEntries(chat.messages, format).asReversed() }
+    val scope = rememberCoroutineScope()
+
+    // Read at composition, before the new rows are laid out: was the newest row on screen?
+    val newest = chat.messages.lastOrNull()?.key
+    val pinned = remember(newest) { listState.firstVisibleItemIndex == 0 }
+    LaunchedEffect(newest) {
+        // A new row below one the reader was at: follow it. Scrolled up, the row they read stays put.
+        if (pinned && chat.atLiveEdge) listState.scrollToItem(0)
+    }
+
+    val away by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
+    LaunchedEffect(away) { actions.onAwayChanged(away) }
+    LaunchedEffect(newest, away, chat.atLiveEdge) {
+        if (!away && chat.atLiveEdge) actions.onSeenNewest()
+    }
+
+    val nearTop by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            info.totalItemsCount > 0 && last >= info.totalItemsCount - PAGE_AHEAD
+        }
+    }
+    LaunchedEffect(nearTop, chat.messages.size, chat.atStart, chat.loadingOlder, chat.olderFailed) {
+        if (nearTop && !chat.atStart && !chat.loadingOlder && chat.olderFailed == null) actions.onLoadOlder()
+    }
+    val nearBottom by remember { derivedStateOf { listState.firstVisibleItemIndex < PAGE_AHEAD } }
+    LaunchedEffect(nearBottom, chat.messages.size, chat.atLiveEdge) {
+        if (nearBottom && !chat.atLiveEdge) actions.onLoadNewer()
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            reverseLayout = true,
+            modifier = Modifier.fillMaxSize().testTag(ChatText.LIST_TAG),
+            contentPadding = PaddingValues(vertical = Tokens.Space.Sm),
+        ) {
+            items(entries, key = { it.key }, contentType = { it::class }) { entry ->
+                when (entry) {
+                    is ChatEntry.Day -> DayDivider(entry.label)
+                    is ChatEntry.Message -> MessageItem(entry, format, actions)
+                }
+            }
+            item(key = "top", contentType = "top") { ListTop(name, chat, actions.onLoadOlder) }
+        }
+        chat.jump?.let { jump ->
+            JumpToLatest(
+                jump.text,
+                jump.name,
+                jump.counted,
+                onJump = {
+                    actions.onJump()
+                    scope.launch { listState.scrollToItem(0) }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = Tokens.Space.Sm),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MessageItem(entry: ChatEntry.Message, format: ChatFormat, actions: ChatActions) {
+    val message = entry.message
+    MessageRow(
+        author = message.author,
+        authorColourId = message.authorId,
+        time = format.time(message.sentAtMs),
+        pieces = message.pieces,
+        continued = entry.continued,
+        mentioned = message.mentionsMe,
+        edited = message.edited,
+        removed = message.removed,
+        state = when (val state = message.state) {
+            MessageState.Sent -> RowState.Sent
+            MessageState.Pending -> RowState.Pending
+            is MessageState.Failed -> RowState.Failed(state.reason)
+        },
+        quote = message.replyTo?.let { MessageQuoteItem(it.author, it.text, it.deleted) },
+        replyCount = message.replyCount,
+        extras = message.extras,
+        onLink = actions.onOpenLink,
+        onMention = { target -> if (target is MentionTarget.Channel) actions.onOpenChannel(target.id) },
+    )
+}
+
+/** The top of the list: the conversation's start, older rows on their way, or why they aren't. */
+@Composable
+private fun ListTop(name: String, chat: ChatModel, onLoadOlder: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(Tokens.Space.Md),
+        verticalArrangement = Arrangement.spacedBy(Tokens.Space.Sm),
+        horizontalAlignment = if (chat.atStart) Alignment.Start else Alignment.CenterHorizontally,
+    ) {
+        when {
+            chat.atStart -> Text(ChatText.start(name), variant = TextVariant.Title, heading = true)
+            chat.olderFailed != null -> {
+                Text(ChatText.OLDER_FAILED, variant = TextVariant.Small, tone = TextTone.Secondary)
+                Button(ChatText.TRY_AGAIN, onClick = onLoadOlder, size = ButtonSize.Sm)
+            }
+            else -> Spinner(size = SpinnerSize.Md, label = ChatText.LOADING)
+        }
+    }
+}

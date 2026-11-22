@@ -5,7 +5,6 @@ package app.semaphorechat.android.screens.stories
 import androidx.compose.runtime.Composable
 import app.semaphorechat.android.kit.stories.Story
 import app.semaphorechat.android.screens.ChannelIcon
-import app.semaphorechat.android.screens.ChannelScreen
 import app.semaphorechat.android.screens.CommunityChannels
 import app.semaphorechat.android.screens.CommunityHomeModel
 import app.semaphorechat.android.screens.CommunitySummary
@@ -196,5 +195,4 @@ val SCREEN_STORIES: List<Story> = listOf(
     Story("screen-lounge-sheet-no-communities") {
         Lounge(communities = Load.Ready(emptyList()), home = null, allOpen = true)
     },
-    Story("screen-channel") { ChannelScreen("design", "Lumen Studio", none) },
 )

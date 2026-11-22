@@ -39,7 +39,7 @@ import org.junit.runner.RunWith
  * native/scripts/android-device-test.sh runs: connect (a plain-http server, so the warning and
  * Continue), sign in, the first community, another from the dock, a channel and Back, the sheet
  * and Back; then the core shut down as the process ending would, and a new start that restores
- * the session into the community opened last.
+ * the session into the community opened last, where the channel opened before is read.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -122,8 +122,10 @@ class DeviceFlowTest {
         closeAndAwaitDetach(scenario)
         runBlocking { SemaphoreHost.shutdownForTest() }
         scenario = ActivityScenario.launch(MainActivity::class.java)
-        waitFor(hasText("design") and hasContentDescription("1 mention", substring = true))
+        waitFor(hasText("design") and hasClickAction())
         waitFor(hasText("Lumen Studio"))
+        // Opening #design showed its newest message, which marked it read: its mention is gone.
+        compose.waitUntilDoesNotExist(hasText("design") and hasContentDescription("1 mention", substring = true), 10_000)
         closeAndAwaitDetach(scenario)
         runBlocking { SemaphoreHost.shutdownForTest() }
     }

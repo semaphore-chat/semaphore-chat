@@ -36,7 +36,10 @@ import app.semaphorechat.android.design.Tokens
 import app.semaphorechat.android.kit.Alert
 import app.semaphorechat.android.kit.AlertSeverity
 import app.semaphorechat.android.kit.KitRoot
-import app.semaphorechat.android.screens.ChannelScreen
+import app.semaphorechat.android.screens.ChatActions
+import app.semaphorechat.android.screens.ChatFormat
+import app.semaphorechat.android.screens.ChatHeaderModel
+import app.semaphorechat.android.screens.ChatScreen
 import app.semaphorechat.android.screens.CommunityHomeModel
 import app.semaphorechat.android.screens.ConnectScreen
 import app.semaphorechat.android.screens.Load
@@ -45,6 +48,8 @@ import app.semaphorechat.android.screens.Route
 import app.semaphorechat.android.screens.SignInScreen
 import app.semaphorechat.android.screens.StartScreen
 import app.semaphorechat.android.screens.StartState
+import androidx.lifecycle.Lifecycle
+import java.time.ZoneId
 import uniffi.semaphore.Appearance
 
 /**
@@ -128,12 +133,12 @@ private fun AppRoot() {
     val model = loaded.model
     val appearance by model.store.appearance.collectAsState()
     CoreTheme(appearance) {
-        KitRoot { Screens(model) { openWeb(context, it) } }
+        KitRoot { Screens(model, LinkOpener(launch = { openWeb(context, it) })) { openWeb(context, it) } }
     }
 }
 
 @Composable
-private fun Screens(model: AppModel, openWeb: (String) -> Unit) {
+private fun Screens(model: AppModel, links: LinkOpener, openWeb: (String) -> Unit) {
     val stack by model.navigator.stack.collectAsState()
     // Back with no overlay open goes one screen back; at the root, to the platform (the activity
     // finishes). Registered before the screens', so an open sheet takes the Back first.
@@ -198,10 +203,10 @@ private fun Screens(model: AppModel, openWeb: (String) -> Unit) {
             is Route.Channel -> {
                 val communities by model.store.communities.collectAsState()
                 val channels by remember(route.communityId) { model.store.watch(route.communityId) }.collectAsState()
-                val name = (channels as? Load.Ready)?.value?.text?.firstOrNull { it.id == route.channelId }?.name.orEmpty()
+                val channel = (channels as? Load.Ready)?.value?.text?.firstOrNull { it.id == route.channelId }
                 val communityName = (communities as? Load.Ready)?.value
                     ?.firstOrNull { it.id == route.communityId }?.name.orEmpty()
-                ChannelScreen(name, communityName, onBack = { model.back() })
+                ChannelChat(model, links, route.channelId, ChatHeaderModel(channel?.name.orEmpty(), channel?.icon ?: app.semaphorechat.android.screens.ChannelIcon.Hash, communityName))
             }
         }
         notice?.let {
@@ -212,4 +217,33 @@ private fun Screens(model: AppModel, openWeb: (String) -> Unit) {
             }
         }
     }
+}
+
+/** A text channel's chat, over its [ConversationStore], opened when the screen shows. */
+@Composable
+private fun ChannelChat(model: AppModel, links: LinkOpener, channelId: String, header: ChatHeaderModel) {
+    val context = LocalContext.current
+    val chat = remember(channelId) { model.chat(channelId) }
+    LaunchedEffect(chat) { chat.open() }
+    val state by chat.state.collectAsState()
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    // The phone's 12/24-hour setting and zone, read when the screen shows.
+    val format = remember(context) {
+        ChatFormat(ZoneId.systemDefault(), android.text.format.DateFormat.is24HourFormat(context)) { System.currentTimeMillis() }
+    }
+    val actions = remember(chat) {
+        ChatActions(
+            onBack = { model.back() },
+            onRetry = chat::open,
+            onLoadOlder = chat::loadOlder,
+            onLoadNewer = chat::loadNewer,
+            onJump = chat::jump,
+            onAwayChanged = chat::setAway,
+            // Read marks only while the app is in front: a list behind the lock screen isn't read.
+            onSeenNewest = { if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) chat.markSeen() },
+            onOpenLink = { links.open(it) },
+            onOpenChannel = model::openMentionedChannel,
+        )
+    }
+    ChatScreen(header, state, format, actions, chat.listState)
 }

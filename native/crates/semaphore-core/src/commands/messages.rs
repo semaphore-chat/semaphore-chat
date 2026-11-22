@@ -137,6 +137,18 @@ impl Core {
         })
     }
 
+    /// Whether the oldest row loaded is the conversation's first, so [`Core::load_older`] has
+    /// nothing left to load: a UI shows the conversation's start there. False before the first
+    /// page has loaded. Read it again after `CoreEvent::MessagesChanged`.
+    pub fn at_history_start(&self, conversation: Conversation) -> bool {
+        self.read(|state| {
+            state
+                .windows
+                .get(&conversation)
+                .is_some_and(|window| window.at_history_start())
+        })
+    }
+
     /// Replaces a detached window's rows with the live edge, as `ListOp::Reset`. If a selection holds
     /// the rows, that happens when it lets go. A no-op at the live edge.
     pub async fn jump_to_present(&self, conversation: Conversation) -> Result<(), CoreError> {

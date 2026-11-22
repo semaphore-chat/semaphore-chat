@@ -30,6 +30,7 @@ import uniffi.semaphore.ChannelPreset
 import uniffi.semaphore.ChannelRow
 import uniffi.semaphore.CommunityRow
 import uniffi.semaphore.ConnectionState
+import uniffi.semaphore.Conversation
 import uniffi.semaphore.CoreEvent
 import uniffi.semaphore.CoreListener
 import uniffi.semaphore.LoadState
@@ -81,6 +82,7 @@ class CoreStore(
     private val communityState = MutableStateFlow(readCommunities())
     private val channelStates = ConcurrentHashMap<String, MutableStateFlow<Load<CommunityChannels>>>()
     private val noticeFlow = MutableSharedFlow<CoreNotice>(extraBufferCapacity = 16)
+    private val conversations = ConcurrentHashMap<Conversation, ConversationStore>()
 
     val session: StateFlow<SessionState> = sessionState
     val connection: StateFlow<ConnectionState> = connectionState
@@ -113,6 +115,13 @@ class CoreStore(
         channelStates.getOrPut(communityId) { MutableStateFlow(readChannels(communityId)) }
 
     /**
+     * A conversation's list, kept current by core's list changes from here on. Created before the
+     * conversation is opened, so the reset core sends on opening lands in it.
+     */
+    fun conversation(conversation: Conversation): ConversationStore =
+        conversations.getOrPut(conversation) { ConversationStore(conversation, core, scope) }
+
+    /**
      * Re-reads everything: at start, on resume, and after a retry. Asks the collector to, so every
      * core read and every state write is on its one coroutine; returns at once.
      */
@@ -136,11 +145,19 @@ class CoreStore(
                 is CoreEvent.ChannelRemoved -> noticeFlow.tryEmit(
                     CoreNotice.ChannelRemoved(event.communityId, event.channelId),
                 )
+                // In order, on this one coroutine: a reset and the inserts after it stay in order.
+                is CoreEvent.MessagesChanged -> conversations[event.conversation]?.apply(event.ops)
                 else -> Unit
             }
         }
-        sessionState.value = core.session()
-        connectionState.value = core.connection()
+        val session = core.session()
+        // A new session starts with no lists: the old one's rows are another account's.
+        if (session !is SessionState.SignedIn) conversations.clear()
+        sessionState.value = session
+        val connection = core.connection()
+        connectionState.value = connection
+        // The edges, the typing line and the connection line, which change without a list change.
+        conversations.values.forEach { it.refresh(connection) }
         appearanceState.value = core.appearance().appearance
         communityState.value = readCommunities()
         // Only some communities' channels changed: re-read those; anything else, all of them.

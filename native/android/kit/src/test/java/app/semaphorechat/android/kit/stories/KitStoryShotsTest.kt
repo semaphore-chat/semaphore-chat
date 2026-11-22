@@ -40,7 +40,7 @@ class KitStoryShotsTest(
     fun render() {
         // Plain strings in, looked up here: the runner builds the parameters outside the
         // sandbox's class loader.
-        val story = KIT_STORIES.single { it.id == storyId }
+        val story = (KIT_STORIES + CHAT_KIT_STORIES).single { it.id == storyId }
         val size = STORY_SIZES.single { it.name == sizeName }
         val theme = STORY_THEMES.single { it.name == themeName }
         RuntimeEnvironment.setQualifiers(size.qualifiers)
@@ -69,7 +69,7 @@ class KitStoryShotsTest(
 
         @JvmStatic
         @ParameterizedRobolectricTestRunner.Parameters(name = "{3}")
-        fun cases(): List<Array<Any>> = KIT_STORIES.filter { selected(it.id) }.flatMap { story ->
+        fun cases(): List<Array<Any>> = (KIT_STORIES + CHAT_KIT_STORIES).filter { selected(it.id) }.flatMap { story ->
             STORY_SIZES.flatMap { size ->
                 STORY_THEMES.map { theme ->
                     arrayOf<Any>(story.id, size.name, theme.name, "${size.name}/${story.id}-${theme.name}")

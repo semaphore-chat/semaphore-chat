@@ -53,6 +53,7 @@ mod actions;
 mod admin_w5a;
 mod admin_w5b;
 mod admin_w6;
+mod chat;
 mod design;
 mod dms;
 mod gifs_w7;
@@ -1007,6 +1008,10 @@ impl SemaphoreCore {
         self.sync(move |core| core.at_live_edge(conversation))
     }
 
+    pub fn at_history_start(&self, conversation: Conversation) -> bool {
+        self.sync(move |core| core.at_history_start(conversation))
+    }
+
     pub fn hold_rows(&self, conversation: Conversation, start: i64, end: i64) {
         self.sync(move |core| {
             core.hold_rows(conversation, Some((start, end)));
@@ -1101,6 +1106,16 @@ impl SemaphoreCore {
         draft: MessageDraft,
     ) -> Result<String, CoreError> {
         self.run(move |core| async move { core.send_message(conversation, draft).await })
+            .await
+    }
+
+    /// The user started typing here (`started`), or stopped. The app debounces, as the web does.
+    pub async fn send_typing(
+        &self,
+        conversation: Conversation,
+        started: bool,
+    ) -> Result<(), CoreError> {
+        self.run(move |core| async move { core.send_typing(conversation, started).await })
             .await
     }
 
@@ -1236,6 +1251,7 @@ mod tests {
             ("lib.rs", include_str!("lib.rs")),
             ("account.rs", include_str!("account.rs")),
             ("actions.rs", include_str!("actions.rs")),
+            ("chat.rs", include_str!("chat.rs")),
             ("admin_w5a.rs", include_str!("admin_w5a.rs")),
             ("admin_w5b.rs", include_str!("admin_w5b.rs")),
             ("admin_w6.rs", include_str!("admin_w6.rs")),
@@ -1276,8 +1292,8 @@ mod tests {
         }
         assert_eq!(asyncs, runs, "every async export awaits `self.run`");
         // Exact, so an export the check stops seeing fails here: change these with the exports.
-        assert_eq!(asyncs, 133, "async exports found");
-        assert_eq!(syncs, 100, "sync exports found");
+        assert_eq!(asyncs, 134, "async exports found");
+        assert_eq!(syncs, 101, "sync exports found");
     }
 
     #[test]
