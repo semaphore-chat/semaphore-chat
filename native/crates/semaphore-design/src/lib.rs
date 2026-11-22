@@ -20,12 +20,17 @@
 //! `lounge_icons` is the shared Lucide set from `design/icons/icons.json`, with one SVG asset per
 //! icon below `assets/lucide/`.
 //!
+//! `chat` holds the chat pieces' pure rules (ports of `frontend/src/kit/chat/*.ts`).
+//!
 //! No dependencies, and no GPUI: this is the data, not the mapping onto a renderer (see unit U8).
 //! See `native/docs/slice-units/U2-design.md`.
 
 pub mod behaviour;
 #[cfg(test)]
 mod behaviour_vectors;
+pub mod chat;
+#[cfg(test)]
+mod chat_tests;
 pub mod colour_params;
 #[cfg(test)]
 mod colour_vectors;

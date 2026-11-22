@@ -1153,6 +1153,18 @@ impl AppRoot {
             // UI freeze: WU's hub file.
             AuthEvent::OpenInBrowser { url } => self.u9_open_in_browser(url, cx),
             AuthEvent::ConnectServer { url, name } => {
+                if let Some(error) = semaphore_core::links::server_url_error(&url) {
+                    auth.update(cx, |auth, cx| {
+                        auth.set_step(
+                            AuthStep::ServerUrl {
+                                testing: false,
+                                error: Some(error.to_owned()),
+                            },
+                            cx,
+                        )
+                    });
+                    return;
+                }
                 auth.update(cx, |auth, cx| {
                     auth.set_step(
                         AuthStep::ServerUrl {
