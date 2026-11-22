@@ -23,7 +23,10 @@ import app.semaphorechat.android.screens.ConnectText
 import app.semaphorechat.android.screens.INSECURE_WARNING
 import app.semaphorechat.android.screens.LoungeText
 import app.semaphorechat.android.screens.SignInText
+import android.view.View
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -53,6 +56,27 @@ class DeviceFlowTest {
     private fun back(scenario: ActivityScenario<MainActivity>) {
         scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         compose.waitForIdle()
+    }
+
+    /**
+     * Closes the activity and returns only once its window has been detached, which is when its
+     * composition is disposed and leaves the compose rule's roots. `ActivityScenario.close()`
+     * returns at the lifecycle's DESTROYED, which is before the window manager removes the view
+     * (ActivityThread removes it after `onDestroy`), so on a slow emulator the next Espresso idle
+     * check could still reach the old, detached LayoutNode ("LayoutNode should be attached to an
+     * owner"). The decor view's detach listener fires after its children (the compose view) detach.
+     */
+    private fun closeAndAwaitDetach(scenario: ActivityScenario<MainActivity>) {
+        val detached = CountDownLatch(1)
+        scenario.onActivity { activity ->
+            val decor = activity.window.decorView
+            decor.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) = Unit
+                override fun onViewDetachedFromWindow(v: View) = detached.countDown()
+            })
+        }
+        scenario.close()
+        check(detached.await(30, TimeUnit.SECONDS)) { "the closed activity's window was never detached" }
     }
 
     @Test
@@ -95,12 +119,12 @@ class DeviceFlowTest {
         waitFor(hasText("Lumen Studio"))
 
         // The process ends; the next start restores the session into Lumen Studio.
-        scenario.close()
+        closeAndAwaitDetach(scenario)
         runBlocking { SemaphoreHost.shutdownForTest() }
         scenario = ActivityScenario.launch(MainActivity::class.java)
         waitFor(hasText("design") and hasContentDescription("1 mention", substring = true))
         waitFor(hasText("Lumen Studio"))
-        scenario.close()
+        closeAndAwaitDetach(scenario)
         runBlocking { SemaphoreHost.shutdownForTest() }
     }
 }
