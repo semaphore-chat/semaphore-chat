@@ -1,105 +1,265 @@
-//! No message link reaches the app except through `MessageText`'s `on_link` or `check_link`.
+//! No message link reaches the OS except as `check_link`'s address, through `MessageText`'s
+//! `on_link` or `check_link` itself.
 //!
-//! A source check, like `media_tests::only_third_party_rs_calls_gif_or_link_image`: every file that
-//! draws messages (the list, its rows, threads, pins and search, the composer) is read, and
-//! `MessageListEvent::OpenLink` may be built in exactly two places in `row.rs`, both with a
-//! checked address. Nothing here opens a URL itself.
+//! A source check over every `.rs` file under `semaphore-ui/src` and `semaphore-app/src`, read at
+//! test time, so a file added later is checked too. Test code (`tests.rs`, `*_tests.rs`,
+//! `tests_*.rs`, and a file's trailing `#[cfg(test)] mod`) is left out. Comments are left out only
+//! where `//` starts outside a string, so `"https://"` hides nothing after it.
+//!
+//! - In the UI nothing calls `open_url`, `is_web_url`, `link_parts` or `extract_urls`, and
+//!   `MessageListEvent::OpenLink` is built in exactly two places in `messages/row.rs`: from
+//!   `check_link`'s `link.href`, and from `MessageText::on_link`'s `href` (the checked address).
+//! - In the app, `open_url(` appears only in the files listed in `APP_OPENERS`, and a message link
+//!   opens in one place, `conversation/actions.rs`, as `check_link`'s address.
 
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::prelude::rust_2024::test;
 
-const SOURCES: &[(&str, &str)] = &[
-    ("messages/actions.rs", include_str!("actions.rs")),
-    ("messages/announce.rs", include_str!("announce.rs")),
-    ("messages/format.rs", include_str!("format.rs")),
-    ("messages/icons.rs", include_str!("icons.rs")),
-    ("messages/media.rs", include_str!("media.rs")),
-    ("messages/palette.rs", include_str!("palette.rs")),
-    ("messages/row.rs", include_str!("row.rs")),
-    ("messages/seen.rs", include_str!("seen.rs")),
-    ("messages/segments.rs", include_str!("segments.rs")),
-    ("messages/selection.rs", include_str!("selection.rs")),
-    ("messages/store.rs", include_str!("store.rs")),
-    ("messages/text.rs", include_str!("text.rs")),
-    ("messages/third_party.rs", include_str!("third_party.rs")),
-    ("messages/view.rs", include_str!("view.rs")),
-    ("thread/mod.rs", include_str!("../thread/mod.rs")),
-    ("panel/mod.rs", include_str!("../panel/mod.rs")),
-    ("panel/common.rs", include_str!("../panel/common.rs")),
-    ("panel/pins.rs", include_str!("../panel/pins.rs")),
-    ("panel/search.rs", include_str!("../panel/search.rs")),
-    ("composer/view.rs", include_str!("../composer/view.rs")),
-    ("composer/menu.rs", include_str!("../composer/menu.rs")),
-    ("kit/chat/text.rs", include_str!("../kit/chat/text.rs")),
-    (
-        "kit/chat/link_card.rs",
-        include_str!("../kit/chat/link_card.rs"),
-    ),
-    ("kit/chat/row.rs", include_str!("../kit/chat/row.rs")),
+/// Files of the app that may call `open_url(`, and how many times: the opener itself and the
+/// screens whose links are the app's own (About, onboarding, sign-in in the browser, the admin
+/// dashboard, the update notice), plus the one place a message link opens.
+const APP_OPENERS: &[(&str, usize)] = &[
+    ("lib.rs", 2),
+    ("root.rs", 1),
+    ("root/about.rs", 1),
+    ("root/onboarding.rs", 1),
+    ("root/u9.rs", 1),
+    ("root/admin.rs", 1),
+    ("root/update.rs", 1),
+    ("conversation/actions.rs", 1),
 ];
 
-/// The source without `//` comments, so prose about these calls doesn't count.
+fn is_test_file(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    name == "tests.rs" || name.ends_with("_tests.rs") || name.starts_with("tests_")
+}
+
+/// One line without its `//` comment, where the comment starts outside a string literal.
+fn strip_comment(line: &str) -> &str {
+    let bytes = line.as_bytes();
+    let mut in_string = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' if in_string => i += 1,
+            b'"' => in_string = !in_string,
+            // A char literal holding a quote: `'"'`.
+            b'\''
+                if !in_string
+                    && bytes.get(i + 1) == Some(&b'"')
+                    && bytes.get(i + 2) == Some(&b'\'') =>
+            {
+                i += 2
+            }
+            b'/' if !in_string && bytes.get(i + 1) == Some(&b'/') => return &line[..i],
+            _ => {}
+        }
+        i += 1;
+    }
+    line
+}
+
+/// The source as checked: without a trailing test module and without comments.
 fn code(source: &str) -> String {
+    let source = source
+        .split("\n#[cfg(test)]\nmod ")
+        .next()
+        .unwrap_or_default();
     source
         .lines()
-        .map(|line| line.split("//").next().unwrap_or_default())
+        .map(strip_comment)
         .collect::<Vec<_>>()
         .join("\n")
 }
 
-#[test]
-fn nothing_that_draws_messages_opens_a_url_itself() {
-    for (name, source) in SOURCES {
+/// Every `OpenLink { ... }` struct literal in `code`, on one line.
+fn open_links(code: &str) -> Vec<String> {
+    code.match_indices("OpenLink {")
+        .map(|(at, _)| {
+            let literal = code[at..].split('}').next().unwrap_or_default();
+            literal.split_whitespace().collect::<Vec<_>>().join(" ")
+        })
+        .collect()
+}
+
+/// What is wrong with these sources: UI files and app files, by path relative to `src/`.
+fn violations(ui: &[(String, String)], app: &[(String, String)]) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut emitted = Vec::new();
+    for (path, source) in ui {
+        if is_test_file(path) {
+            continue;
+        }
         let code = code(source);
         for call in ["open_url(", "is_web_url(", "link_parts(", "extract_urls("] {
-            assert!(
-                !code.contains(call),
-                "{name} calls `{call}`: message links open only through on_link and check_link"
-            );
+            if code.contains(call) {
+                found.push(format!("ui/{path} calls `{call}`"));
+            }
+        }
+        for literal in open_links(&code) {
+            match path.as_str() {
+                "messages/view.rs" if literal == "OpenLink { url: String," => {}
+                "messages/row.rs" => emitted.push(literal),
+                _ => found.push(format!("ui/{path} builds `{literal}`")),
+            }
         }
     }
+    let allowed = [
+        "OpenLink { url: link.href",
+        "OpenLink { url: href.to_owned(),",
+    ];
+    for literal in &emitted {
+        if !allowed.contains(&literal.as_str()) {
+            found.push(format!(
+                "ui/messages/row.rs builds `{literal}`: not a checked address"
+            ));
+        }
+    }
+    if emitted.len() != 2 {
+        found.push(format!(
+            "ui/messages/row.rs builds OpenLink {} times, not 2",
+            emitted.len()
+        ));
+    }
+    let row = ui
+        .iter()
+        .find(|(path, _)| path == "messages/row.rs")
+        .map(|(_, source)| code(source))
+        .unwrap_or_default();
+    for needle in [
+        "if let Some(link) = check_link(url)",
+        ".on_link(move |href, _, cx|",
+    ] {
+        if !row.contains(needle) {
+            found.push(format!("ui/messages/row.rs lacks `{needle}`"));
+        }
+    }
+
+    let openers: BTreeMap<&str, usize> = APP_OPENERS.iter().copied().collect();
+    for (path, source) in app {
+        if is_test_file(path) {
+            continue;
+        }
+        let code = code(source);
+        let calls = code.matches("open_url(").count();
+        let allowed = openers.get(path.as_str()).copied().unwrap_or(0);
+        if calls != allowed {
+            found.push(format!(
+                "app/{path} calls `open_url(` {calls} times, allowed {allowed}"
+            ));
+        }
+        if code.contains("MessageListEvent::OpenLink") && path != "conversation/actions.rs" {
+            found.push(format!("app/{path} handles OpenLink"));
+        }
+        if path == "conversation/actions.rs" {
+            for needle in [
+                "MessageListEvent::OpenLink { url } => self.open_link(url, window, cx)",
+                "Some(checked) => crate::open_url(&checked.href, cx)",
+            ] {
+                if !code.contains(needle) {
+                    found.push(format!("app/{path} lacks `{needle}`"));
+                }
+            }
+            if code.contains("is_web_url(") {
+                found.push(format!("app/{path} calls `is_web_url(`"));
+            }
+        }
+    }
+    found
+}
+
+fn sources(root: &Path) -> Vec<(String, String)> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("reading the sources") {
+            let path = entry.expect("a directory entry").path();
+            if path.is_dir() {
+                walk(&path, out);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                out.push(path);
+            }
+        }
+    }
+    let mut paths = Vec::new();
+    walk(root, &mut paths);
+    paths.sort();
+    paths
+        .into_iter()
+        .map(|path| {
+            let relative = path
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            (relative, std::fs::read_to_string(&path).unwrap())
+        })
+        .collect()
+}
+
+/// Source files by path relative to `src/`.
+type Sources = Vec<(String, String)>;
+
+fn tree() -> (Sources, Sources) {
+    let ui = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let app = Path::new(env!("CARGO_MANIFEST_DIR")).join("../semaphore-app/src");
+    (sources(&ui), sources(&app))
 }
 
 #[test]
-fn open_link_is_built_only_from_a_checked_address() {
-    let mut built = Vec::new();
-    for (name, source) in SOURCES {
-        let code = code(source);
-        for (at, _) in code.match_indices("OpenLink {") {
-            // The struct literal up to its close, on one line whatever rustfmt did with it.
-            let literal = code[at..].split('}').next().unwrap_or_default();
-            let literal = literal.split_whitespace().collect::<Vec<_>>().join(" ");
-            built.push((*name, literal));
-        }
-    }
-    // The event's own definition, and the two places a row emits it.
-    let emitted: Vec<_> = built
-        .iter()
-        .filter(|(name, _)| *name != "messages/view.rs")
-        .collect();
-    assert_eq!(
-        emitted.len(),
-        2,
-        "OpenLink is built only in row.rs's on_link handler and open_checked: {built:?}"
+fn message_links_open_only_as_checked() {
+    let (ui, app) = tree();
+    assert!(ui.len() > 100 && app.len() > 20, "read the whole tree");
+    assert_eq!(violations(&ui, &app), Vec::<String>::new());
+}
+
+/// The two ways past the old fixed-list check: a new file, and a line with a `"https://"` before
+/// the call. Both are caught now.
+#[test]
+fn the_check_sees_new_files_and_code_after_a_url_literal() {
+    let (mut ui, app) = tree();
+    ui.push((
+        "messages/zz_probe.rs".into(),
+        "fn f(url: &str) { emit(MessageListEvent::OpenLink { url: url.to_owned() }); }".into(),
+    ));
+    let found = violations(&ui, &app);
+    assert!(
+        found.iter().any(|v| v.contains("zz_probe.rs builds")),
+        "{found:?}"
     );
-    for (name, line) in emitted {
-        assert_eq!(*name, "messages/row.rs", "{line}");
-        assert!(
-            line.contains("url: link.href") || line.contains("url: href.to_owned()"),
-            "OpenLink must carry check_link's address: {line}"
-        );
-    }
-    let view = code(include_str!("view.rs"));
-    assert_eq!(
-        view.matches("OpenLink {").count(),
-        1,
-        "view.rs only defines OpenLink"
+
+    let (mut ui, app) = tree();
+    let row = ui
+        .iter_mut()
+        .find(|(path, _)| path == "messages/row.rs")
+        .unwrap();
+    row.1.push_str(
+        "\nfn probe(url: &str) { if url.starts_with(\"https://\") { self.emit(MessageListEvent::OpenLink { url: url.to_owned() }, cx); } }\n",
     );
-    // The two sources of that address: MessageText's on_link (its checked href) and check_link.
-    let row = code(include_str!("row.rs"));
-    assert!(row.contains(".on_link(move |href, _, cx|"));
-    assert!(row.contains("if let Some(link) = check_link(url)"));
-    let text = code(include_str!("../kit/chat/text.rs"));
-    assert!(text.contains("match check_link(href)"));
-    // A link piece carries the checked address, and that is what on_link is handed.
-    assert!(text.contains("href: link.href"));
+    let found = violations(&ui, &app);
+    assert!(
+        found.iter().any(|v| v.contains("not a checked address")),
+        "{found:?}"
+    );
+
+    let (ui, mut app) = tree();
+    app.push((
+        "root/zz_probe.rs".into(),
+        "fn f(cx: &mut App) { crate::open_url(\"x\", cx); }".into(),
+    ));
+    let found = violations(&ui, &app);
+    assert!(
+        found.iter().any(|v| v.contains("root/zz_probe.rs calls")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn comments_are_cut_outside_strings_only() {
+    assert_eq!(strip_comment("let a = 1; // note"), "let a = 1; ");
+    assert_eq!(
+        strip_comment("if u.starts_with(\"https://\") { open_url(u) }"),
+        "if u.starts_with(\"https://\") { open_url(u) }"
+    );
+    assert_eq!(strip_comment("let q = '\"'; // x"), "let q = '\"'; ");
+    assert_eq!(strip_comment("\"a\\\"//b\" // c"), "\"a\\\"//b\" ");
 }

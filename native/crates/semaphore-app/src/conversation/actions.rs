@@ -871,39 +871,3 @@ fn log_failure(what: &str, result: Result<(), CoreError>) {
         log::warn!("{what} failed: {error}");
     }
 }
-
-#[cfg(test)]
-mod link_source_tests {
-    use std::prelude::rust_2024::test;
-
-    /// A message's link reaches the OS only here, and only as `check_link` gives it.
-    #[test]
-    fn conversation_links_open_only_as_checked() {
-        let sources = [
-            ("conversation.rs", include_str!("../conversation.rs")),
-            ("actions.rs", include_str!("actions.rs")),
-            ("media.rs", include_str!("media.rs")),
-            ("seen.rs", include_str!("seen.rs")),
-            ("side.rs", include_str!("side.rs")),
-        ];
-        let mut opens = 0;
-        for (name, source) in sources {
-            let source = source
-                .split("mod link_source_tests")
-                .next()
-                .unwrap_or_default();
-            let code: String = source
-                .lines()
-                .map(|line| line.split("//").next().unwrap_or_default())
-                .collect::<Vec<_>>()
-                .join("\n");
-            assert!(!code.contains("is_web_url("), "{name}");
-            opens += code.matches("open_url(").count();
-        }
-        assert_eq!(opens, 1, "one place opens a message link");
-        assert!(
-            include_str!("actions.rs")
-                .contains("Some(checked) => crate::open_url(&checked.href, cx)")
-        );
-    }
-}

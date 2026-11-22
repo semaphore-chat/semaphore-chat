@@ -112,7 +112,8 @@ fn inline(segments: &[S]) -> (String, Vec<PieceKind>) {
 #[test]
 fn a_link_shows_its_parsed_address_and_opens_that() {
     let (text, kinds) = inline(&[S::link("https://\u{0430}pple.com/login")]);
-    assert_eq!(text, "https://xn--pple-43d.com/login");
+    // Drawn in a left-to-right isolate, so nothing around it can reorder it.
+    assert_eq!(text, "\u{2066}https://xn--pple-43d.com/login\u{2069}");
     assert_eq!(
         kinds,
         [PieceKind::Link {
@@ -121,7 +122,7 @@ fn a_link_shows_its_parsed_address_and_opens_that() {
         }]
     );
     let (text, _) = inline(&[S::link("https://example.com/\u{202E}gnp.exe")]);
-    assert_eq!(text, "https://example.com/%E2%80%AEgnp.exe");
+    assert_eq!(text, "\u{2066}https://example.com/%E2%80%AEgnp.exe\u{2069}");
 }
 
 #[test]
@@ -189,13 +190,11 @@ fn shown_lengths_add_up_to_the_planned_blocks() {
         .sum();
     let shown: usize = segments.iter().map(super::text::shown_len).sum();
     assert_eq!(planned, shown);
+    let mention = super::text::shown_len(&segments[6]);
+    assert_eq!(mention, "@sam".len() + 6, "in a left-to-right isolate");
     assert_eq!(
         super::text::block_starts(&blocks),
-        [
-            0,
-            planned - "@sam".len() - "let a = 1;".len(),
-            planned - "@sam".len()
-        ]
+        [0, planned - mention - "let a = 1;".len(), planned - mention]
     );
 }
 
@@ -234,7 +233,10 @@ fn ranges_cover_the_text_in_order() {
         at = piece.range.end;
     }
     assert_eq!(at, text.len());
-    assert_eq!(text, "hi @aiko see xhttps://example.com/");
+    assert_eq!(
+        text,
+        "hi \u{2066}@aiko\u{2069} see x\u{2066}https://example.com/\u{2069}"
+    );
 }
 
 #[test]
@@ -1301,5 +1303,68 @@ fn a_video_whose_still_fails_is_not_a_load_error(cx: &mut TestAppContext) {
             window.try_find_by_label("Play video clip.mp4").is_some(),
             "still playable"
         );
+    });
+}
+
+/// Link labels draw in a left-to-right isolate, and an unpaired override in the words before
+/// one is not drawn at all: `pay at <RLO>https://evil.example/moc.knab//:sptth` reads as written,
+/// never as `https://bank.com/...`.
+#[test]
+fn link_labels_draw_in_a_left_to_right_isolate() {
+    let (text, _) = inline(&[
+        S::text("pay at \u{202E}"),
+        S::link("https://evil.example/moc.knab//:sptth"),
+    ]);
+    assert_eq!(
+        text,
+        "pay at \u{2066}https://evil.example/moc.knab//:sptth\u{2069}"
+    );
+    // Each kind of control, unpaired, goes; a closed pair stays.
+    for open in [
+        '\u{202A}', '\u{202B}', '\u{202D}', '\u{202E}', '\u{2066}', '\u{2067}', '\u{2068}',
+    ] {
+        let (text, _) = inline(&[S::text(format!("a{open}b"))]);
+        assert_eq!(text, "ab", "{open:?}");
+    }
+    let (text, _) = inline(&[S::text("a\u{202C}b\u{2069}c")]);
+    assert_eq!(text, "abc", "a close with nothing open goes too");
+    let (text, _) = inline(&[S::text("a\u{202E}b\u{202C}c")]);
+    assert_eq!(text, "a\u{202E}b\u{202C}c");
+    // A mention's own controls can't end its isolate early.
+    let (text, _) = inline(&[S::mention(MentionSegment::new(
+        MentionKind::User,
+        "@x\u{2069}\u{202E}y",
+    ))]);
+    assert_eq!(text, "\u{2066}@xy\u{2069}");
+}
+
+/// A pane under a cover is laid out but not painted: its list foot (the toast anchor) is left
+/// out, so it can't claim the window's toasts and then draw none.
+#[gpui_kit::test]
+fn the_list_foot_is_left_out_under_a_cover(cx: &mut TestAppContext) {
+    fn pane(covered: bool) -> AnyElement {
+        let foot = div()
+            .id("foot")
+            .test_support()
+            .role(Role::Status)
+            .aria_label("the foot");
+        let pane = ChatPane::new("pane")
+            .list(div().h(px(100.)))
+            .list_foot(foot)
+            .composer(div().h(px(40.)));
+        let pane = if covered {
+            pane.cover(div().id("cover").size_full())
+        } else {
+            pane
+        };
+        div().w(px(360.)).h(px(300.)).child(pane).into_any_element()
+    }
+    let (rig, _) = host(cx, |_, _, _| pane(false));
+    rig.with(cx, |_, window, _| {
+        assert!(window.try_find_by_label("the foot").is_some());
+    });
+    let (rig, _) = host(cx, |_, _, _| pane(true));
+    rig.with(cx, |_, window, _| {
+        assert!(window.try_find_by_label("the foot").is_none());
     });
 }

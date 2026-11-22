@@ -118,7 +118,22 @@ pub fn copy_range(row: &MessageRow, range: Range<u32>) -> String {
                     out.push_str(&label);
                 }
             }
-            _ => out.push_str(&display[from as usize..to as usize]),
+            _ => {
+                // What is drawn: the words without their unpaired bidi controls.
+                let words = &display[span.range.start as usize..span.range.end as usize];
+                let unpaired = crate::kit::chat::unpaired_bidi(words);
+                let base = span.range.start as usize;
+                out.extend(
+                    display[from as usize..to as usize]
+                        .char_indices()
+                        .filter(|(at, _)| {
+                            unpaired
+                                .binary_search(&(at + from as usize - base))
+                                .is_err()
+                        })
+                        .map(|(_, c)| c),
+                );
+            }
         }
     }
     out
@@ -177,7 +192,8 @@ pub fn word_range(row: &MessageRow, byte: u32) -> Range<u32> {
 pub fn line_range(row: &MessageRow, byte: u32) -> Range<u32> {
     let block = block_at(row, byte);
     let text = &row.display[block.start as usize..block.end as usize];
-    let within = (byte.saturating_sub(block.start) as usize).min(text.len());
+    let within =
+        text.floor_char_boundary((byte.saturating_sub(block.start) as usize).min(text.len()));
     let start = text[..within].rfind('\n').map_or(0, |at| at + 1);
     let end = text[within..]
         .find('\n')

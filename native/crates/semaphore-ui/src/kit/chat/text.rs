@@ -271,17 +271,77 @@ pub(crate) fn plan(segments: &[MessageSegment]) -> Vec<Block> {
     plan_with(segments, false)
 }
 
-/// What one segment draws as, in order with the rest: `None` for nothing. `emoji_placeholders`
-/// draws every emoji as a placeholder, painted by the list (`ListText::paint_emoji`).
+/// Left-to-right isolate (U+2066) and its end (U+2069): every link label and mention is drawn
+/// inside one, so no bidi control in the words around it can reorder what it reads.
+pub(crate) const LRI: char = '\u{2066}';
+pub(crate) const PDI: char = '\u{2069}';
+
+/// Byte offsets of the bidi embeddings, overrides and isolates in `text` that are not closed (or
+/// close nothing) inside it: they would run on into the next segment, so they are not drawn.
+pub(crate) fn unpaired_bidi(text: &str) -> Vec<usize> {
+    let mut unpaired = Vec::new();
+    // Embeddings and overrides (LRE, RLE, LRO, RLO) close with PDF; isolates (LRI, RLI, FSI)
+    // with PDI. A PDI also closes the embeddings opened inside its isolate.
+    let mut embeds: Vec<usize> = Vec::new();
+    let mut isolates: Vec<(usize, usize)> = Vec::new();
+    for (at, c) in text.char_indices() {
+        match c {
+            '\u{202A}' | '\u{202B}' | '\u{202D}' | '\u{202E}' => embeds.push(at),
+            '\u{2066}'..='\u{2068}' => isolates.push((at, embeds.len())),
+            '\u{202C}' => {
+                // A PDF closes only an embedding opened inside the innermost open isolate.
+                let floor = isolates.last().map_or(0, |(_, depth)| *depth);
+                if embeds.len() > floor {
+                    embeds.pop();
+                } else {
+                    unpaired.push(at);
+                }
+            }
+            '\u{2069}' => match isolates.pop() {
+                Some((_, depth)) => {
+                    // Embeddings opened inside the isolate end with it, unclosed.
+                    unpaired.extend(embeds.drain(depth..));
+                }
+                None => unpaired.push(at),
+            },
+            _ => {}
+        }
+    }
+    unpaired.extend(embeds);
+    unpaired.extend(isolates.into_iter().map(|(at, _)| at));
+    unpaired.sort_unstable();
+    unpaired
+}
+
+/// `text` without its unpaired bidi controls (`unpaired_bidi`).
+pub(crate) fn strip_unpaired_bidi(text: &str) -> String {
+    let unpaired = unpaired_bidi(text);
+    if unpaired.is_empty() {
+        return text.to_owned();
+    }
+    text.char_indices()
+        .filter(|(at, _)| unpaired.binary_search(at).is_err())
+        .map(|(_, c)| c)
+        .collect()
+}
+
+/// `words` inside a left-to-right isolate, with any bidi control of its own taken out.
+fn isolated(words: &str) -> String {
+    format!("{LRI}{}{PDI}", strip_bidi(words))
+}
+
+/// What one segment draws as, in order with the rest. `emoji_placeholders` draws every emoji as a
+/// placeholder, painted by the list (`ListText::paint_emoji`). A checked link is its label and a
+/// mention its text, each in a left-to-right isolate; words lose their unpaired bidi controls.
 pub(crate) fn shown(segment: &MessageSegment, emoji_placeholders: bool) -> String {
     match segment {
-        MessageSegment::Text { text, .. } => text.to_string(),
-        MessageSegment::Code(code) | MessageSegment::CodeBlock(code) => code.to_string(),
+        MessageSegment::Text { text, .. } => strip_unpaired_bidi(text),
+        MessageSegment::Code(code) | MessageSegment::CodeBlock(code) => strip_unpaired_bidi(code),
         MessageSegment::Link { href, .. } => match check_link(href) {
-            Some(link) => link.label,
+            Some(link) => isolated(&link.label),
             None => strip_bidi(href),
         },
-        MessageSegment::Mention(mention) => mention.text.to_string(),
+        MessageSegment::Mention(mention) => isolated(&mention.text),
         MessageSegment::Emoji { name, src } => {
             if src.is_some() || emoji_placeholders {
                 EMOJI_PLACEHOLDER.to_string()
@@ -293,6 +353,7 @@ pub(crate) fn shown(segment: &MessageSegment, emoji_placeholders: bool) -> Strin
 }
 
 /// How many bytes a segment draws as in a list row (emoji as placeholders).
+#[cfg(test)]
 pub(crate) fn shown_len(segment: &MessageSegment) -> usize {
     shown(segment, true).len()
 }
@@ -326,34 +387,29 @@ pub(crate) fn plan_with(segments: &[MessageSegment], emoji_placeholders: bool) -
         }
     };
     for (index, segment) in segments.iter().enumerate() {
-        let (shown, kind): (String, PieceKind) = match segment {
-            MessageSegment::Text { text, style } => (text.to_string(), PieceKind::Text(*style)),
-            MessageSegment::Code(code) => (code.to_string(), PieceKind::Code),
-            MessageSegment::CodeBlock(code) => {
+        let drawn = shown(segment, emoji_placeholders);
+        let kind = match segment {
+            MessageSegment::Text { style, .. } => PieceKind::Text(*style),
+            MessageSegment::Code(_) => PieceKind::Code,
+            MessageSegment::CodeBlock(_) => {
                 flush(&mut text, &mut pieces, &mut blocks);
-                blocks.push(Block::Code(code.to_string()));
+                blocks.push(Block::Code(drawn));
                 continue;
             }
             MessageSegment::Link { href, style } => match check_link(href) {
-                Some(link) => (
-                    link.label,
-                    PieceKind::Link {
-                        href: link.href,
-                        style: *style,
-                    },
-                ),
-                None => (strip_bidi(href), PieceKind::RefusedLink(*style)),
+                Some(link) => PieceKind::Link {
+                    href: link.href,
+                    style: *style,
+                },
+                None => PieceKind::RefusedLink(*style),
             },
-            MessageSegment::Mention(mention) => {
-                (mention.text.to_string(), PieceKind::Mention(index))
+            MessageSegment::Mention(_) => PieceKind::Mention(index),
+            MessageSegment::Emoji { src, .. } if src.is_some() || emoji_placeholders => {
+                PieceKind::Emoji(index)
             }
-            MessageSegment::Emoji { name, src } => match src {
-                _ if src.is_some() || emoji_placeholders => {
-                    (EMOJI_PLACEHOLDER.to_string(), PieceKind::Emoji(index))
-                }
-                _ => (format!(":{name}:"), PieceKind::Shortcode),
-            },
+            MessageSegment::Emoji { .. } => PieceKind::Shortcode,
         };
+        let shown = drawn;
         if shown.is_empty() {
             continue;
         }
@@ -366,6 +422,23 @@ pub(crate) fn plan_with(segments: &[MessageSegment], emoji_placeholders: bool) -
     }
     flush(&mut text, &mut pieces, &mut blocks);
     blocks
+}
+
+/// A message's words planned once: its blocks, where each starts as drawn, and what a screen
+/// reader hears. The list keeps one per row revision, so a redraw parses nothing.
+pub(crate) struct Planned {
+    pub blocks: Vec<Block>,
+    pub starts: Vec<usize>,
+    pub spoken: SharedString,
+}
+
+pub(crate) fn planned(segments: &[MessageSegment], emoji_placeholders: bool) -> Planned {
+    let blocks = plan_with(segments, emoji_placeholders);
+    Planned {
+        starts: block_starts(&blocks),
+        spoken: spoken(segments).into(),
+        blocks,
+    }
 }
 
 /// What a screen reader hears for the whole message.
@@ -399,7 +472,7 @@ pub(crate) type LinkHandler = Rc<dyn Fn(&str, &mut Window, &mut App)>;
 #[derive(IntoElement)]
 pub struct MessageText {
     id: ElementId,
-    segments: Vec<MessageSegment>,
+    segments: Rc<[MessageSegment]>,
     on_mention: Option<MentionHandler>,
     on_link: Option<LinkHandler>,
     on: Option<Surface>,
@@ -410,6 +483,9 @@ pub struct MessageText {
 /// block run together (`block_starts`).
 #[derive(Clone)]
 pub(crate) struct ListText {
+    /// The row's words planned with emoji as placeholders (`planned(.., true)`), kept by the list
+    /// per row revision.
+    pub plan: Rc<Planned>,
     /// The part of the selection in this row.
     pub selected: Option<Range<usize>>,
     pub selection: Hsla,
@@ -424,6 +500,11 @@ pub(crate) type EmojiPainter = Rc<dyn Fn(usize, Bounds<Pixels>, &mut Window, &mu
 
 impl MessageText {
     pub fn new(id: impl Into<ElementId>, segments: Vec<MessageSegment>) -> Self {
+        Self::shared(id, segments.into())
+    }
+
+    /// The words as a shared slice, so a list row hands them over without copying.
+    pub(crate) fn shared(id: impl Into<ElementId>, segments: Rc<[MessageSegment]>) -> Self {
         Self {
             id: id.into(),
             segments,
@@ -483,9 +564,13 @@ impl RenderOnce for MessageText {
         let sem = cx.sem().clone();
         let on = Surface::or_current(self.on, cx);
         let code = code_font(cx);
-        let spoken = spoken(&self.segments);
-        let blocks = plan_with(&self.segments, self.list.is_some());
-        let starts = block_starts(&blocks);
+        let plan = match &self.list {
+            Some(list) => list.plan.clone(),
+            None => Rc::new(planned(&self.segments, false)),
+        };
+        let spoken = plan.spoken.clone();
+        let blocks = plan.blocks.clone();
+        let starts = &plan.starts;
         let mut column = div()
             .id(self.id.clone())
             .test_support()
@@ -636,9 +721,11 @@ fn inline_element(
                     targets.push(TargetSpec {
                         range: piece.range.clone(),
                         role: Role::Link,
+                        // The label without its isolate marks.
                         label: text
                             .get(piece.range.clone())
                             .unwrap_or_default()
+                            .trim_matches([LRI, PDI])
                             .to_owned()
                             .into(),
                         activate: Rc::new(move |window, cx| handler(&href, window, cx)),
@@ -1175,9 +1262,14 @@ impl Element for InlineText {
             window.on_mouse_event(move |event: &MouseDownEvent, phase, window, _| {
                 if phase.bubble() && event.button == MouseButton::Left && hitbox.is_hovered(window)
                 {
-                    state
-                        .pressed
-                        .set(target_at(&layout, &ranges, event.position));
+                    // Only a plain single click follows: a double or triple click selects a
+                    // word or a line, and Shift (or any other modifier) extends a selection.
+                    let plain = event.click_count <= 1 && !event.modifiers.modified();
+                    state.pressed.set(
+                        plain
+                            .then(|| target_at(&layout, &ranges, event.position))
+                            .flatten(),
+                    );
                     state.pressed_at.set(Some(event.position));
                 }
             });
@@ -1188,7 +1280,10 @@ impl Element for InlineText {
                 if !phase.bubble() || event.button != MouseButton::Left {
                     return;
                 }
-                let pressed = state.pressed.take();
+                let pressed = state
+                    .pressed
+                    .take()
+                    .filter(|_| event.click_count <= 1 && !event.modifiers.modified());
                 let pressed_at = state.pressed_at.take();
                 if !hitbox.is_hovered(window) {
                     return;

@@ -48,6 +48,8 @@ struct StoryList {
     top_seq: Option<i64>,
     /// "Load images from other sites" (off, as the list starts).
     third_party: bool,
+    /// Room under the last row (`MessageList::set_bottom_room`).
+    bottom_room: Option<f32>,
 }
 
 impl StoryList {
@@ -60,6 +62,7 @@ impl StoryList {
             selection: None,
             top_seq: None,
             third_party: false,
+            bottom_room: None,
         }
     }
 
@@ -83,6 +86,9 @@ impl StoryList {
             );
             list.set_selection(self.selection, cx);
             list.set_third_party_media(self.third_party, cx);
+            if let Some(room) = self.bottom_room {
+                list.set_bottom_room(px(room), cx);
+            }
             if let Some(seq) = self.top_seq {
                 list.scroll_to_seq(seq, 0.);
             }
@@ -286,6 +292,61 @@ fn checked_links(cx: &mut App) -> AnyView {
         ..StoryList::new(rows)
     }
     .view(cx)
+}
+
+/// Link labels draw in a left-to-right isolate: words with an unpaired right-to-left override
+/// before a link (`pay at <RLO>https://evil.example/moc.knab//:sptth`) leave the label reading as
+/// written, and a mention reads as written after one too.
+fn links_bidi(cx: &mut App) -> AnyView {
+    let ava = fixture::user("u-ava", "ava", Some("Ava Chen"));
+    let evil = "https://evil.example/moc.knab//:sptth";
+    let rows = vec![
+        fixture::message(
+            1,
+            ava.clone(),
+            NOW_MS - 120_000,
+            fixture::Body::default()
+                .text("pay at \u{202E}")
+                .link(evil, evil)
+                .text(" today"),
+        ),
+        fixture::message(
+            2,
+            ava,
+            NOW_MS - 60_000,
+            fixture::Body::default()
+                .text("\u{202E}ask ")
+                .mention("@alexk", &fixture::me().id)
+                .text(" about it"),
+        ),
+    ];
+    StoryList::new(rows).view(cx)
+}
+
+/// The list in a ChatPane while someone is typing: the typing line floats in the room the list
+/// keeps under its last row, never over it.
+fn chat_pane_typing(cx: &mut App) -> AnyView {
+    struct Pane {
+        list: AnyView,
+    }
+    impl Render for Pane {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                crate::kit::ChatPane::new("story-chat")
+                    .typing(crate::kit::TypingLine::new(["Ava Chen"]))
+                    .composer(div().h(px(64.)))
+                    .list(self.list.clone()),
+            )
+        }
+    }
+    let (rows, replies) = fixture::conversation();
+    let list = StoryList {
+        replies,
+        bottom_room: Some(crate::kit::TypingLine::HEIGHT),
+        ..StoryList::new(rows)
+    }
+    .view(cx);
+    cx.new(|_| Pane { list }).into()
 }
 
 fn conversation(top_seq: Option<i64>, cx: &mut App) -> AnyView {
@@ -798,6 +859,8 @@ fn base_stories() -> Vec<Story> {
         Story::new("messages-uploads", |_, _, cx| uploads(cx)),
         Story::new("messages-link-preview", |_, _, cx| link_preview(cx)),
         Story::new("messages-links-checked", |_, _, cx| checked_links(cx)),
+        Story::new("messages-links-bidi", |_, _, cx| links_bidi(cx)),
+        Story::new("messages-chat-pane-typing", |_, _, cx| chat_pane_typing(cx)),
         Story::new("messages-links-checked-phone", |_, _, cx| {
             let view = checked_links(cx);
             narrow(view, cx)

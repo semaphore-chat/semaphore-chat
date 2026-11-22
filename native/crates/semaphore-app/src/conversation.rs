@@ -485,6 +485,10 @@ impl ConversationPane {
             self.sync_side(cx);
         }
         let list = self.new_list(Vec::new(), ListStatus::Loading, cx);
+        // The pane's typing line floats over the list's foot: keep its height free under the rows.
+        list.update(cx, |list, cx| {
+            list.set_bottom_room(px(TypingLine::HEIGHT), cx)
+        });
         let list_events = cx.subscribe_in(&list, window, |this, _, event, window, cx| {
             this.on_list_event(Which::Main, event, window, cx)
         });

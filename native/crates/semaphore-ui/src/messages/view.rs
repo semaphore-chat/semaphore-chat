@@ -245,6 +245,8 @@ pub struct MessageList {
     status: ListStatus,
     scrollbar: bool,
     follow_theme: bool,
+    /// Room under the last row (`set_bottom_room`).
+    bottom_room: Pixels,
     auto: AutoScroll,
     dragging: bool,
     moved: bool,
@@ -280,6 +282,13 @@ impl MessageList {
     /// Whether third-party pictures (GIFs, link-preview images) may load
     /// (`Core::third_party_media()`). Off (the default) draws "Load" cards and never asks the
     /// media source for such a picture.
+    /// Room under the last row. A list in a `ChatPane` keeps the typing line's height
+    /// (`semaphore_design::chat::TYPING_LINE_HEIGHT`), which floats there, so it never covers a row.
+    pub fn set_bottom_room(&mut self, room: Pixels, cx: &mut Context<Self>) {
+        self.bottom_room = room;
+        cx.notify();
+    }
+
     pub fn set_third_party_media(&mut self, on: bool, cx: &mut Context<Self>) {
         if self.shared.third_party.replace(on) != on {
             // Cards and pictures differ in height, in rows on screen and off it.
@@ -420,6 +429,7 @@ impl MessageList {
             status: data.status,
             scrollbar: options.scrollbar,
             follow_theme: options.follow_theme,
+            bottom_room: px(8.),
             auto: AutoScroll::default(),
             dragging: false,
             moved: false,
@@ -925,6 +935,7 @@ impl MessageList {
     }
 
     pub fn set_selection(&mut self, selection: Option<Selection>, cx: &mut Context<Self>) {
+        let selection = selection.map(|selection| self.widen_out_of_links(selection));
         self.shared.selection.set(selection);
         let held = selection.map(|selection| selection.seq_range());
         if held != self.held {
@@ -932,6 +943,37 @@ impl MessageList {
             cx.emit(MessageListEvent::HoldRows(held));
         }
         cx.notify();
+    }
+
+    /// A selection end inside a relabelled link (drawn by a label other than its written text)
+    /// widens to the link's end away from the other end, so the link is one unit: a drag from
+    /// inside it takes it all, and a key step into it crosses it. Highlight and copy then agree.
+    fn widen_out_of_links(&self, selection: Selection) -> Selection {
+        let rows = self.shared.rows.borrow();
+        let widen = |pos: Pos, to_end: bool| {
+            let Some(row) = rows.by_seq(pos.seq).cloned() else {
+                return pos;
+            };
+            match self.shared.prepared_for(&row).text.map.atomic_at(pos.byte) {
+                Some(link) => Pos {
+                    seq: pos.seq,
+                    byte: if to_end { link.end } else { link.start },
+                },
+                None => pos,
+            }
+        };
+        if selection.is_empty() {
+            let at = widen(selection.cursor, false);
+            return Selection {
+                anchor: at,
+                cursor: at,
+            };
+        }
+        let forward = selection.anchor <= selection.cursor;
+        Selection {
+            anchor: widen(selection.anchor, !forward),
+            cursor: widen(selection.cursor, forward),
+        }
     }
 
     pub fn selected_text(&self) -> String {
@@ -1369,7 +1411,7 @@ impl Render for MessageList {
         let rows = list(self.list.clone(), move |ix, window, cx| {
             render_row(&shared, ix, window, cx)
         })
-        .pb(px(8.))
+        .pb(self.bottom_room)
         .size_full();
         let entity = cx.entity();
         root.on_action(cx.listener(|view, _: &CopySelection, _, cx| view.copy(cx)))

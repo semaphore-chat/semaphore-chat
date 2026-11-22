@@ -88,6 +88,10 @@ press enter
 wait core failed "this one goes away" within 3
 click-row message/delete "this one goes away"
 wait core no-text "this one goes away"
+# Delete hands the caret back to the composer too.
+type "typed after the delete"
+press enter
+wait core sent "typed after the delete"
 
 # 8. A message from someone else arrives live.
 server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"live from pri\"}"

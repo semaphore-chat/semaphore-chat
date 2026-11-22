@@ -176,7 +176,7 @@ impl Shared {
         }
     }
 
-    fn prepared_for(&self, row: &Arc<MessageRow>) -> Rc<Prepared> {
+    pub(crate) fn prepared_for(&self, row: &Arc<MessageRow>) -> Rc<Prepared> {
         let mut cache = self.prepared.borrow_mut();
         if let Some(prepared) = cache.get(&row.seq)
             && prepared.revision == row.revision
@@ -411,7 +411,8 @@ fn render_reply(reply: &ReplyPreview, palette: &Palette) -> impl IntoElement {
                 if reply.text.is_empty() {
                     "Message".into()
                 } else {
-                    reply.text.replace('\n', " ").into()
+                    // Without bidi controls, as the panels' previews.
+                    strip_bidi(&reply.text).replace('\n', " ").into()
                 },
                 palette.primary,
                 palette.text_secondary,
@@ -1698,6 +1699,7 @@ fn render_words(
     let record_map = text.clone();
     let paint_shared = shared.clone();
     let list = ListText {
+        plan: text.plan.clone(),
         selected,
         selection: palette.selection,
         record: Rc::new(move |start, len, layout, bounds| {
@@ -1731,7 +1733,7 @@ fn render_words(
     };
     let link_shared = shared.clone();
     let mention_shared = shared.clone();
-    MessageText::new(("message-text", seq as u64), text.segments.clone())
+    MessageText::shared(("message-text", seq as u64), text.segments.clone())
         .list(list)
         .on_link(move |href, _, cx| {
             link_shared.emit(

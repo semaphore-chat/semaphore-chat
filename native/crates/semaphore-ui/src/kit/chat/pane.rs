@@ -55,6 +55,7 @@ impl ChatPane {
 
     /// Something placed in the list region, which is `relative` and ends where the composer
     /// starts: the screen's toast anchor, so the window's toasts sit above the composer (#900).
+    /// Left out while a `cover` is up, like the announcement.
     pub fn list_foot(mut self, element: impl IntoElement) -> Self {
         self.list_foot = Some(element.into_any_element());
         self
@@ -170,7 +171,9 @@ impl RenderOnce for ChatPane {
                     .map(|typing| div().absolute().left_0().right_0().bottom_0().child(typing)),
             )
             .children(self.jump)
-            .children(self.list_foot)
+            // Under a cover the conversation is laid out but not painted: an anchor here would
+            // claim the window's toasts and draw none, so the cover's own placement wins.
+            .children(self.list_foot.filter(|_| !covered))
             .children(
                 self.announcement
                     .filter(|words| !covered && !words.is_empty())

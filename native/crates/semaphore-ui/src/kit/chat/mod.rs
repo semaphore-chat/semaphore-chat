@@ -27,7 +27,7 @@ mod tests;
 mod tests_composer;
 #[cfg(test)]
 mod tests_row;
-mod text;
+pub(crate) mod text;
 mod typing;
 
 pub use attachment::{AttachmentKind, AttachmentTile, PlayerSlot};
@@ -42,7 +42,7 @@ pub use reaction::ReactionChip;
 pub use row::{MessageRow, MessageState, OpenActionsRequest, RowFocus};
 pub use suggestion::{Suggestion, SuggestionList};
 pub use tab_scope::RowTabScope;
-pub(crate) use text::{ListText, shown_len};
+pub(crate) use text::{LRI, ListText, PDI, Planned, planned, shown, unpaired_bidi};
 pub use text::{MentionKind, MentionSegment, MessageSegment, MessageText, SegmentStyle};
 pub use typing::TypingLine;
 
