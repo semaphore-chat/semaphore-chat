@@ -43,6 +43,6 @@ class ErrorTextTest {
         assertEquals("The connection isn't secure", tls.first)
         assertTrue(!tls.second.contains("Check your connection"))
         val failed = startUnreachableText(StartState.Unreachable(server, "UNKNOWN", SERVER_ERROR_FALLBACK))
-        assertEquals("The server answered with an error" to SERVER_ERROR_FALLBACK, failed)
+        assertEquals("chat.lumen.studio had a problem" to SERVER_ERROR_FALLBACK, failed)
     }
 }

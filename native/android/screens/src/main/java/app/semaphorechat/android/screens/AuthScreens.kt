@@ -109,7 +109,7 @@ internal fun startUnreachableText(state: StartState.Unreachable): Pair<String, S
     "CLIENT_UNREACHABLE" ->
         "Can't reach ${hostOf(state.server)}" to
             "Check your connection. You're still signed in: try again when you're back online."
-    else -> "The server answered with an error" to state.message
+    else -> "${hostOf(state.server)} had a problem" to state.message
 }
 
 /**
