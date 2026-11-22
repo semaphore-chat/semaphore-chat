@@ -101,23 +101,6 @@ fn stub_rows(props: &ContentProps, _: &mut Window, cx: &mut App) -> AnyElement {
             .child(text(Variant::H5, format!("Welcome to #{}", channel.name)))
             .child(text(Variant::Body1, "No messages yet"))
             .into_any_element(),
-        // `CommunityPage` with no channel selected.
-        (_, None) if props.route.community_id().is_some() => div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .gap(spacing(2.))
-            .text_color(sem.text_secondary)
-            .when_some(props.community.as_ref(), |this, community| {
-                this.child(text(Variant::H5, format!("Welcome to {}", community.name)))
-            })
-            .child(text(
-                Variant::Body1,
-                "Select a channel from the sidebar to get started",
-            ))
-            .into_any_element(),
         (_, None) => home_card(props, &sem).into_any_element(),
     }
 }
@@ -184,6 +167,8 @@ fn home_card(props: &ContentProps, sem: &crate::theme::Sem) -> impl IntoElement 
 pub(crate) struct Options {
     pub scenario: &'static str,
     pub channel: Option<&'static str>,
+    /// Open this community id instead of the scenario's first (one the user isn't in, say).
+    pub community: Option<&'static str>,
     pub connection: ConnectionState,
     pub edit: fn(&mut Fixture),
     /// The members shown (below wide, their Sheet open).
@@ -210,6 +195,7 @@ impl Default for Options {
         Self {
             scenario: "big-community",
             channel: Some("general"),
+            community: None,
             connection: ConnectionState::Connected,
             edit: |_| {},
             members_open: false,
@@ -239,7 +225,10 @@ pub(crate) fn shell_view(
     let json = env.scenarios_dir.join(format!("{}.json", options.scenario));
     let mut fixture = Fixture::load(views, &json).unwrap_or_else(|error| panic!("{error}"));
     (options.edit)(&mut fixture);
-    let community = fixture.first_community();
+    let community = options
+        .community
+        .map(str::to_owned)
+        .unwrap_or_else(|| fixture.first_community());
     let channel_id = options.channel.and_then(|name| {
         fixture
             .channel_named(&community, name)
@@ -703,6 +692,34 @@ pub fn stories() -> Vec<Story> {
                 fixture.channels_state = Fake::Loading;
                 fixture.members_state = Fake::Loading;
             },
+        ),
+        // B12: the community home's centre (compact and wide; a phone shows the left pane).
+        shell_story!(
+            "shell-community-home-not-member",
+            channel: None,
+            community: Some("c-not-yours"),
+        ),
+        shell_story!(
+            "shell-community-home-channels-error",
+            channel: None,
+            edit: |fixture| fixture.channels_state = Fake::Failed,
+        ),
+        shell_story!(
+            "shell-community-home-long-name",
+            channel: None,
+            edit: |fixture| {
+                fixture.views.channels.retain(|c| c.kind == ChannelKind::Voice);
+                fixture.caps = Some(reader_caps());
+                if let Some(row) = fixture.views.communities.first_mut() {
+                    row.name = "The Late-Night Speedrunners, Tinkerers and Occasional Bakers Society".into();
+                }
+            },
+        ),
+        shell_story!(
+            "shell-community-home-members-open",
+            channel: None,
+            members_open: true,
+            edit: |fixture| fixture.views.channels.retain(|c| c.kind == ChannelKind::Voice),
         ),
         shell_story!(
             "shell-error",

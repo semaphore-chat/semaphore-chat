@@ -23,7 +23,7 @@ use crate::kit::PhonePane;
 use frame::pane_for;
 pub use source::{CoreSource, Load, MemberRow, RailCounts, ShellSource};
 
-use crate::kit::{Button, Icon, IconButton, Paper, Spinner, Variant, on_core_event, text};
+use crate::kit::{Icon, IconButton, Paper, Variant, on_core_event, text};
 use crate::nav::{NavModel, Route};
 use crate::theme::SemTheme;
 pub(crate) use faces::{community_avatar, user_avatar};
@@ -249,9 +249,11 @@ impl Shell {
     }
 
     pub fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {
+        // The pane is the asked-for route's: a phone opening a community shows its home (the left
+        // pane) even though the route settles on a channel, as the web's phone home does.
+        self.phone_pane = pane_for(&route);
         self.nav.navigate(route);
         self.settle_route();
-        self.phone_pane = pane_for(self.nav.current());
         self.sheet_open = false;
         self.menu_open = false;
         self.focus_content.set(true);
@@ -271,8 +273,8 @@ impl Shell {
         if !self.nav.go_back() {
             self.nav.navigate(Route::Home);
         }
-        self.settle_route();
         self.phone_pane = pane_for(self.nav.current());
+        self.settle_route();
         self.focus_content.set(true);
         cx.emit(ShellEvent::Navigated(self.nav.current().clone()));
         cx.notify();
@@ -282,8 +284,8 @@ impl Shell {
     pub fn open_deep_link(&mut self, raw: &str, cx: &mut Context<Self>) -> bool {
         let handled = self.nav.open_deep_link(raw);
         if handled {
-            self.settle_route();
             self.phone_pane = pane_for(self.nav.current());
+            self.settle_route();
             self.focus_content.set(true);
             cx.emit(ShellEvent::Navigated(self.nav.current().clone()));
             cx.notify();
@@ -387,40 +389,25 @@ impl Shell {
         }
     }
 
-    /// The middle column. The owner draws it, except while the community itself isn't there to
-    /// draw: `CommunityPage`'s loading and `PageError` states.
+    /// The middle column. The owner draws it, except for the community home (B12): a community
+    /// with no channel chosen, and any community route while the communities load or fail.
     pub(crate) fn content_element(
         &self,
         centre_drawn: bool,
+        members_shown: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if self.nav.current().community_id().is_some() {
-            match self.source.communities() {
-                Load::Loading => {
-                    return div()
-                        .size_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(Spinner::new("community-loading").size(40.).label("Loading"))
-                        .into_any_element();
-                }
-                Load::Failed(_) => {
-                    return div()
-                        .size_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(error_state(
-                            "community-retry",
-                            "Couldn't load this community",
-                            "Check your connection and try again.",
-                            cx,
-                        ))
-                        .into_any_element();
-                }
-                Load::Ready(_) => {}
+        if let Some(community_id) = self.nav.current().community_id().map(str::to_owned) {
+            let home = match self.nav.current() {
+                Route::Community { .. } => true,
+                Route::Channel { .. } => self.channel().is_none(),
+                _ => !matches!(self.source.communities(), Load::Ready(_)),
+            };
+            if home {
+                return self
+                    .community_home(&community_id, members_shown, cx)
+                    .into_any_element();
             }
         }
         let channel = self.channel();
@@ -567,60 +554,6 @@ impl Shell {
                 ),
         )
     }
-}
-
-/// `ErrorState` in `ListState`: the community that didn't load.
-pub(crate) fn error_state(
-    id: &'static str,
-    title: &str,
-    description: &str,
-    cx: &mut Context<Shell>,
-) -> Div {
-    let sem = cx.sem();
-    let circle = 96.;
-    let error = sem.error;
-    let tint = error.opacity(if sem.is_dark { 0.16 } else { 0.1 });
-    let view = cx.entity().downgrade();
-    let (primary, secondary) = (sem.text_primary, sem.text_secondary);
-    div()
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .px(px(24.))
-        .py(px(48.))
-        .child(
-            div()
-                .size(px(circle))
-                .mb(px(20.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_full()
-                .bg(tint)
-                .child(Icon::new(IconName::Error).size(48.).color(error)),
-        )
-        .child(
-            text(Variant::H6, title.to_owned())
-                .font_weight(FontWeight(600.))
-                .text_color(primary)
-                .mb(px(4.))
-                .text_center(),
-        )
-        .child(
-            text(Variant::Body2, description.to_owned())
-                .text_color(secondary)
-                .max_w(px(300.))
-                .mb(px(20.))
-                .text_center(),
-        )
-        .child(
-            Button::new(id, "Try again")
-                .soft()
-                .on_click(move |_, _, cx| {
-                    view.update(cx, |_, cx| cx.emit(ShellEvent::Retry)).ok();
-                }),
-        )
 }
 
 #[cfg(feature = "stories")]

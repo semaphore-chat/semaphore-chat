@@ -1,0 +1,44 @@
+# B12: the community home on a phone. Signing in lands on the first community, whose route settles
+# on its text channel, and a phone shows the community's home (its channels and rooms, the left
+# pane), as the web's phone home does, not the chat. A channel row opens the chat, Back is the home
+# again, and opening the community by its path (a deep link, the dock) shows the home too.
+app 390 844
+wait idle
+click auth-connect
+wait core session signed-out within 5
+wait idle
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+
+# 1. The landing: the home, with no composer drawn.
+wait core element channel-$ID(cc-general)
+wait core no-element composer-actions
+wait idle
+shot 01-home
+
+# 2. A channel row: the chat.
+click channel-$ID(cc-general)
+wait core element composer-actions
+wait core no-element channel-$ID(cc-general)
+wait idle
+shot 02-chat
+
+# 3. Back: the home again.
+click phone-back
+wait core element channel-$ID(cc-general)
+wait core no-element composer-actions
+
+# 4. From the chat, the community's path: the home, though the route settles on the channel.
+click channel-$ID(cc-general)
+wait core element composer-actions
+navigate /community/$ID(c-couch)
+wait core channel $ID(cc-general)
+wait core element channel-$ID(cc-general)
+wait core no-element composer-actions
+wait idle
+shot 03-home-from-path

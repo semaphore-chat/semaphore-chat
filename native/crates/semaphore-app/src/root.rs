@@ -2002,13 +2002,9 @@ fn content(
             "Your messages".into(),
             "Pick a conversation, or start a new one.",
         ),
-        (route, None) if route.community_id().is_some() => match &props.community {
-            Some(community) => placeholder(
-                format!("Welcome to {}", community.name),
-                "Select a channel from the sidebar to get started",
-            ),
-            None => placeholder("Loading".into(), ""),
-        },
+        // A community with no channel chosen is the shell's community home (B12); another
+        // community route waits here for its screen.
+        (route, None) if route.community_id().is_some() => placeholder("Loading".into(), ""),
         _ => placeholder("Home".into(), "Pick a community from the dock."),
     };
     (element, stage_shown)

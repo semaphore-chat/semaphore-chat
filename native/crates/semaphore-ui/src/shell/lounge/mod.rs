@@ -1,12 +1,14 @@
 //! The Lounge shell's pieces (design §3, epic #848 row B10), the native side of
 //! `frontend/src/shell/lounge/pieces/`: the dock, the "All communities" sheet, the community's
-//! left island (header, channels, voice rooms, your card) and the members island.
+//! left island (header, channels, voice rooms, your card), the members island, and the community
+//! home's centre (B12).
 //!
 //! Each is a view with closed props, as the web's views are: the shell reads its source and
 //! builds them (the web's `*Connected` wrappers), stories and tests hand them data. What a piece
 //! does is a callback; what it shows of a load is a [`Face`].
 
 mod all_sheet;
+mod community_home;
 mod community_left;
 mod dock;
 pub mod lines;
@@ -19,6 +21,7 @@ mod user_card;
 mod voice_room;
 
 pub use all_sheet::{AllCommunitiesSheet, FootRow, SheetCommunity};
+pub use community_home::{CommunityHome, HomeState, home_line};
 pub use community_left::{
     ChannelItem, ChannelSection, CommunityHeader, CommunityLeft, CommunityLeftAccess,
 };
