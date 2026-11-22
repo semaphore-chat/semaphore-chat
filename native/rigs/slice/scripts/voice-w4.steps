@@ -4,6 +4,9 @@
 # call has someone in it once the app answers. Snaps named *-live-* carry video and aren't compared.
 
 app 1280 800
+# The replay toasts go through the window's queue, which holds a toast while the window is
+# inactive: the user is at this window.
+window activate
 click auth-connect
 wait core label "Username" within 5
 click auth-username

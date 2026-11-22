@@ -294,7 +294,7 @@ impl RegisterScreen {
             )
             .child(
                 Button::new("register-back", "Back to sign in")
-                    .contained()
+                    .primary()
                     .full_width()
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(RegisterEvent::SignIn))),
             )
@@ -370,8 +370,7 @@ impl RegisterScreen {
                     .error(username_error.is_some())
                     .helper(
                         username_error.unwrap_or_else(|| "Letters, numbers, _ and -".to_owned()),
-                    )
-                    .surface(sem.background_default),
+                    ),
             ))
             .child(field(
                 TextField::new("register-email", &self.email, "Email")
@@ -380,8 +379,7 @@ impl RegisterScreen {
                     .helper(
                         email_error
                             .unwrap_or_else(|| "Optional: for resetting your password".to_owned()),
-                    )
-                    .surface(sem.background_default),
+                    ),
             ))
             .child(field(
                 TextField::new("register-password", &self.password, "Password")
@@ -392,21 +390,19 @@ impl RegisterScreen {
                         password_error.unwrap_or_else(|| {
                             format!("Must be at least {PASSWORD_MIN} characters")
                         }),
-                    )
-                    .surface(sem.background_default),
+                    ),
             ))
             .child(field(
                 TextField::new("register-code", &self.code, code_label)
                     .required(invite_required)
                     .disabled(busy || self.code_locked)
                     .error(code_error.is_some())
-                    .helper(code_error.unwrap_or(code_helper))
-                    .surface(sem.background_default),
+                    .helper(code_error.unwrap_or(code_helper)),
             ))
             .child(
                 div().w_full().mb(spacing(2.)).child(
                     Button::new("register-submit", "Register")
-                        .contained()
+                        .primary()
                         .full_width()
                         .loading(busy)
                         .on_click(cx.listener(|screen, _, _, cx| screen.submit(cx))),

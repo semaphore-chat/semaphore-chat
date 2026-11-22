@@ -144,6 +144,43 @@ fn home_with_invite(
     .into()
 }
 
+/// A story's view with the window's toast area over it, showing `notice` the way the app does.
+struct WithToast {
+    view: AnyView,
+    notice: Option<InviteNotice>,
+}
+
+impl Render for WithToast {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(notice) = self.notice.take() {
+            let toasts = crate::kit::Toasts::for_window(window.window_handle());
+            // After this frame: never show a toast while rendering.
+            window.defer(cx, move |_, cx| {
+                let request = crate::kit::ToastRequest::new(notice.text).id("home-invite-notice");
+                let request = if notice.failed {
+                    request.danger()
+                } else {
+                    request.positive()
+                };
+                toasts.show(request, cx);
+            });
+        }
+        div()
+            .size_full()
+            .relative()
+            .child(self.view.clone())
+            .child(crate::kit::ToastRegion::new())
+    }
+}
+
+fn with_toast(view: AnyView, notice: InviteNotice, cx: &mut App) -> AnyView {
+    cx.new(|_| WithToast {
+        view,
+        notice: Some(notice),
+    })
+    .into()
+}
+
 fn invitable() -> InviteCardModel {
     InviteCardModel {
         visible: true,
@@ -161,7 +198,6 @@ fn invitable() -> InviteCardModel {
         ],
         creating: false,
         code: None,
-        notice: None,
     }
 }
 
@@ -274,16 +310,16 @@ pub fn stories() -> Vec<Story> {
             home_with_invite(full(), true, invitable(), cx)
         }),
         Story::new("home-invite-created", |_, _, cx| {
-            home_with_invite(
+            let home = home_with_invite(
                 full(),
                 true,
                 InviteCardModel {
                     code: Some("aB3x9Q".into()),
-                    notice: Some(InviteNotice::copied()),
                     ..invitable()
                 },
                 cx,
-            )
+            );
+            with_toast(home, InviteNotice::copied(), cx)
         }),
         Story::new("home-invite-loading", |_, _, cx| {
             home_with_invite(
@@ -308,15 +344,10 @@ pub fn stories() -> Vec<Story> {
             )
         }),
         Story::new("home-invite-failed", |_, _, cx| {
-            home_with_invite(
-                full(),
-                true,
-                InviteCardModel {
-                    notice: Some(InviteNotice::failed(
-                        "Couldn't create an invite link. Try again.",
-                    )),
-                    ..invitable()
-                },
+            let home = home_with_invite(full(), true, invitable(), cx);
+            with_toast(
+                home,
+                InviteNotice::failed("Couldn't create an invite link. Try again."),
                 cx,
             )
         }),

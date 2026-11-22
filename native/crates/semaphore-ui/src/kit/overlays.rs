@@ -3,10 +3,18 @@
 //!
 //! Every colour is a role (`sem.roles`) or a state tint over one, every size a token from
 //! `design/tokens.json` (`semaphore_design::lounge`). The overlays hold no flow logic: they report
-//! what happened (an item chosen, Escape, Tab, a press on the scrim) and the owner decides. Wiring
-//! them to the overlay stack's reducer is the behaviour hosts' job (epic #848, B8).
+//! what happened (an item chosen, Escape, Tab, a press on the scrim) and the owner decides. In a
+//! window with a behaviour host (`kit::BehaviourRoot`) each is a layer of the overlay stack
+//! (`kit/behaviour/overlay.rs`), which decides the order and returns focus.
 
-use super::{Action, Icon, ValueAction};
+use super::behaviour::list_focus::{ListFocusHost, ListKeys, ListOrientation, key_event, list_key};
+use super::behaviour::overlay::{
+    CloseReason, FocusLayer, LAYER_CONTEXT, LayerHandle, LayerKind, LayerScope, LayerSpec,
+    layer_keys, use_layer,
+};
+use super::behaviour::{self, BehaviourHost};
+use super::modal::{ModalAlign, ModalClose, ModalReason, modal};
+use super::{Action, Icon, Surface, SurfaceScope, ValueAction};
 use crate::theme::color::{alpha, blend, hsla_of};
 use crate::theme::{Sem, SemTheme};
 use gpui_kit::base;
@@ -23,7 +31,7 @@ use semaphore_design::lounge::{
     TextStyle,
 };
 use std::rc::Rc;
-use std::time::Duration;
+use std::sync::Arc;
 
 // ---------------------------------------------------------------------------------------------
 // Shared paint (lists and overlays)
@@ -47,9 +55,19 @@ pub(crate) fn state_over(sem: &Sem, under: Token, amount: f32) -> Hsla {
 /// The colour `design/tokens.json`'s shadows are an alpha of.
 const SHADOW_BLACK: Token = Token(0x000000ff);
 
-/// `shadow.overlay`: deeper in dark mode, lighter in light.
-pub(crate) fn overlay_shadow(sem: &Sem) -> Vec<BoxShadow> {
-    let s = t::SHADOW_OVERLAY;
+/// Which of `design/tokens.json`'s shadows: an island's (and the dock's) or a floating panel's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ShadowKind {
+    Island,
+    Overlay,
+}
+
+/// `shadow.island` or `shadow.overlay`: deeper in dark mode, lighter in light.
+pub(crate) fn shadow(sem: &Sem, kind: ShadowKind) -> Vec<BoxShadow> {
+    let s = match kind {
+        ShadowKind::Island => t::SHADOW_ISLAND,
+        ShadowKind::Overlay => t::SHADOW_OVERLAY,
+    };
     vec![BoxShadow {
         // `design/tokens.json` gives a shadow as an alpha of black, per mode.
         color: hsla_of(alpha(
@@ -72,7 +90,7 @@ pub(crate) fn overlay_surface<E: Styled>(element: E, sem: &Sem) -> E {
         .border(px(BORDER_HAIRLINE))
         .border_color(sem.role.hairline)
         .rounded(px(RADIUS_CARD))
-        .shadow(overlay_shadow(sem))
+        .shadow(shadow(sem, ShadowKind::Overlay))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -136,7 +154,9 @@ impl RenderOnce for Paper {
             .border_1()
             .border_color(sem.paper_border)
             .rounded(px(self.radius))
-            .when(self.elevated, |paper| paper.shadow(overlay_shadow(sem)))
+            .when(self.elevated, |paper| {
+                paper.shadow(shadow(sem, ShadowKind::Overlay))
+            })
             .children(self.children)
     }
 }
@@ -385,12 +405,30 @@ pub enum MenuCloseReason {
     Escape,
     /// Tab or Shift+Tab: a menu closes rather than letting focus leave it.
     Tab,
+    /// A press outside the menu (the window's behaviour host reports it).
+    PressOutside,
+    /// The layer the menu was opened in has closed: the owner must close it.
+    ParentClosed,
+}
+
+impl MenuCloseReason {
+    fn from_stack(reason: CloseReason) -> Self {
+        match reason {
+            CloseReason::Escape | CloseReason::Back => MenuCloseReason::Escape,
+            CloseReason::Tab => MenuCloseReason::Tab,
+            CloseReason::PressOutside | CloseReason::Scrim => MenuCloseReason::PressOutside,
+            CloseReason::ParentClosed => MenuCloseReason::ParentClosed,
+        }
+    }
 }
 
 actions!(kit_menu, [MenuTab]);
 
 /// The key context of a [`Menu`]: Tab is the menu's there, ahead of the window's focus move.
 const MENU_CONTEXT: &str = "KitMenu";
+
+/// A hosted menu's contexts: its own, and the layer's (Escape goes to the stack).
+const MENU_LAYER_CONTEXT: &str = "KitMenu KitLayer";
 
 /// Binds the menu's Tab keys once per app.
 struct MenuKeysBound;
@@ -406,14 +444,17 @@ fn bind_menu_keys(cx: &mut App) {
     }
 }
 
-/// The menu's keyboard: the shared list-focus pattern with wrapping at the ends, as the web's
-/// MUI menu list.
+/// The menu's keyboard: the list-focus host with wrapping at the ends, as the web's MUI menu list.
 struct MenuKeys {
-    list: list_focus::State,
-    handles: Vec<(String, FocusHandle)>,
+    list: ListFocusHost,
     focused_once: bool,
-    /// What had focus when the menu took it: focus goes back there on Escape or a choice.
+    /// What had focus when the menu took it: focus goes back there on Escape or a choice, when
+    /// the window has no behaviour host to do it.
     opener: Option<FocusHandle>,
+}
+
+fn menu_list(keys: &mut MenuKeys) -> &mut ListFocusHost {
+    &mut keys.list
 }
 
 const MENU_PARAMS: list_focus::Params = list_focus::Params {
@@ -422,16 +463,11 @@ const MENU_PARAMS: list_focus::Params = list_focus::Params {
     typeahead_ms: t::MOTION_TYPEAHEAD_MS,
 };
 
-impl MenuKeys {
-    fn handle(&mut self, id: &str, cx: &mut App) -> FocusHandle {
-        if let Some((_, handle)) = self.handles.iter().find(|(known, _)| known == id) {
-            return handle.clone();
-        }
-        let handle = cx.focus_handle();
-        self.handles.push((id.to_owned(), handle.clone()));
-        handle
-    }
-}
+const MENU_KEYS: ListKeys = ListKeys {
+    orientation: ListOrientation::Vertical,
+    typeahead: true,
+    allow_shift: true,
+};
 
 /// What a key does in a menu: a list-focus event, a close request, or nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -446,32 +482,10 @@ pub(crate) enum MenuKey {
 /// comes ahead of the window's focus move.
 pub(crate) fn menu_key(keystroke: &Keystroke, typing: bool) -> Option<MenuKey> {
     let m = &keystroke.modifiers;
-    if m.control || m.alt || m.platform || m.function {
-        return None;
+    if keystroke.key == "escape" && !(m.control || m.alt || m.platform || m.function) {
+        return Some(MenuKey::Close(MenuCloseReason::Escape));
     }
-    let event = match keystroke.key.as_str() {
-        "escape" => return Some(MenuKey::Close(MenuCloseReason::Escape)),
-        "up" => list_focus::Event::Up,
-        "down" => list_focus::Event::Down,
-        "home" => list_focus::Event::Home,
-        "end" => list_focus::Event::End,
-        "space" if !typing => return None,
-        _ => {
-            let typed = keystroke
-                .key_char
-                .as_deref()
-                .unwrap_or(match keystroke.key.as_str() {
-                    "space" => " ",
-                    other => other,
-                });
-            let mut chars = typed.chars();
-            match (chars.next(), chars.next()) {
-                (Some(char), None) if !char.is_control() => list_focus::Event::Type { char },
-                _ => return None,
-            }
-        }
-    };
-    Some(MenuKey::Move(event))
+    key_event(keystroke, MENU_KEYS, typing).map(MenuKey::Move)
 }
 
 /// A menu of actions on one thing, as the web's Menu: items, dividers, icons, shortcut key caps
@@ -480,16 +494,29 @@ pub(crate) fn menu_key(keystroke: &Keystroke, typing: bool) -> Option<MenuKey> {
 /// When it is drawn, focus goes to the first item that is not disabled. Up and Down move between
 /// items and wrap; Home and End jump; typing jumps by prefix; Enter or Space (or a press) chooses.
 /// Escape and Tab ask to close ([`Menu::on_close`]), and so does a choice, after the item's own
-/// action; where focus goes after is the owner's (the overlay stack's) to decide.
+/// action. In a window with a behaviour host the menu is a layer of its overlay stack: Escape, a
+/// press outside and the closing of the layer it is in come from there, and focus goes back to
+/// what had it when the menu opened once the menu is gone.
 #[derive(IntoElement)]
 pub struct Menu {
     id: ElementId,
     label: SharedString,
     entries: Vec<MenuEntry>,
     on_close: Option<ValueAction<MenuCloseReason>>,
+    inline: bool,
+    /// A child after the items, for the surface tests.
+    #[cfg(test)]
+    probe: Option<AnyElement>,
 }
 
 impl Menu {
+    /// A child after the items, for the surface tests.
+    #[cfg(test)]
+    pub(crate) fn probe(mut self, element: impl IntoElement) -> Self {
+        self.probe = Some(element.into_any_element());
+        self
+    }
+
     pub fn new(
         label: impl Into<SharedString>,
         entries: impl IntoIterator<Item = impl Into<MenuEntry>>,
@@ -499,6 +526,9 @@ impl Menu {
             label: label.into(),
             entries: entries.into_iter().map(Into::into).collect(),
             on_close: None,
+            inline: false,
+            #[cfg(test)]
+            probe: None,
         }
     }
 
@@ -515,6 +545,14 @@ impl Menu {
         self.on_close = Some(Rc::new(handler));
         self
     }
+
+    /// A menu drawn as part of another surface (a dialog's body), not floating over the page: it
+    /// is not a layer of its own. Escape is reported to [`Menu::on_close`] as today, and Tab moves
+    /// on to the surface's other controls.
+    pub fn inline(mut self) -> Self {
+        self.inline = true;
+        self
+    }
 }
 
 impl RenderOnce for Menu {
@@ -522,8 +560,7 @@ impl RenderOnce for Menu {
         bind_menu_keys(cx);
         let sem = cx.sem().clone();
         let keys = window.use_keyed_state(self.id.clone(), cx, |_, _| MenuKeys {
-            list: list_focus::initial(&MENU_PARAMS),
-            handles: Vec::new(),
+            list: ListFocusHost::new(MENU_PARAMS, MENU_KEYS),
             focused_once: false,
             opener: None,
         });
@@ -540,25 +577,43 @@ impl RenderOnce for Menu {
             })
             .collect();
         let handles: Vec<(String, FocusHandle)> = keys.update(cx, |keys, cx| {
-            if keys.list.rows != rows {
-                keys.list = list_focus::step(
-                    &keys.list,
-                    &list_focus::Event::SetRows { rows: rows.clone() },
-                    &MENU_PARAMS,
-                )
-                .0;
-            }
-            rows.iter()
-                .map(|row| (row.id.clone(), keys.handle(&row.id, cx)))
-                .collect()
+            keys.list.sync(rows.clone(), None, window, cx).handles
         });
+        let on_close = self.on_close.clone();
+        // A layer of the window's overlay stack, opened before focus moves into the menu, so the
+        // element that has focus now is its opener.
+        let layer = if self.inline {
+            None
+        } else {
+            on_close.clone().and_then(|close| {
+                let roots: Vec<FocusHandle> =
+                    handles.iter().map(|(_, handle)| handle.clone()).collect();
+                let first = first_enabled(&rows, &handles);
+                use_layer(
+                    ElementId::NamedChild(Arc::new(self.id.clone()), "layer".into()),
+                    LayerSpec {
+                        kind: LayerKind::Menu,
+                        roots,
+                        on_request_close: Rc::new(move |reason, window, cx| {
+                            close(MenuCloseReason::from_stack(reason), window, cx)
+                        }),
+                        focus_layer: first.map(|first| {
+                            Rc::new(move |window: &mut Window, cx: &mut App| {
+                                window.focus(&first, cx)
+                            }) as FocusLayer
+                        }),
+                        opener: None,
+                        fallback_opener: None,
+                    },
+                    window,
+                    cx,
+                )
+            })
+        };
+        let hosted = layer.is_some();
         // Focus starts on the first enabled item, once the items are in the frame.
         if !keys.read(cx).focused_once {
-            let first = rows
-                .iter()
-                .find(|row| !row.disabled)
-                .and_then(|row| handles.iter().find(|(id, _)| *id == row.id))
-                .map(|(_, handle)| handle.clone());
+            let first = first_enabled(&rows, &handles);
             let opener = window.focused(cx);
             keys.update(cx, |keys, _| {
                 keys.focused_once = true;
@@ -569,16 +624,16 @@ impl RenderOnce for Menu {
             }
         }
 
-        let on_close = self.on_close.clone();
         let after_select: Option<Action> = on_close.clone().map(|close| {
             let keys = keys.clone();
             Rc::new(move |window: &mut Window, cx: &mut App| {
-                return_focus(&keys, window, cx);
+                if !hosted {
+                    return_focus(&keys, window, cx);
+                }
                 close(MenuCloseReason::Selected, window, cx)
             }) as Action
         });
         let key_state = keys.clone();
-        let key_handles = handles.clone();
         let hairline = sem.role.hairline;
         let items = self.entries.into_iter().map(move |entry| match entry {
             MenuEntry::Item(mut item) => {
@@ -605,14 +660,27 @@ impl RenderOnce for Menu {
             // Four controls wide at least, so a short menu is not a sliver.
             .min_w(px(4. * CONTROL_MD))
             .p(px(SPACE_XS))
+            .relative()
             .flex()
             .flex_col()
-            .key_context(MENU_CONTEXT)
+            .key_context(if hosted {
+                MENU_LAYER_CONTEXT
+            } else {
+                MENU_CONTEXT
+            })
+            .map(|list| if hosted { layer_keys(list, cx) } else { list })
             .on_action({
                 let on_close = on_close.clone();
                 // Tab is reported, then moves focus as anywhere else: a menu that is a dialog's
-                // body stays open and Tab reaches the dialog's buttons.
+                // body stays open and Tab reaches the dialog's buttons. On the stack, a Tab that
+                // closes the menu is consumed; focus goes back to the opener as it closes.
                 move |_: &MenuTab, window, cx| {
+                    if hosted && let Some(host) = BehaviourHost::of(window, cx) {
+                        if !behaviour::overlay::tab(&host, window, cx) {
+                            cx.propagate();
+                        }
+                        return;
+                    }
                     if let Some(close) = &on_close {
                         close(MenuCloseReason::Tab, window, cx);
                     }
@@ -620,102 +688,66 @@ impl RenderOnce for Menu {
                 }
             })
             .on_key_down(move |event, window, cx| {
-                let typing = !key_state.read(cx).list.typeahead.is_empty();
+                let typing = !key_state.read(cx).list.state().typeahead.is_empty();
                 let Some(key) = menu_key(&event.keystroke, typing) else {
                     return;
                 };
                 match key {
                     // Escape is the menu's only when it has an owner to ask; otherwise it goes on
-                    // to what holds the menu (a dialog closes).
+                    // to what holds the menu (a dialog closes). On the stack it goes on to the
+                    // window, which asks the topmost layer.
                     MenuKey::Close(reason) => {
-                        if let Some(close) = &on_close {
+                        if !hosted && let Some(close) = &on_close {
                             cx.stop_propagation();
                             return_focus(&key_state, window, cx);
                             close(reason, window, cx);
                         }
                     }
                     MenuKey::Move(event) => {
-                        cx.stop_propagation();
-                        move_menu_focus(&key_state, &key_handles, event, window, cx)
+                        if list_key(&key_state, menu_list, event, window, cx).is_some() {
+                            cx.stop_propagation();
+                        }
                     }
                 }
             })
-            .children(items);
-        overlay_surface(list, &sem)
+            .children(items)
+            .children(layer.as_ref().map(LayerHandle::panel_probe));
+        #[cfg(test)]
+        let list = list.children(self.probe);
+        let menu = SurfaceScope::new(Surface::Surface, overlay_surface(list, &sem));
+        match layer {
+            Some(layer) => LayerScope::new(layer.id, menu).into_any_element(),
+            None => menu.into_any_element(),
+        }
     }
 }
 
+/// The focus handle of the first item that is not disabled.
+fn first_enabled(
+    rows: &[list_focus::Row],
+    handles: &[(String, FocusHandle)],
+) -> Option<FocusHandle> {
+    rows.iter()
+        .find(|row| !row.disabled)
+        .and_then(|row| handles.iter().find(|(id, _)| *id == row.id))
+        .map(|(_, handle)| handle.clone())
+}
+
 /// Focus back to what had it when the menu opened (the menu's button), while it is still on an
-/// item: the owner may move it elsewhere in its close handler.
+/// item: the owner may move it elsewhere in its close handler. Only without a behaviour host:
+/// the overlay stack does it otherwise.
 fn return_focus(keys: &Entity<MenuKeys>, window: &mut Window, cx: &mut App) {
     let keys = keys.read(cx);
-    let inside = keys
-        .handles
-        .iter()
-        .any(|(_, handle)| handle.is_focused(window));
+    let inside = window
+        .focused(cx)
+        .is_some_and(|focused| keys.list.has_handle(&focused));
     if inside && let Some(opener) = keys.opener.clone() {
         window.focus(&opener, cx);
     }
 }
 
-/// Runs one list-focus event from the item that has focus, then focuses the result. A typeahead
-/// timer comes back as `TimerFired`.
-fn move_menu_focus(
-    keys: &Entity<MenuKeys>,
-    handles: &[(String, FocusHandle)],
-    event: list_focus::Event,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    let focused = handles
-        .iter()
-        .find(|(_, handle)| handle.is_focused(window))
-        .map(|(id, _)| id.clone());
-    let (target, timers) = keys.update(cx, |keys, _| {
-        let mut state = keys.list.clone();
-        if let Some(id) = focused {
-            state = list_focus::step(&state, &list_focus::Event::FocusRow { id }, &MENU_PARAMS).0;
-        } else {
-            state = list_focus::step(&state, &list_focus::Event::FocusIn, &MENU_PARAMS).0;
-        }
-        let (state, effects) = list_focus::step(&state, &event, &MENU_PARAMS);
-        keys.list = state;
-        (keys.list.focused.clone(), effects)
-    });
-    for effect in timers {
-        if let list_focus::Effect::StartTimer { token, ms } = effect {
-            let keys = keys.downgrade();
-            window
-                .spawn(cx, async move |cx| {
-                    cx.background_executor()
-                        .timer(Duration::from_millis(ms.into()))
-                        .await;
-                    keys.update(cx, |keys, _| {
-                        keys.list = list_focus::step(
-                            &keys.list,
-                            &list_focus::Event::TimerFired { token },
-                            &MENU_PARAMS,
-                        )
-                        .0;
-                    })
-                    .ok();
-                })
-                .detach();
-        }
-    }
-    if let Some(target) = target
-        && let Some((_, handle)) = handles.iter().find(|(id, _)| *id == target)
-    {
-        window.focus(handle, cx);
-    }
-}
-
 // ---------------------------------------------------------------------------------------------
 // Popover
-
-/// gpui-kit's positioning, dismissal (Escape, a press outside) and focus restore. Give it a
-/// [`PopoverPanel`] as content and a [`Placement`] with [`PopoverExt::placement`].
-pub use gpui_kit::base::Popover;
 
 /// Which side of the anchor a Menu or Popover opens on, and which edge it lines up with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -750,20 +782,258 @@ impl Placement {
 /// `ANCHOR_GAP`.
 pub const ANCHOR_GAP: f32 = SPACE_XS;
 
-pub trait PopoverExt {
-    /// Places the panel on a side of its trigger, `ANCHOR_GAP` away.
-    fn placement(self, placement: Placement) -> Self;
-    /// Any element as the trigger (a kit Button), for gpui-kit's, which wants a `Selectable`.
-    fn trigger_element(self, trigger: impl IntoElement + 'static) -> Self;
+/// A panel that opens from a trigger and floats beside it, as the web's Popover: a non-modal
+/// dialog. Give it a [`PopoverPanel`] as content and a [`Placement`]. A press on the trigger
+/// opens and closes it; when it opens, focus moves into it.
+///
+/// It is the kit's own, on gpui-kit's `Popup` positioner (anchored and deferred). In a window
+/// with a behaviour host it is a layer of the overlay stack: Escape, a press outside (a press on
+/// the trigger is inside) and the closing of the layer it is in close it, and focus goes back to
+/// what had it when it opened. Without a host it closes on Escape and a press outside itself.
+#[derive(IntoElement)]
+pub struct Popover {
+    id: ElementId,
+    placement: Placement,
+    default_open: bool,
+    open: Option<bool>,
+    on_open_change: Option<ValueAction<bool>>,
+    trigger: Option<AnyElement>,
+    content: Option<PopoverContent>,
 }
 
-impl PopoverExt for Popover {
-    fn placement(self, placement: Placement) -> Self {
-        self.anchor(placement.anchor()).offset(px(ANCHOR_GAP))
+/// What a popover draws while open.
+type PopoverContent = Box<dyn FnOnce(&mut Window, &mut App) -> AnyElement>;
+
+/// An open or closed popover's own state.
+struct PopoverState {
+    open: bool,
+    /// The panel's focus: taken when the popover opens.
+    focus: FocusHandle,
+    /// Focus was moved into this opening.
+    placed: bool,
+    /// What had focus as it opened, for a window without a behaviour host.
+    opener: Option<FocusHandle>,
+    /// The owner passes `open`: the popover only asks to open or close.
+    controlled: bool,
+}
+
+impl Popover {
+    pub fn new(id: impl Into<ElementId>) -> Self {
+        Self {
+            id: id.into(),
+            placement: Placement::default(),
+            default_open: false,
+            open: None,
+            on_open_change: None,
+            trigger: None,
+            content: None,
+        }
     }
 
-    fn trigger_element(self, trigger: impl IntoElement + 'static) -> Self {
-        self.trigger_with(move |_, _, _| trigger.into_any_element())
+    /// Places the panel on a side of its trigger, `ANCHOR_GAP` away.
+    pub fn placement(mut self, placement: Placement) -> Self {
+        self.placement = placement;
+        self
+    }
+
+    /// Opens on its first frame (a story; a screen that opens it at once).
+    pub fn default_open(mut self, open: bool) -> Self {
+        self.default_open = open;
+        self
+    }
+
+    /// Makes the popover controlled: it shows while `open`, and asks [`Popover::on_open_change`].
+    pub fn open(mut self, open: bool) -> Self {
+        self.open = Some(open);
+        self
+    }
+
+    /// Called when the popover opens or closes (a press on the trigger, Escape, a press outside).
+    pub fn on_open_change(
+        mut self,
+        handler: impl Fn(bool, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_open_change = Some(Rc::new(handler));
+        self
+    }
+
+    /// The element it opens from (a kit Button).
+    pub fn trigger_element(mut self, trigger: impl IntoElement) -> Self {
+        self.trigger = Some(trigger.into_any_element());
+        self
+    }
+
+    /// What it shows while open: a [`PopoverPanel`].
+    pub fn content<E: IntoElement>(
+        mut self,
+        content: impl FnOnce(&mut Window, &mut App) -> E + 'static,
+    ) -> Self {
+        self.content = Some(Box::new(move |window, cx| {
+            content(window, cx).into_any_element()
+        }));
+        self
+    }
+}
+
+/// Opens or closes `state`, telling the owner; on a close without a host, focus that was inside
+/// goes back to the opener.
+fn set_popover_open(
+    state: &Entity<PopoverState>,
+    open: bool,
+    on_change: &Option<ValueAction<bool>>,
+    hosted: bool,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    // A controlled popover only asks: it opens or closes when its owner changes `open` (the
+    // owner may refuse, and focus stays where it is).
+    if state.read(cx).controlled {
+        if state.read(cx).open != open
+            && let Some(on_change) = on_change
+        {
+            on_change(open, window, cx);
+        }
+        return;
+    }
+    let (was, focus, opener) = state.update(cx, |state, _| {
+        let was = state.open;
+        state.open = open;
+        if !open {
+            state.placed = false;
+        }
+        (was, state.focus.clone(), state.opener.take())
+    });
+    if was == open {
+        return;
+    }
+    if !open
+        && !hosted
+        && focus.contains_focused(window, cx)
+        && let Some(opener) = opener
+    {
+        window.focus(&opener, cx);
+    }
+    if let Some(on_change) = on_change {
+        on_change(open, window, cx);
+    }
+    window.refresh();
+}
+
+impl RenderOnce for Popover {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let default_open = self.default_open;
+        let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| PopoverState {
+            open: default_open,
+            focus: cx.focus_handle(),
+            placed: false,
+            opener: None,
+            controlled: false,
+        });
+        let controlled = self.open;
+        state.update(cx, |state, _| {
+            state.controlled = controlled.is_some();
+            // Only a change of the prop opens or closes a controlled popover.
+            if let Some(open) = controlled
+                && state.open != open
+            {
+                state.open = open;
+                state.placed = false;
+            }
+        });
+        let (open, focus) = {
+            let state = state.read(cx);
+            (state.open, state.focus.clone())
+        };
+        let on_change = self.on_open_change.clone();
+        let layer = if open {
+            let (state, on_change) = (state.clone(), on_change.clone());
+            use_layer(
+                ElementId::NamedChild(Arc::new(self.id.clone()), "layer".into()),
+                LayerSpec {
+                    kind: LayerKind::Popover,
+                    roots: vec![focus.clone()],
+                    on_request_close: Rc::new(move |_, window, cx| {
+                        set_popover_open(&state, false, &on_change, true, window, cx)
+                    }),
+                    focus_layer: Some({
+                        let focus = focus.clone();
+                        Rc::new(move |window: &mut Window, cx: &mut App| window.focus(&focus, cx))
+                            as FocusLayer
+                    }),
+                    opener: None,
+                    fallback_opener: None,
+                },
+                window,
+                cx,
+            )
+        } else {
+            None
+        };
+        let hosted = layer.is_some();
+        if open && !state.read(cx).placed {
+            let opener = window.focused(cx);
+            state.update(cx, |state, _| {
+                state.placed = true;
+                state.opener = opener;
+            });
+            let focus = focus.clone();
+            // After this frame is drawn, when the panel is in it.
+            window.defer(cx, move |window, cx| window.focus(&focus, cx));
+        }
+        let trigger = div()
+            .relative()
+            .children(self.trigger)
+            .children(layer.as_ref().map(LayerHandle::anchor_probe));
+        let popup = base::Popup::new(self.id, trigger)
+            .anchor(self.placement.anchor())
+            .offset(px(ANCHOR_GAP))
+            // On the click (the press coming up), after the stack has seen the press: a press on
+            // this trigger while another popover is open closes that one first (rule 7).
+            .on_click({
+                let (state, on_change) = (state.clone(), on_change.clone());
+                move |_, window, cx| {
+                    cx.stop_propagation();
+                    set_popover_open(&state, !open, &on_change, hosted, window, cx);
+                }
+            });
+        if !open {
+            return popup.into_any_element();
+        }
+        let content = self
+            .content
+            .map(|content| content(window, cx))
+            .unwrap_or_else(|| div().into_any_element());
+        let panel = div()
+            .id("popover-content")
+            .when(hosted, |panel| {
+                layer_keys(panel.key_context(LAYER_CONTEXT), cx)
+            })
+            .relative()
+            .occlude()
+            .tab_group()
+            .track_focus(&focus)
+            .child(content)
+            .children(layer.as_ref().map(LayerHandle::panel_probe))
+            .when(!hosted, |panel| {
+                let (escape, outside) = (state.clone(), state.clone());
+                let (on_escape, on_outside) = (on_change.clone(), on_change.clone());
+                panel
+                    .on_key_down(move |event, window, cx| {
+                        if event.keystroke.key == "escape" && !event.keystroke.modifiers.modified()
+                        {
+                            cx.stop_propagation();
+                            set_popover_open(&escape, false, &on_escape, false, window, cx);
+                        }
+                    })
+                    .on_mouse_down_out(move |_, window, cx| {
+                        set_popover_open(&outside, false, &on_outside, false, window, cx);
+                    })
+            });
+        let panel = match &layer {
+            Some(layer) => LayerScope::new(layer.id.clone(), panel).into_any_element(),
+            None => panel.into_any_element(),
+        };
+        popup.content(panel).into_any_element()
     }
 }
 
@@ -821,17 +1091,21 @@ impl RenderOnce for PopoverPanel {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let sem = cx.sem();
         let most = window.viewport_size().width - px(2. * LAYOUT_GUTTER);
-        overlay_surface(
-            div()
-                .id("popover-panel")
-                .test_support()
-                .role(Role::Dialog)
-                .aria_label(self.label)
-                .max_w(most)
-                .p(px(self.padding.px())),
-            sem,
+        // An overlay panel is the surface, whatever it was opened from (a card).
+        SurfaceScope::new(
+            Surface::Surface,
+            overlay_surface(
+                div()
+                    .id("popover-panel")
+                    .test_support()
+                    .role(Role::Dialog)
+                    .aria_label(self.label)
+                    .max_w(most)
+                    .p(px(self.padding.px())),
+                sem,
+            )
+            .children(self.children),
         )
-        .children(self.children)
     }
 }
 
@@ -846,6 +1120,9 @@ pub enum DialogCloseReason {
     /// A left press that started and ended on the dimmed page: a drag out of the panel does not
     /// count.
     Scrim,
+    /// The layer the dialog was opened in has closed (the window's overlay stack): the owner must
+    /// close it.
+    ParentClosed,
 }
 
 /// The dialog's width: `layout.dialogSm` (400) or `layout.dialogMd` (560).
@@ -865,15 +1142,6 @@ impl DialogSize {
     }
 }
 
-/// Where the dialog keeps its first focus: the host's handle, and whether focus was placed.
-struct DialogFocus {
-    host: FocusHandle,
-    actions: FocusHandle,
-    placed: bool,
-    /// A left press went down on the scrim and has not come up yet.
-    scrim_down: bool,
-}
-
 /// A modal dialog on gpui-kit's focus trap, Escape and backdrop handling, as the web's Dialog: the
 /// `surface` role, `radius.island`, the overlay shadow, a title, an optional description, the
 /// body, and the actions (safe action first). Focus starts on the first action, unless something
@@ -882,6 +1150,7 @@ struct DialogFocus {
 /// Below the phone breakpoint the actions stack, one to a row, safe action on top.
 #[derive(IntoElement)]
 pub struct Dialog {
+    id: ElementId,
     title: SharedString,
     description: Option<SharedString>,
     body: Vec<AnyElement>,
@@ -891,8 +1160,10 @@ pub struct Dialog {
 }
 
 impl Dialog {
-    pub fn new(title: impl Into<SharedString>) -> Self {
+    /// `id` keys the dialog's focus state: unique among the dialogs a screen can show at once.
+    pub fn new(id: impl Into<ElementId>, title: impl Into<SharedString>) -> Self {
         Self {
+            id: id.into(),
             title: title.into(),
             description: None,
             body: Vec::new(),
@@ -946,66 +1217,46 @@ impl Dialog {
 
 impl RenderOnce for Dialog {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let on_close = self.on_close.clone();
         let sem = cx.sem().clone();
         let phone = window.viewport_size().width < px(t::BREAKPOINT_PHONE);
-        let focus = window.use_keyed_state(
-            ElementId::Name(format!("kit-dialog-{}", self.title).into()),
-            cx,
-            |_, cx| DialogFocus {
-                host: cx.focus_handle(),
-                actions: cx.focus_handle(),
-                placed: false,
-                scrim_down: false,
-            },
+        let on_close: Option<ModalClose> = self.on_close.clone().map(|close| {
+            Rc::new(
+                move |reason: ModalReason, window: &mut Window, cx: &mut App| {
+                    let reason = match reason {
+                        ModalReason::Escape => DialogCloseReason::Escape,
+                        ModalReason::Scrim => DialogCloseReason::Scrim,
+                        ModalReason::ParentClosed => DialogCloseReason::ParentClosed,
+                    };
+                    close(reason, window, cx)
+                },
+            ) as ModalClose
+        });
+        let place_focus = !self.actions.is_empty();
+        let (title, description, body, actions, width) = (
+            self.title,
+            self.description,
+            self.body,
+            self.actions,
+            self.width,
         );
-        let (host, actions_focus, placed) = {
-            let focus = focus.read(cx);
-            (focus.host.clone(), focus.actions.clone(), focus.placed)
-        };
-        if !placed && !self.actions.is_empty() {
-            focus.update(cx, |focus, _| focus.placed = true);
-            let (host, actions_focus) = (host.clone(), actions_focus.clone());
-            // After this frame is drawn, when its Tab order exists.
-            window.defer(cx, move |window, cx| {
-                // The trap focuses its own host; a control inside that took focus keeps it.
-                if host.is_focused(window) || !host.contains_focused(window, cx) {
-                    window.focus(&actions_focus, cx);
-                    window.focus_next(cx);
-                }
-            });
-        }
-        let titled = self.title.clone();
-        let escape = on_close.clone();
-        let scrim = on_close.clone();
-        let popup = div()
-            .absolute()
-            .inset_0()
-            // Escape is the dialog's own, in the bubble phase, so a focused control that uses it
-            // (a field's IME, an open select list) has it first. gpui-kit's dialog keys are off:
-            // they would make Enter close the dialog instead of pressing the focused button.
-            .on_key_down(move |event, window, cx| {
-                if event.keystroke.key == "escape" && !event.keystroke.modifiers.modified() {
-                    cx.stop_propagation();
-                    if let Some(close) = &escape {
-                        close(DialogCloseReason::Escape, window, cx);
-                    }
-                }
-            })
-            .flex()
-            .items_center()
-            .justify_center()
-            .p(px(LAYOUT_GUTTER))
-            .child(
+        modal(
+            self.id,
+            LayerKind::Dialog,
+            ModalAlign::Centre,
+            place_focus,
+            on_close,
+            window,
+            cx,
+            move |first| {
                 div()
                     .id("dialog-panel")
                     .test_support()
-                    .aria_label(titled)
-                    .when_some(self.description.clone(), |panel, description| {
+                    .aria_label(title.clone())
+                    .when_some(description.clone(), |panel, description| {
                         panel.aria_description(description)
                     })
                     .occlude()
-                    .w(px(self.width))
+                    .w(px(width))
                     .max_w_full()
                     .max_h_full()
                     .overflow_y_scroll()
@@ -1017,24 +1268,24 @@ impl RenderOnce for Dialog {
                     .border(px(BORDER_HAIRLINE))
                     .border_color(sem.role.hairline)
                     .rounded(px(RADIUS_ISLAND))
-                    .shadow(overlay_shadow(&sem))
+                    .shadow(shadow(&sem, ShadowKind::Overlay))
                     .child(
-                        type_text(t::TEXT_TITLE, self.title)
+                        type_text(t::TEXT_TITLE, title)
                             .id("dialog-title")
                             .role(Role::Heading),
                     )
-                    .children(self.description.map(|description| {
+                    .children(description.map(|description| {
                         type_text(t::TEXT_BODY, description)
                             .mt(px(SPACE_SM))
                             .text_color(sem.role.text_secondary)
                     }))
-                    .when(!self.body.is_empty(), |panel| {
-                        panel.child(div().mt(px(SPACE_LG)).children(self.body))
+                    .when(!body.is_empty(), |panel| {
+                        panel.child(div().mt(px(SPACE_LG)).children(body))
                     })
-                    .when(!self.actions.is_empty(), |panel| {
+                    .when(!actions.is_empty(), |panel| {
                         panel.child(
                             div()
-                                .track_focus(&actions_focus)
+                                .track_focus(first)
                                 .tab_group()
                                 .mt(px(SPACE_XL))
                                 .flex()
@@ -1046,55 +1297,12 @@ impl RenderOnce for Dialog {
                                         row.flex_row().flex_wrap().justify_end().items_center()
                                     }
                                 })
-                                .children(self.actions),
+                                .children(actions),
                         )
-                    }),
-            );
-        base::Dialog::new(cx)
-            .focus_handle(host)
-            .close_on_escape(false)
-            .open(true)
-            .on_open_change(move |open, reason, window, cx| {
-                let reason = match reason {
-                    base::DialogChangeReason::BackdropPress => DialogCloseReason::Scrim,
-                    base::DialogChangeReason::Cancel => DialogCloseReason::Escape,
-                    _ => return,
-                };
-                if !open && let Some(on_close) = &on_close {
-                    on_close(reason, window, cx);
-                }
-            })
-            // The kit's own scrim takes the press: gpui-kit listens on a wrapper the occluding
-            // scrim hides from the hit test. A left press that starts and ends on the dimmed
-            // page asks to close.
-            .backdrop(
-                div()
-                    .id("dialog-scrim")
-                    .test_support()
-                    .absolute()
-                    .inset_0()
-                    .occlude()
-                    .bg(sem.role.scrim)
-                    .on_mouse_down(MouseButton::Left, {
-                        let focus = focus.clone();
-                        move |_, _, cx| {
-                            cx.stop_propagation();
-                            focus.update(cx, |focus, _| focus.scrim_down = true);
-                        }
                     })
-                    .on_mouse_up(MouseButton::Left, {
-                        let focus = focus.clone();
-                        move |_, window, cx| {
-                            let down = focus.update(cx, |focus, _| {
-                                std::mem::replace(&mut focus.scrim_down, false)
-                            });
-                            if down && let Some(close) = &scrim {
-                                close(DialogCloseReason::Scrim, window, cx);
-                            }
-                        }
-                    }),
-            )
-            .popup(popup)
+                    .into_any_element()
+            },
+        )
     }
 }
 

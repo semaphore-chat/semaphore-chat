@@ -271,7 +271,7 @@ impl ParticipantMenu {
                             .text_color(sem.text_secondary),
                     ),
             )
-            .child(Slider::new(slider, aria))
+            .child(Slider::new(slider, aria).label_hidden())
     }
 
     fn menu(&self, cx: &mut Context<Self>) -> impl IntoElement {

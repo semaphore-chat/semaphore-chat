@@ -11,8 +11,8 @@ use super::rules::{
     confirms_name, failure, js_len, needs, running, state_of,
 };
 use crate::kit::{
-    Alert, Button, ButtonSize, ButtonTone, Dialog, Severity, TextField, Variant, floating_label,
-    notched, spacing, text, text_state,
+    Alert, Button, ButtonSize, Dialog, Severity, TextField, Variant, floating_label, notched,
+    spacing, text, text_state,
 };
 use crate::panel::common::design_icon;
 use crate::theme::SemTheme;
@@ -402,8 +402,8 @@ impl OverviewTab {
                     SharedString::from(format!("community-{key}-change")),
                     "Change",
                 )
-                .outlined()
-                .size(ButtonSize::Small)
+                .soft()
+                .size(ButtonSize::Sm)
                 .start_icon(DesignIcon::Upload)
                 .disabled(!editable)
                 .on_click(
@@ -416,7 +416,8 @@ impl OverviewTab {
                         SharedString::from(format!("community-{key}-remove")),
                         "Remove",
                     )
-                    .size(ButtonSize::Small)
+                    .quiet_danger()
+                    .size(ButtonSize::Sm)
                     .start_icon(DesignIcon::Delete)
                     .disabled(!editable)
                     .on_click(cx.listener(move |tab, _, _, cx| tab.remove(slot, cx))),
@@ -638,7 +639,7 @@ impl OverviewTab {
         let cancel = cx.weak_entity();
         let close = cx.weak_entity();
         let confirm = cx.weak_entity();
-        Dialog::new("Delete Community")
+        Dialog::new("delete-community-dialog", "Delete Community")
             .width(480.)
             .body(
                 div()
@@ -664,6 +665,7 @@ impl OverviewTab {
             )
             .action(
                 Button::new("community-delete-cancel", "Cancel")
+                    .ghost()
                     .disabled(busy)
                     .on_click(move |_, _, cx| {
                         cancel
@@ -676,8 +678,7 @@ impl OverviewTab {
             )
             .action(
                 Button::new("community-delete-confirm", "Delete Community")
-                    .contained()
-                    .tone(ButtonTone::Danger)
+                    .danger()
                     .disabled(!matched)
                     .loading(busy)
                     .on_click(move |_, _, cx| {
@@ -759,7 +760,7 @@ impl OverviewTab {
             "Update Community"
         };
         let save = Button::new("community-save", save_label)
-            .contained()
+            .primary()
             .disabled(
                 !editable
                     || !dirty
@@ -813,8 +814,7 @@ impl OverviewTab {
         );
         let delete_locked = (!self.caps.delete_community).then(|| needs("Delete community"));
         let delete = Button::new("community-delete", "Delete Community")
-            .contained()
-            .tone(ButtonTone::Danger)
+            .danger()
             .start_icon(DesignIcon::DeleteOutline)
             .disabled(delete_locked.is_some() || self.busy())
             .on_click(cx.listener(|tab, _, window, cx| {

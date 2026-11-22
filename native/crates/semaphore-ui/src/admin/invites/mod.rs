@@ -22,6 +22,7 @@ use crate::community_settings::rules::{
     ExpiryPreset, InviteStatus, Outcome, Pending, act, date_label, failure, invite_status,
     invite_url, needs, parse_max_uses, running, uses_label,
 };
+use crate::kit::IconButtonVariant;
 use crate::kit::{
     Alert, Button, ButtonSize, Checkbox, Chip, Dialog, Severity, TextField, Variant, spacing, text,
     text_state,
@@ -415,7 +416,7 @@ impl InstanceInvitesPage {
             },
             None,
             false,
-            Some(sem.primary),
+            Some(IconButtonVariant::Soft),
             cx.listener(move |page, _, _, cx| page.copy(&copy_code, cx)),
         );
         let delete = action_icon(
@@ -424,7 +425,7 @@ impl InstanceInvitesPage {
             format!("Delete invite {code}"),
             (!self.caps.invites_delete).then(|| needs("Delete instance invites")),
             deleting,
-            Some(sem.error),
+            Some(IconButtonVariant::Danger),
             cx.listener(move |page, _, _, cx| {
                 page.deleting = Some(delete_code.clone());
                 cx.notify();
@@ -513,16 +514,17 @@ impl InstanceInvitesPage {
                         SharedString::from(format!("admin-invites-expiry-{}", preset.key())),
                         preset.label(),
                     )
-                    .size(ButtonSize::Small)
+                    .text()
+                    .size(ButtonSize::Sm)
                     .disabled(busy)
                     .on_click(cx.listener(move |page, _, _, cx| {
                         page.expiry = preset;
                         cx.notify();
                     }));
                     if preset == self.expiry {
-                        button.contained()
+                        button.primary()
                     } else {
-                        button.outlined()
+                        button.soft()
                     }
                 }));
         let expires = match self.expiry.valid_until(self.clock.now_ms()) {
@@ -555,7 +557,7 @@ impl InstanceInvitesPage {
         let cancel = cx.weak_entity();
         let close = cx.weak_entity();
         let submit = cx.weak_entity();
-        Dialog::new("Create Instance Invite")
+        Dialog::new("create-instance-invite-dialog", "Create Instance Invite")
             .width(480.)
             .body(
                 div()
@@ -624,6 +626,7 @@ impl InstanceInvitesPage {
             )
             .action(
                 Button::new("admin-invites-create-cancel", "Cancel")
+                    .ghost()
                     .disabled(busy)
                     .on_click(move |_, _, cx| {
                         cancel
@@ -636,7 +639,7 @@ impl InstanceInvitesPage {
             )
             .action(
                 Button::new("admin-invites-create-submit", "Create Invite")
-                    .contained()
+                    .primary()
                     .loading(busy)
                     .disabled(uses_error.is_some())
                     .on_click(move |_, _, cx| {
@@ -693,7 +696,7 @@ impl Render for InstanceInvitesPage {
         let narrow = phone(window);
         let create = locked_button(
             Button::new("admin-invites-create", "Create Invite")
-                .contained()
+                .primary()
                 .start_icon(DesignIcon::Add)
                 .on_click(cx.listener(|page, _, window, cx| page.open_form(window, cx))),
             "admin-invites-create-locked",

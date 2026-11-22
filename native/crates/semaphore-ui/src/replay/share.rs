@@ -230,7 +230,7 @@ impl Render for ShareClipDialog {
                 cx,
             )),
         };
-        Dialog::new("Share Clip")
+        Dialog::new("share-clip-dialog", "Share Clip")
             .width(width)
             .on_close({
                 let close = close.clone();
@@ -265,12 +265,13 @@ impl Render for ShareClipDialog {
             )
             .action(
                 Button::new("share-cancel", "Cancel")
+                    .ghost()
                     .disabled(self.busy)
                     .on_click(move |_, _, cx| close(cx)),
             )
             .action(
                 Button::new("share-go", "Share")
-                    .contained()
+                    .primary()
                     .loading(self.busy)
                     .on_click(move |_, _, cx| {
                         view.update(cx, |dialog, cx| dialog.share(cx)).ok();

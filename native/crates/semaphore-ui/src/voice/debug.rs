@@ -253,8 +253,8 @@ pub fn voice_debug_panel(
                 .into_any_element()
         } else {
             Button::new("voice-debug-copy", "Copy report")
-                .outlined()
-                .size(ButtonSize::Small)
+                .soft()
+                .size(ButtonSize::Sm)
                 .start_icon(IconName::ContentCopy)
                 .on_click(move |_, window, cx| copy(window, cx))
                 .into_any_element()

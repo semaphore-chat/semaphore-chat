@@ -14,6 +14,7 @@ use super::rules::{
     Outcome, Pending, actions_preview, delete_block, edit_block, failure, move_block, moved_order,
     needs, permissions_count, role_action, running,
 };
+use crate::kit::IconButtonVariant;
 use crate::kit::{Alert, Button, Chip, Dialog, Severity, Spinner, Variant, spacing, text};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
@@ -243,13 +244,13 @@ impl RolesPanel {
     fn header_actions(&self, narrow: bool, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let resetting = running(&self.view.op, &reset());
         let reset_button = Button::new("roles-reset", "Reset Defaults")
-            .outlined()
+            .soft()
             .start_icon(DesignIcon::RestartAlt)
             .loading(resetting)
             .disabled(resetting)
             .on_click(cx.listener(|panel, _, _, cx| panel.ask_reset(cx)));
         let create = Button::new("roles-create", "Create Role")
-            .contained()
+            .primary()
             .start_icon(DesignIcon::PersonAdd)
             .on_click(cx.listener(|panel, _, window, cx| panel.open_create(window, cx)));
         vec![
@@ -372,7 +373,7 @@ impl RolesPanel {
                 DesignIcon::DeleteOutline,
                 format!("Delete {}", role.name),
                 delete_block(role),
-                Some(sem.error),
+                Some(IconButtonVariant::Danger),
                 cx.listener(move |panel, _, _, cx| panel.ask_delete(&delete_id, cx)),
             )
         };
@@ -401,7 +402,7 @@ impl RolesPanel {
                     format!("View {} (read-only)", role.name)
                 },
                 None,
-                Some(sem.primary),
+                Some(IconButtonVariant::Soft),
                 cx.listener(move |panel, _, window, cx| panel.open_edit(&edit_id, window, cx)),
             ))
             .child(delete_button);
@@ -620,7 +621,7 @@ impl RolesPanel {
         let close = cx.weak_entity();
         let close_button = cx.weak_entity();
         Some(
-            Dialog::new(format!("Role Members: {name}"))
+            Dialog::new("role-members-dialog", format!("Role Members: {name}"))
                 .body(
                     div()
                         .id("role-members-body")
@@ -628,13 +629,13 @@ impl RolesPanel {
                         .overflow_y_scroll()
                         .child(body),
                 )
-                .action(
-                    Button::new("role-members-close", "Close").on_click(move |_, _, cx| {
+                .action(Button::new("role-members-close", "Close").ghost().on_click(
+                    move |_, _, cx| {
                         close_button
                             .update(cx, |panel, cx| panel.close_members(cx))
                             .ok();
-                    }),
-                )
+                    },
+                ))
                 .on_close(move |_, cx| {
                     close.update(cx, |panel, cx| panel.close_members(cx)).ok();
                 }),

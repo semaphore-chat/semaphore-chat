@@ -6,7 +6,7 @@ use super::picker::{Picker, confirmed};
 use super::trim::{TrimEvent, TrimTimeline};
 use super::{CaptureEvent, CaptureTarget, DestinationKind};
 use crate::kit::{Alert, Button, Dialog, Radio, Severity, Variant, text};
-use crate::panel::common::{design_icon, is_phone};
+use crate::panel::common::is_phone;
 use crate::theme::SemTheme as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -274,40 +274,24 @@ impl CaptureReplayDialog {
         target: CaptureTarget,
         title: &'static str,
         caption: &'static str,
-        icon: IconName,
         cx: &mut Context<Self>,
     ) -> Div {
-        let sem = cx.sem();
-        div()
-            .flex()
-            .flex_col()
-            .child(
-                Radio::new(
-                    SharedString::from(format!("capture-target-{}", target.key())),
-                    title,
-                    self.target == target,
-                )
-                .disabled(self.busy)
-                .on_select({
-                    let view = cx.weak_entity();
-                    move |_, cx| {
-                        view.update(cx, |dialog, cx| dialog.set_target(target, cx))
-                            .ok();
-                    }
-                }),
+        div().flex().flex_col().child(
+            Radio::new(
+                SharedString::from(format!("capture-target-{}", target.key())),
+                title,
+                self.target == target,
             )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .ml(px(42.))
-                    .mt(px(-10.))
-                    .mb(px(4.))
-                    .text_color(sem.text_secondary)
-                    .child(design_icon(icon, 14., sem.text_secondary).flex_shrink_0())
-                    .child(text(Variant::Caption, caption).flex_1().min_w_0()),
-            )
+            .description(caption)
+            .disabled(self.busy)
+            .on_select({
+                let view = cx.weak_entity();
+                move |_, cx| {
+                    view.update(cx, |dialog, cx| dialog.set_target(target, cx))
+                        .ok();
+                }
+            }),
+        )
     }
 
     fn status_line(&self, cx: &App) -> Option<AnyElement> {
@@ -388,6 +372,7 @@ impl Render for CaptureReplayDialog {
                 "Custom Trim"
             },
         )
+        .text()
         .start_icon(IconName::ContentCut)
         .full_width()
         .disabled(self.busy)
@@ -396,9 +381,9 @@ impl Render for CaptureReplayDialog {
             dialog.set_trim_on(on, cx);
         }));
         let trim_button = if self.trim_on {
-            trim_button.contained()
+            trim_button.primary()
         } else {
-            trim_button.outlined()
+            trim_button.soft()
         };
         let picker = match self.target {
             CaptureTarget::Channel => Some(self.channels.field(
@@ -474,28 +459,24 @@ impl Render for CaptureReplayDialog {
                 CaptureTarget::Library,
                 "Save to my library",
                 "Access later from your profile",
-                IconName::VideoLibrary,
                 cx,
             ))
             .child(self.target_row(
                 CaptureTarget::Channel,
                 "Share to channel",
                 "Post in a channel and save to your library",
-                IconName::Send,
                 cx,
             ))
             .child(self.target_row(
                 CaptureTarget::Dm,
                 "Share to DM",
                 "Send to a conversation and save to your library",
-                IconName::Send,
                 cx,
             ))
             .child(self.target_row(
                 CaptureTarget::Download,
                 "Download only",
                 "Download to your device without saving to server",
-                IconName::Download,
                 cx,
             ))
             .children(download_note)
@@ -513,7 +494,7 @@ impl Render for CaptureReplayDialog {
             (true, _) => "Capturing...",
             _ => "Capture",
         };
-        Dialog::new("Capture Replay")
+        Dialog::new("capture-replay-dialog", "Capture Replay")
             .width(width)
             .on_close({
                 let close = close.clone();
@@ -522,6 +503,7 @@ impl Render for CaptureReplayDialog {
             .body(body)
             .action(
                 Button::new("capture-cancel", "Cancel")
+                    .ghost()
                     .disabled(self.busy)
                     .on_click(move |_, _, cx| close(cx)),
             )
@@ -530,7 +512,7 @@ impl Render for CaptureReplayDialog {
                 // the body does instead of past it (a phone keeps the row's own edge).
                 div().when(!phone, |end| end.mr(px(16.))).child(
                     Button::new("capture-go", label)
-                        .contained()
+                        .primary()
                         .start_icon(IconName::VideocamOutlined)
                         .disabled(!can_capture)
                         .loading(self.busy)

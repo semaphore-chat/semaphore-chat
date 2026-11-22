@@ -198,8 +198,7 @@ impl InstanceRolesPage {
                     Tri::All => CheckState::Checked,
                 })
                 .disabled(busy || !any_grantable)
-                .hide_label()
-                .dense()
+                .label_hidden()
                 .on_toggle({
                     let page = cx.weak_entity();
                     move |_, _, cx| {
@@ -257,7 +256,6 @@ impl InstanceRolesPage {
                         checked,
                     )
                     .disabled(disabled)
-                    .dense()
                     .on_toggle(move |_, _, cx| {
                         if !disabled {
                             page.update(cx, |page, cx| page.toggle_action(&target, cx))
@@ -349,7 +347,7 @@ impl InstanceRolesPage {
                         SharedString::from(format!("admin-role-editor-cancel{suffix}")),
                         "Cancel",
                     )
-                    .outlined()
+                    .soft()
                     .disabled(busy)
                     .on_click(cx.listener(|page, _, _, cx| page.close_editor(cx))),
                 )
@@ -358,7 +356,7 @@ impl InstanceRolesPage {
                         SharedString::from(format!("admin-role-editor-save{suffix}")),
                         save_label,
                     )
-                    .contained()
+                    .primary()
                     .start_icon(DesignIcon::Save)
                     .loading(busy)
                     .disabled(!can_save)

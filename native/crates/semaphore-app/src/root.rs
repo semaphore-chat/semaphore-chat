@@ -1087,6 +1087,15 @@ impl AppRoot {
                 self.drop_community();
                 self.drop_roles();
                 self.drop_moderation();
+                // This session's notices go with it: none waits on the sign-in screen.
+                let toasts = self.toasts();
+                for id in [
+                    replay::REPLAY_TOAST,
+                    prejoin::JOIN_FAILED_TOAST,
+                    account::INVITE_NOTICE,
+                ] {
+                    toasts.dismiss(id, cx);
+                }
                 self.account_open = false;
                 let notice = (matches!(session, SessionState::SignedOut)
                     && core.last_sign_out() == Some(SignOutReason::Expired))
@@ -1144,6 +1153,18 @@ impl AppRoot {
             // UI freeze: WU's hub file.
             AuthEvent::OpenInBrowser { url } => self.u9_open_in_browser(url, cx),
             AuthEvent::ConnectServer { url, name } => {
+                if let Some(error) = semaphore_core::links::server_url_error(&url) {
+                    auth.update(cx, |auth, cx| {
+                        auth.set_step(
+                            AuthStep::ServerUrl {
+                                testing: false,
+                                error: Some(error.to_owned()),
+                            },
+                            cx,
+                        )
+                    });
+                    return;
+                }
                 auth.update(cx, |auth, cx| {
                     auth.set_step(
                         AuthStep::ServerUrl {
@@ -1494,40 +1515,46 @@ impl AppRoot {
         let profile = close.clone();
         let settings = close.clone();
         let about = close.clone();
-        let dialog = Dialog::new(format!("Signed in as {name}"))
+        let dialog = Dialog::new("signed-in-as-dialog", format!("Signed in as {name}"))
             .body(text(
                 Variant::Body2,
                 "Signing out forgets this session on this computer.",
             ))
             // Cancel first: focus starts on the first action, so a stray Enter is safe.
             .action(
-                Button::new("account-cancel", "Cancel").on_click(move |_, _, cx| {
-                    cancel
-                        .update(cx, |this, cx| {
-                            this.account_open = false;
-                            cx.notify();
-                        })
-                        .ok();
-                }),
+                Button::new("account-cancel", "Cancel")
+                    .ghost()
+                    .on_click(move |_, _, cx| {
+                        cancel
+                            .update(cx, |this, cx| {
+                                this.account_open = false;
+                                cx.notify();
+                            })
+                            .ok();
+                    }),
             )
             .action(
-                Button::new("account-profile", "Profile").on_click(move |_, _, cx| {
-                    profile
-                        .update(cx, |this, cx| {
-                            this.account_open = false;
-                            if let Some(me) = this.core().and_then(|core| match core.session() {
-                                SessionState::SignedIn { me } => Some(me.id),
-                                _ => None,
-                            }) {
-                                this.shell_navigate(Route::Profile { user_id: me }, cx);
-                            }
-                            cx.notify();
-                        })
-                        .ok();
-                }),
+                Button::new("account-profile", "Profile")
+                    .text()
+                    .on_click(move |_, _, cx| {
+                        profile
+                            .update(cx, |this, cx| {
+                                this.account_open = false;
+                                if let Some(me) =
+                                    this.core().and_then(|core| match core.session() {
+                                        SessionState::SignedIn { me } => Some(me.id),
+                                        _ => None,
+                                    })
+                                {
+                                    this.shell_navigate(Route::Profile { user_id: me }, cx);
+                                }
+                                cx.notify();
+                            })
+                            .ok();
+                    }),
             )
-            .action(
-                Button::new("account-settings", "Settings").on_click(move |_, _, cx| {
+            .action(Button::new("account-settings", "Settings").text().on_click(
+                move |_, _, cx| {
                     settings
                         .update(cx, |this, cx| {
                             this.account_open = false;
@@ -1535,8 +1562,8 @@ impl AppRoot {
                             cx.notify();
                         })
                         .ok();
-                }),
-            );
+                },
+            ));
         // UI freeze: WA's "Admin" entry (`InstanceAdminCaps::show_admin`).
         let dialog = match self.admin_account_action(cx) {
             Some(admin) => dialog.action(admin),
@@ -1544,8 +1571,9 @@ impl AppRoot {
         };
         dialog
             .action(
-                Button::new("account-about", "About Semaphore Chat").on_click(
-                    move |_, window, cx| {
+                Button::new("account-about", "About Semaphore Chat")
+                    .text()
+                    .on_click(move |_, window, cx| {
                         about
                             .update(cx, |this, cx| {
                                 this.account_open = false;
@@ -1553,12 +1581,11 @@ impl AppRoot {
                                 cx.notify();
                             })
                             .ok();
-                    },
-                ),
+                    }),
             )
             .action(
                 Button::new("account-sign-out", "Sign out")
-                    .contained()
+                    .primary()
                     .on_click(move |_, _, cx| {
                         sign_out.update(cx, |this, cx| this.sign_out(cx)).ok();
                     }),
@@ -1680,7 +1707,7 @@ impl AppRoot {
             root.more_open = false;
             cx.notify();
         };
-        Dialog::new("Call options")
+        Dialog::new("call-options-dialog", "Call options")
             .width(320.)
             .body(
                 Menu::new(
@@ -1727,6 +1754,8 @@ impl AppRoot {
                     )])
                     .collect::<Vec<_>>(),
                 )
+                // The dialog's body, not a floating menu: not a layer of its own.
+                .inline()
                 .on_close({
                     // Escape closes the dialog the menu is; Tab goes on to its Close button.
                     move |reason, _, cx| {
@@ -1736,9 +1765,13 @@ impl AppRoot {
                     }
                 }),
             )
-            .action(Button::new("more-done", "Close").on_click(move |_, _, cx| {
-                done.update(cx, shut).ok();
-            }))
+            .action(
+                Button::new("more-done", "Close")
+                    .ghost()
+                    .on_click(move |_, _, cx| {
+                        done.update(cx, shut).ok();
+                    }),
+            )
             .on_close(move |_, cx| {
                 close.update(cx, shut).ok();
             })
@@ -1781,7 +1814,7 @@ impl AppRoot {
                     .flex()
                     .gap(px(8.))
                     .child(
-                        Button::new("restore-sign-in", "Sign in again").on_click(move |_, _, cx| {
+                        Button::new("restore-sign-in", "Sign in again").text().on_click(move |_, _, cx| {
                             elsewhere
                                 .update(cx, |this, cx| {
                                     this.restore = Restore::Idle;
@@ -1793,7 +1826,7 @@ impl AppRoot {
                     )
                     .child(
                         Button::new("restore-retry", "Try again")
-                            .contained()
+                            .primary()
                             .on_click(move |_, window, cx| {
                                 let url = retry_url.clone();
                                 retry
@@ -1897,15 +1930,13 @@ fn content(
                 .text_color(sem.text_secondary)
                 .child(text(Variant::H5, channel.name.clone()))
                 .child(text(Variant::Body1, "You're not in this call."))
-                .child(
-                    Button::new("voice-join", "Join voice")
-                        .contained()
-                        .on_click(move |_, _, cx| {
-                            let channel_id = channel_id.clone();
-                            join.update(cx, |root, cx| root.join_voice(channel_id, cx))
-                                .ok();
-                        }),
-                )
+                .child(Button::new("voice-join", "Join voice").primary().on_click(
+                    move |_, _, cx| {
+                        let channel_id = channel_id.clone();
+                        join.update(cx, |root, cx| root.join_voice(channel_id, cx))
+                            .ok();
+                    },
+                ))
                 .into_any_element()
         }
         (Route::DirectMessage { dm_group_id }, _) => root
@@ -1968,7 +1999,27 @@ fn content(
 }
 
 impl Render for AppRoot {
+    /// The app under the window's behaviour host: kit overlays are layers of its stack, and focus
+    /// that has nowhere else to go is on the root's own handle.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sink = self.root_focus.clone();
+        // The window's toast area over the app, at its foot (the root fills the window).
+        let app = div()
+            .size_full()
+            .relative()
+            .child(self.render_app(window, cx))
+            .child(semaphore_ui::kit::ToastRegion::new());
+        semaphore_ui::kit::BehaviourRoot::new(app).focus_sink(&sink)
+    }
+}
+
+impl AppRoot {
+    /// The window's toast queue (`kit::Toasts`): screens' notices go there, never drawn by hand.
+    pub(super) fn toasts(&self) -> semaphore_ui::kit::Toasts {
+        semaphore_ui::kit::Toasts::for_window(self.window)
+    }
+
+    fn render_app(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.reconcile(window, cx);
         // Window keys (push to talk above all) dispatch along the focus path. Nothing focused means
         // the window's root node, outside this view: give the root the focus so they reach here.
@@ -2022,7 +2073,6 @@ impl Render for AppRoot {
             overlays.extend(self.admin_overlays(cx));
             overlays.extend(self.media_overlays(cx));
             overlays.extend(self.u9_overlays(cx));
-            overlays.extend(self.prejoin_overlays(cx));
             return root
                 .child(shell.clone())
                 .children(overlays)

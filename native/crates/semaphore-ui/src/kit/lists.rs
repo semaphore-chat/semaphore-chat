@@ -1,11 +1,11 @@
-//! ListRow and Table on the design system (`design/guide/components.md`), and Tabs.
+//! ListRow and Table on the design system (`design/guide/components.md`).
 //!
 //! ListRow and Table read only the roles (`sem.roles`) and the tokens (`design/tokens.json`).
 //! A keyboard list (Up and Down, typeahead) is the list-focus host's (epic #848, B8): a row only
 //! takes the focus handle and Tab stop the host gives it.
 
 use super::overlays::{state_over, type_text};
-use super::{Action, Icon, Spinner, ValueAction, Variant, text};
+use super::{Action, Icon, Spinner, Surface, SurfaceScope};
 use crate::theme::{Sem, SemTheme};
 use gpui_kit::base;
 use gpui_kit::base::TestSupportExt as _;
@@ -391,7 +391,13 @@ impl RenderOnce for ListRow {
             .into_any_element()
         };
         let hover = paint.hover;
-        div()
+        // A selected row is the accent pill: what it holds draws on the accent.
+        let layer = if self.selected {
+            Surface::Accent
+        } else {
+            Surface::current(cx)
+        };
+        let row = div()
             .w_full()
             .min_w_0()
             .min_h(px(height))
@@ -415,7 +421,8 @@ impl RenderOnce for ListRow {
                     .items_center()
                     .gap(px(SPACE_XS))
                     .child(trailing)
-            }))
+            }));
+        SurfaceScope::new(layer, row)
     }
 }
 
@@ -436,101 +443,6 @@ fn lay_out<E: Styled + ParentElement>(
         .pl(px(SPACE_XS))
         .pr(px(if has_trailing { SPACE_SM } else { SPACE_MD }))
         .children(children)
-}
-
-/// MuiTabs: labels with a 2px accent underline on the selected one. With a named id, each tab is
-/// `<id>-<index>` ("friends-tabs-1"), so a test or a rig can click it.
-#[derive(IntoElement)]
-pub struct Tabs {
-    id: ElementId,
-    labels: Vec<SharedString>,
-    selected: usize,
-    on_select: Option<ValueAction<usize>>,
-}
-
-impl Tabs {
-    pub fn new(id: impl Into<ElementId>, labels: Vec<SharedString>, selected: usize) -> Self {
-        Self {
-            id: id.into(),
-            labels,
-            selected,
-            on_select: None,
-        }
-    }
-
-    pub fn on_select(mut self, handler: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
-        self.on_select = Some(Rc::new(handler));
-        self
-    }
-}
-
-impl RenderOnce for Tabs {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let sem = cx.sem();
-        let (count, selected_index) = (self.labels.len(), self.selected);
-        let (selected_color, other_color, line) =
-            (sem.tab_selected, sem.text_secondary, sem.primary);
-        let on_select = self.on_select;
-        let tab_id = {
-            let name = match &self.id {
-                ElementId::Name(name) => Some(name.clone()),
-                _ => None,
-            };
-            move |index: usize| -> ElementId {
-                match &name {
-                    Some(name) => ElementId::Name(format!("{name}-{index}").into()),
-                    None => ("tab", index).into(),
-                }
-            }
-        };
-        base::Tabs::new(self.id)
-            .flex()
-            .border_b_1()
-            .border_color(sem.divider)
-            .children(
-                self.labels
-                    .into_iter()
-                    .enumerate()
-                    .map(move |(index, label)| {
-                        let selected = index == selected_index;
-                        let on_select = on_select.clone();
-                        base::Tab::new(tab_id(index))
-                            .selected(selected)
-                            .set_position(index, count)
-                            .accessibility_label(label.clone())
-                            .cursor_pointer()
-                            .min_w(px(90.))
-                            .h(px(48.))
-                            .relative()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .px(px(16.))
-                            .text_color(if selected {
-                                selected_color
-                            } else {
-                                other_color
-                            })
-                            .on_click(move |_, window, cx| {
-                                if let Some(on_select) = &on_select {
-                                    on_select(index, window, cx);
-                                }
-                            })
-                            .child(text(Variant::Button, label))
-                            .when(selected, |tab| {
-                                tab.child(
-                                    div()
-                                        .absolute()
-                                        .left_0()
-                                        .right_0()
-                                        .bottom_0()
-                                        .h(px(2.))
-                                        .bg(line),
-                                )
-                            })
-                    }),
-            )
-    }
 }
 
 /// Which edge a column's cells line up with. Use `End` for numbers.

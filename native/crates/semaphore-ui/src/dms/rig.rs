@@ -24,6 +24,20 @@ where
     V: Render + EventEmitter<E> + 'static,
     E: Clone + 'static,
 {
+    rig_sized(cx, width, 800., build)
+}
+
+/// Opens a `width` x `height` window on the view `build` makes, for a page taller than 800.
+pub(crate) fn rig_sized<V, E>(
+    cx: &mut TestAppContext,
+    width: f32,
+    height: f32,
+    build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
+) -> Rig<V, E>
+where
+    V: Render + EventEmitter<E> + 'static,
+    E: Clone + 'static,
+{
     cx.update(|cx| {
         gpui_kit::init(cx);
         crate::theme::init(cx);
@@ -34,7 +48,7 @@ where
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: Point::default(),
-            size: size(px(width), px(800.)),
+            size: size(px(width), px(height)),
         })),
         ..Default::default()
     };

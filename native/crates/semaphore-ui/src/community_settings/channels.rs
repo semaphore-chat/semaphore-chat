@@ -11,9 +11,10 @@ use super::rules::{
     Outcome, Pending, act, check_channel_name, check_webhook_name, date_label, failure, needs,
     preset_label, running, running_of,
 };
+use crate::kit::IconButtonVariant;
 use crate::kit::{
-    Alert, Button, ButtonSize, Dialog, IconButton, Severity, Switch, TextField, Variant, spacing,
-    text, text_state,
+    Alert, Button, Dialog, IconButton, Severity, Switch, TabItem, Tabs, TextField, Variant,
+    spacing, text, text_state,
 };
 use crate::messages::TimeFormat;
 use crate::panel::common::{design_icon, error_block};
@@ -531,7 +532,7 @@ impl ChannelsTab {
                     format!("Edit {}", channel.name),
                     update_locked,
                     false,
-                    Some(sem.primary),
+                    Some(IconButtonVariant::Soft),
                     cx.listener(move |tab, _, window, cx| tab.start_edit(edit.clone(), window, cx)),
                 ))
                 .child(action_icon(
@@ -540,7 +541,7 @@ impl ChannelsTab {
                     format!("Delete {}", channel.name),
                     delete_locked,
                     deleting_this,
-                    Some(sem.error),
+                    Some(IconButtonVariant::Danger),
                     cx.listener(move |tab, _, _, cx| {
                         tab.deleting = Some(delete.clone());
                         cx.notify();
@@ -613,34 +614,35 @@ impl ChannelsTab {
         if let Some(error) = name_error {
             name = name.helper(error);
         }
-        let kinds = div().flex().flex_wrap().gap(spacing(1.)).children(
-            [ChannelKind::Text, ChannelKind::Voice]
-                .into_iter()
-                .map(|kind| {
-                    let key = if kind == ChannelKind::Voice {
-                        "voice"
-                    } else {
-                        "text"
-                    };
-                    let button = Button::new(
-                        SharedString::from(format!("channel-create-kind-{key}")),
-                        kind_label(kind),
-                    )
-                    .size(ButtonSize::Small)
-                    .start_icon(if kind == ChannelKind::Voice {
-                        DesignIcon::VolumeUp
-                    } else {
-                        DesignIcon::Tag
-                    })
+        let kind_items = [ChannelKind::Text, ChannelKind::Voice]
+            .into_iter()
+            .map(|kind| {
+                let key = if kind == ChannelKind::Voice {
+                    "voice"
+                } else {
+                    "text"
+                };
+                TabItem::new(kind_label(kind))
+                    .id(format!("channel-create-kind-{key}"))
                     .disabled(busy)
-                    .on_click(cx.listener(move |tab, _, _, cx| {
-                        tab.create_kind = kind;
-                        cx.notify();
-                    }));
-                    if self.create_kind == kind {
-                        button.contained()
-                    } else {
-                        button.outlined()
+            })
+            .collect();
+        let chosen_kind = usize::from(self.create_kind == ChannelKind::Voice);
+        let kinds = div().flex().child(
+            Tabs::items("channel-create-kind", kind_items, chosen_kind)
+                .segmented()
+                .on_select({
+                    let view = cx.weak_entity();
+                    move |index, _, cx| {
+                        view.update(cx, |tab, cx| {
+                            tab.create_kind = if index == 1 {
+                                ChannelKind::Voice
+                            } else {
+                                ChannelKind::Text
+                            };
+                            cx.notify();
+                        })
+                        .ok();
                     }
                 }),
         );
@@ -649,7 +651,7 @@ impl ChannelsTab {
         let close = cx.weak_entity();
         let cancel = cx.weak_entity();
         let submit = cx.weak_entity();
-        Dialog::new("Create New Channel")
+        Dialog::new("create-new-channel-dialog", "Create New Channel")
             .width(480.)
             .body(
                 div()
@@ -677,6 +679,7 @@ impl ChannelsTab {
                             .gap(px(4.))
                             .child(
                                 Switch::new("channel-create-private", "Private Channel", private)
+                                    .label_hidden()
                                     .disabled(busy)
                                     .on_change(move |on, _, cx| {
                                         toggle
@@ -704,6 +707,7 @@ impl ChannelsTab {
             )
             .action(
                 Button::new("channel-create-cancel", "Cancel")
+                    .ghost()
                     .disabled(busy)
                     .on_click(move |_, _, cx| {
                         cancel
@@ -716,7 +720,7 @@ impl ChannelsTab {
             )
             .action(
                 Button::new("channel-create-submit", "Create Channel")
-                    .contained()
+                    .primary()
                     .loading(busy)
                     .disabled(self.create_name.read(cx).value().trim().is_empty())
                     .on_click(move |_, _, cx| {
@@ -776,7 +780,7 @@ impl ChannelsTab {
             .child(
                 div().flex().justify_end().child(
                     Button::new("webhook-create", "Create Webhook")
-                        .contained()
+                        .primary()
                         .start_icon(DesignIcon::Add)
                         .loading(creating)
                         .disabled(self.webhook_name.read(cx).value().trim().is_empty())
@@ -844,7 +848,7 @@ impl ChannelsTab {
                             format!("Delete webhook {}", hook.name),
                             None,
                             busy,
-                            Some(sem.error),
+                            Some(IconButtonVariant::Danger),
                             cx.listener(move |tab, _, _, cx| {
                                 tab.deleting_webhook = Some(id.clone());
                                 cx.notify();
@@ -897,26 +901,30 @@ impl ChannelsTab {
             EditTab::General
         };
         let tabs = can_permissions.then(|| {
-            div().flex().gap(spacing(1.)).pb(spacing(1.)).children(
-                [
-                    (EditTab::General, "General", "general"),
-                    (EditTab::Permissions, "Permissions", "permissions"),
-                ]
-                .into_iter()
-                .map(|(value, label, key)| {
-                    let button =
-                        Button::new(SharedString::from(format!("channel-edit-tab-{key}")), label)
-                            .size(ButtonSize::Small)
-                            .on_click(cx.listener(move |tab, _, _, cx| {
-                                if let Some(editing) = tab.editing.as_mut() {
-                                    editing.tab = value;
-                                }
-                                cx.notify();
-                            }));
-                    if value == tab {
-                        button.contained()
-                    } else {
-                        button.outlined()
+            div().flex().pb(spacing(1.)).child(
+                Tabs::items(
+                    "channel-edit-tab",
+                    vec![
+                        TabItem::new("General").id("channel-edit-tab-general"),
+                        TabItem::new("Permissions").id("channel-edit-tab-permissions"),
+                    ],
+                    usize::from(tab == EditTab::Permissions),
+                )
+                .segmented()
+                .on_select({
+                    let view = cx.weak_entity();
+                    move |index, _, cx| {
+                        view.update(cx, |tab, cx| {
+                            if let Some(editing) = tab.editing.as_mut() {
+                                editing.tab = if index == 1 {
+                                    EditTab::Permissions
+                                } else {
+                                    EditTab::General
+                                };
+                            }
+                            cx.notify();
+                        })
+                        .ok();
                     }
                 }),
             )
@@ -925,7 +933,11 @@ impl ChannelsTab {
         let cancel = cx.weak_entity();
         let submit = cx.weak_entity();
         let narrow = phone(window);
-        let mut dialog = Dialog::new(format!("Edit Channel: {}", channel.name)).width(600.);
+        let mut dialog = Dialog::new(
+            "edit-channel-dialog",
+            format!("Edit Channel: {}", channel.name),
+        )
+        .width(600.);
         let body = div()
             .id("channel-edit-body")
             .max_h(px(if narrow { 520. } else { 600. }))
@@ -940,9 +952,11 @@ impl ChannelsTab {
                 None => empty_line("Not available yet.", cx).into_any_element(),
             };
             dialog = dialog.body(body.child(slot)).action(
-                Button::new("channel-edit-close", "Close").on_click(move |_, _, cx| {
-                    cancel.update(cx, |tab, cx| tab.close_edit(cx)).ok();
-                }),
+                Button::new("channel-edit-close", "Close")
+                    .ghost()
+                    .on_click(move |_, _, cx| {
+                        cancel.update(cx, |tab, cx| tab.close_edit(cx)).ok();
+                    }),
             );
         } else {
             let name_error = check_channel_name(&self.edit_name.read(cx).value())
@@ -965,6 +979,7 @@ impl ChannelsTab {
                 )
                 .action(
                     Button::new("channel-edit-cancel", "Cancel")
+                        .ghost()
                         .disabled(busy)
                         .on_click(move |_, _, cx| {
                             cancel.update(cx, |tab, cx| tab.close_edit(cx)).ok();
@@ -972,7 +987,7 @@ impl ChannelsTab {
                 )
                 .action(
                     Button::new("channel-edit-submit", "Update Channel")
-                        .contained()
+                        .primary()
                         .loading(busy)
                         .disabled(self.edit_name.read(cx).value().trim().is_empty())
                         .on_click(move |_, _, cx| {
@@ -999,7 +1014,7 @@ impl ChannelsTab {
         let close = cx.weak_entity();
         let copy = cx.weak_entity();
         Some(
-            Dialog::new("Webhook Created")
+            Dialog::new("webhook-created-dialog", "Webhook Created")
                 .width(520.)
                 .body(
                     div()
@@ -1053,7 +1068,7 @@ impl ChannelsTab {
                             )
                         }),
                 )
-                .action(Button::new("webhook-created-done", "Done").contained().on_click(
+                .action(Button::new("webhook-created-done", "Done").primary().on_click(
                     move |_, _, cx| {
                         done.update(cx, |tab, cx| {
                             tab.created = None;
@@ -1180,7 +1195,7 @@ impl Render for ChannelsTab {
         let create_locked = (!self.caps.create_channel).then(|| needs("Create channels"));
         let create = locked_button(
             Button::new("channel-create", "Create Channel")
-                .contained()
+                .primary()
                 .start_icon(DesignIcon::Add)
                 .on_click(cx.listener(|tab, _, window, cx| {
                     tab.creating = true;

@@ -475,6 +475,7 @@ impl Render for ChannelOverrides {
                         "Members can attach files",
                         choice.members_can_attach,
                     )
+                    .label_hidden()
                     .disabled(!self.view.editable || busy)
                     .on_change(move |on, _, cx| {
                         entity.update(cx, |view, cx| view.set_attach(on, cx)).ok();
@@ -515,7 +516,7 @@ impl Render for ChannelOverrides {
         .child(
             div().flex().justify_end().child(
                 Button::new("overrides-save", "Save permissions")
-                    .contained()
+                    .primary()
                     .loading(busy)
                     .disabled(!dirty || busy || !self.view.editable)
                     .on_click(cx.listener(|view, _, _, cx| view.save(cx))),

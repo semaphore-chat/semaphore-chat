@@ -10,6 +10,7 @@ use super::rules::{
     Outcome, Pending, act, check_sound_emoji, check_sound_file, check_sound_name, failure,
     failure_of, needs, running, sound_name_from_file, state_of,
 };
+use crate::kit::IconButtonVariant;
 use crate::kit::{Button, ButtonSize, Dialog, TextField, Variant, spacing, text, text_state};
 use crate::panel::common::{design_icon, error_block};
 use crate::theme::SemTheme;
@@ -225,7 +226,7 @@ impl SoundboardTab {
         let cancel = cx.weak_entity();
         let close = cx.weak_entity();
         let submit = cx.weak_entity();
-        Dialog::new("Add Sound")
+        Dialog::new("add-sound-dialog", "Add Sound")
             .width(480.)
             .body(
                 div()
@@ -249,8 +250,8 @@ impl SoundboardTab {
                                     .gap(spacing(1.5))
                                     .child(
                                         Button::new("sound-choose", "Choose file")
-                                            .outlined()
-                                            .size(ButtonSize::Small)
+                                            .soft()
+                                            .size(ButtonSize::Sm)
                                             .start_icon(DesignIcon::AudioFile)
                                             .disabled(busy)
                                             .on_click(cx.listener(|_, _, _, cx| {
@@ -277,6 +278,7 @@ impl SoundboardTab {
             )
             .action(
                 Button::new("sound-cancel", "Cancel")
+                    .ghost()
                     .disabled(busy)
                     .on_click(move |_, _, cx| {
                         cancel
@@ -289,7 +291,7 @@ impl SoundboardTab {
             )
             .action(
                 Button::new("sound-submit", "Add")
-                    .contained()
+                    .primary()
                     .loading(busy)
                     .disabled(self.name.read(cx).value().trim().is_empty() || self.picked.is_none())
                     .on_click(move |_, _, cx| {
@@ -370,7 +372,7 @@ impl SoundboardTab {
                             format!("Preview {}", sound.name),
                             None,
                             false,
-                            Some(sem.primary),
+                            Some(IconButtonVariant::Soft),
                             cx.listener(move |_, _, _, cx| {
                                 cx.emit(SoundboardEvent::Preview {
                                     file_id: file_id.clone(),
@@ -383,7 +385,7 @@ impl SoundboardTab {
                             format!("Delete {}", sound.name),
                             locked.clone(),
                             busy,
-                            Some(sem.error),
+                            Some(IconButtonVariant::Danger),
                             cx.listener(move |tab, _, _, cx| {
                                 tab.deleting = Some(row_sound.clone());
                                 cx.notify();
@@ -404,7 +406,7 @@ impl Render for SoundboardTab {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let add = locked_button(
             Button::new("sound-add", "Add Sound")
-                .contained()
+                .primary()
                 .start_icon(DesignIcon::Add)
                 .on_click(cx.listener(|tab, _, window, cx| {
                     tab.adding = true;

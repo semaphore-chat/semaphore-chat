@@ -2,9 +2,9 @@
 //! dialog, loading rows and a user's line.
 
 use crate::dms::face::user_face;
+use crate::kit::IconButtonVariant;
 use crate::kit::{
-    Alert, Button, ButtonTone, Dialog, IconButton, Severity, Skeleton, Variant, spacing, text,
-    with_tip,
+    Alert, Button, Dialog, IconButton, Severity, Skeleton, Variant, spacing, text, with_tip,
 };
 use crate::panel::common::design_icon;
 use crate::theme::SemTheme;
@@ -115,7 +115,7 @@ pub(super) fn action_icon(
     icon: DesignIcon,
     label: impl Into<SharedString>,
     locked: Option<String>,
-    color: Option<Hsla>,
+    variant: Option<IconButtonVariant>,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> AnyElement {
     let id = id.into();
@@ -123,8 +123,8 @@ pub(super) fn action_icon(
     let mut button = IconButton::new(id.clone(), icon, label.into())
         .small()
         .disabled(disabled);
-    if let Some(color) = color.filter(|_| !disabled) {
-        button = button.color(color);
+    if let Some(variant) = variant.filter(|_| !disabled) {
+        button = button.variant(variant);
     }
     if !disabled {
         button = button.on_click(on_click);
@@ -195,16 +195,15 @@ impl Confirm {
                 SharedString::from(format!("{}-confirm", self.id)),
                 self.confirm,
             )
-            .contained()
-            .tone(ButtonTone::Danger)
+            .danger()
         } else {
             Button::new(
                 SharedString::from(format!("{}-confirm", self.id)),
                 self.confirm,
             )
-            .contained()
+            .primary()
         };
-        Dialog::new(self.title)
+        Dialog::new("confirm-dialog", self.title)
             .body(
                 div()
                     .flex()
@@ -215,6 +214,7 @@ impl Confirm {
             )
             .action(
                 Button::new(SharedString::from(format!("{}-cancel", self.id)), "Cancel")
+                    .ghost()
                     .disabled(self.busy)
                     .on_click(move |_, window, cx| on_cancel(window, cx)),
             )

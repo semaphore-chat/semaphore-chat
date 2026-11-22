@@ -88,7 +88,7 @@ impl Render for RemovedNotice {
         };
         let ok = cx.listener(|notice, _, _, cx| notice.acknowledge(cx));
         let close = cx.entity().downgrade();
-        let dialog = Dialog::new(removed_title(&shown.name, &shown.cause))
+        let dialog = Dialog::new("removed-dialog", removed_title(&shown.name, &shown.cause))
             .width(440.)
             .body(
                 div()
@@ -112,7 +112,7 @@ impl Render for RemovedNotice {
                             .child(text(Variant::Body2, reason).text_color(sem.text_primary))
                     })),
             )
-            .action(Button::new("removed-ok", "OK").contained().on_click(ok))
+            .action(Button::new("removed-ok", "OK").primary().on_click(ok))
             .on_close(move |_, cx| {
                 close.update(cx, |notice, cx| notice.acknowledge(cx)).ok();
             });

@@ -1013,21 +1013,23 @@ fn add_people_dialog(add: &AddPeople, cx: &mut Context<AppRoot>) -> AnyElement {
         );
     let cancel = cx.entity().downgrade();
     let close = cx.entity().downgrade();
-    Dialog::new("Add people")
+    Dialog::new("add-people-dialog", "Add people")
         .body(body)
         .action(
-            Button::new("add-people-cancel", "Cancel").on_click(move |_, _, cx| {
-                cancel
-                    .update(cx, |root, cx| {
-                        root.u9.add_people = None;
-                        cx.notify();
-                    })
-                    .ok();
-            }),
+            Button::new("add-people-cancel", "Cancel")
+                .ghost()
+                .on_click(move |_, _, cx| {
+                    cancel
+                        .update(cx, |root, cx| {
+                            root.u9.add_people = None;
+                            cx.notify();
+                        })
+                        .ok();
+                }),
         )
         .action(
             Button::new("add-people-submit", "Add")
-                .contained()
+                .primary()
                 .disabled(picked == 0 || add.busy)
                 .loading(add.busy)
                 .on_click(cx.listener(|root, _, window, cx| root.u9_add_people(window, cx))),

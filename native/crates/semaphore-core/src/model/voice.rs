@@ -168,6 +168,9 @@ pub struct VoiceView {
     /// W4: the share's video is published and its audio track isn't yet: the buffer waits for it
     /// until then, when the host calls `Core::expire_replay_audio_wait` and it starts video-only.
     pub replay_audio_wait_until_ms: Option<u64>,
+    /// W4: the server refused the buffer's start (400) and it is asked again then, when the host
+    /// calls `Core::retry_replay`. `replay` stays `Starting` meanwhile.
+    pub replay_retry_at_ms: Option<u64>,
 }
 
 /// One thing we may send, as its button shows it.

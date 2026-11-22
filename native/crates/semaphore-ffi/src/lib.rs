@@ -420,6 +420,7 @@ pub struct VoiceView {
     pub server_muted: bool,
     pub replay: ReplayState,
     pub replay_audio_wait_until_ms: Option<u64>,
+    pub replay_retry_at_ms: Option<u64>,
 }
 
 #[uniffi::remote(Enum)]
@@ -1276,7 +1277,7 @@ mod tests {
         assert_eq!(asyncs, runs, "every async export awaits `self.run`");
         // Exact, so an export the check stops seeing fails here: change these with the exports.
         assert_eq!(asyncs, 133, "async exports found");
-        assert_eq!(syncs, 99, "sync exports found");
+        assert_eq!(syncs, 100, "sync exports found");
     }
 
     #[test]

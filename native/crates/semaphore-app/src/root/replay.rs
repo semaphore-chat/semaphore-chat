@@ -10,15 +10,17 @@
 //!   user's public ones (`Core::user_clips`) on theirs, played by the window's `Players`.
 //! - **Sharing** a clip (`ShareClipDialog`) to a channel of one of my communities or a DM.
 //! - **Toasts** for what the web says with a snackbar ("Recording saved", "Clip shared
-//!   successfully"): one at a time at the window's foot, gone after [`TOAST_FOR`].
+//!   successfully"): through the window's toast queue (`kit::Toasts`), under one id,
+//!   [`REPLAY_TOAST`], so a newer one replaces the last.
 //! - **The audio wait**: while `VoiceView::replay_audio_wait_until_ms` is set, a timer calls
 //!   `Core::expire_replay_audio_wait` at it.
+//! - **The start retry**: while `VoiceView::replay_retry_at_ms` is set (the server refused the
+//!   buffer's start), a timer calls `Core::retry_replay` at it.
 //! - **Sessions**: everything here is the session's. Results that land after a sign-out find their
 //!   session's token gone ([`Replay::session`]) and are dropped.
 
 use super::AppRoot;
 use crate::files;
-use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
@@ -26,8 +28,7 @@ use semaphore_core::model::{
 };
 use semaphore_core::platform::CoreError;
 use semaphore_core::{Core, CoreEvent};
-use semaphore_ui::kit::LiveElement;
-use semaphore_ui::kit::Snackbar;
+use semaphore_ui::kit::ToastRequest;
 use semaphore_ui::profile::ProfilePage;
 use semaphore_ui::replay::{
     CaptureEvent, CaptureReplayDialog, Choices, ClipEvent, ClipLibrary, DestinationKind,
@@ -37,8 +38,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// How long a toast stays.
-pub const TOAST_FOR: Duration = Duration::from_secs(4);
+/// The replay toasts' subject: one at a time, a newer one replaces the last.
+pub const REPLAY_TOAST: &str = "replay-toast";
 
 /// This session's replay UI. Rebuilt empty on sign-out (`drop_replay`).
 #[derive(Default)]
@@ -51,9 +52,10 @@ pub(super) struct Replay {
     library: Option<Library>,
     /// Clips whose download is on its way.
     downloading: Vec<String>,
-    toast: Option<Toast>,
     /// The audio wait the timer is for, and the timer.
     audio_wait: Option<(u64, Task<()>)>,
+    /// The start retry the timer is for, and the timer.
+    retry: Option<(u64, Task<()>)>,
 }
 
 struct Capture {
@@ -77,11 +79,6 @@ struct Library {
     own: bool,
     entity: Entity<ClipLibrary>,
     _subscription: Subscription,
-}
-
-struct Toast {
-    message: String,
-    _timer: Task<()>,
 }
 
 /// What a dialog says when the server refused: its words, else what failed.
@@ -150,6 +147,7 @@ impl AppRoot {
         match view {
             ViewKey::Voice => {
                 self.schedule_audio_wait(&core, cx);
+                self.schedule_replay_retry(&core, cx);
                 self.refresh_capture(&core, cx);
             }
             ViewKey::ReplaySession => self.refresh_capture(&core, cx),
@@ -241,7 +239,7 @@ impl AppRoot {
         self.replay = Replay::default();
     }
 
-    /// The capture and share dialogs over the shell, and the toast.
+    /// The capture and share dialogs over the shell.
     pub(super) fn replay_overlays(&self, _cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut overlays: Vec<AnyElement> = Vec::new();
         if let Some(capture) = &self.replay.capture {
@@ -250,44 +248,14 @@ impl AppRoot {
         if let Some(share) = &self.replay.share {
             overlays.push(share.dialog.clone().into_any_element());
         }
-        if let Some(toast) = &self.replay.toast {
-            overlays.push(
-                div()
-                    .absolute()
-                    .left_0()
-                    .right_0()
-                    .bottom(px(24.))
-                    .px(px(16.))
-                    .flex()
-                    .justify_center()
-                    .child(
-                        div()
-                            .id("replay-toast")
-                            .test_support()
-                            .role(Role::Status)
-                            .aria_live(gpui_kit::accesskit::Live::Assertive)
-                            .aria_label(SharedString::from(toast.message.clone()))
-                            .child(Snackbar::new(toast.message.clone())),
-                    )
-                    .into_any_element(),
-            );
-        }
         overlays
     }
 
-    /// The toast, for the rig.
     /// The capture dialog's trim preview, while one is open (rigs).
     pub fn trim_preview(&self, cx: &App) -> Option<Entity<semaphore_ui::replay::TrimPreview>> {
         let capture = self.replay.capture.as_ref()?;
         let trim = capture.dialog.read(cx).trim().clone();
         trim.read(cx).preview_entity().cloned()
-    }
-
-    pub fn replay_toast(&self) -> Option<&str> {
-        self.replay
-            .toast
-            .as_ref()
-            .map(|toast| toast.message.as_str())
     }
 
     /// The voice bar's (or the "more" sheet's) Capture: open the capture dialog.
@@ -615,7 +583,7 @@ impl AppRoot {
                 root.push_downloading(cx);
                 if let Err(error) = result {
                     log::warn!("downloading a clip: {error}");
-                    root.show_toast("Failed to download clip", cx);
+                    root.show_failure_toast("Failed to download clip", cx);
                 }
             },
         );
@@ -737,19 +705,14 @@ impl AppRoot {
     // ---- Toasts, timers, posters. ----
 
     fn show_toast(&mut self, message: &str, cx: &mut Context<Self>) {
-        let timer = cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(TOAST_FOR).await;
-            this.update(cx, |root, cx| {
-                root.replay.toast = None;
-                cx.notify();
-            })
-            .ok();
-        });
-        self.replay.toast = Some(Toast {
-            message: message.to_owned(),
-            _timer: timer,
-        });
-        cx.notify();
+        let request = ToastRequest::new(message).id(REPLAY_TOAST);
+        self.toasts().show(request, cx);
+    }
+
+    /// A failure's toast: danger, read out at once.
+    fn show_failure_toast(&mut self, message: &str, cx: &mut Context<Self>) {
+        let request = ToastRequest::new(message).id(REPLAY_TOAST).danger();
+        self.toasts().show(request, cx);
     }
 
     /// While a share's audio track is awaited, `Core::expire_replay_audio_wait` at its deadline.
@@ -772,6 +735,35 @@ impl AppRoot {
             }
         });
         self.replay.audio_wait = Some((until, timer));
+    }
+
+    /// While a refused replay start waits, `Core::retry_replay` at its time.
+    fn schedule_replay_retry(&mut self, core: &Arc<Core>, cx: &mut Context<Self>) {
+        let at = core.voice().replay_retry_at_ms;
+        let scheduled = self.replay.retry.as_ref().map(|(at, _)| *at);
+        if at == scheduled {
+            return;
+        }
+        let Some(at) = at else {
+            self.replay.retry = None;
+            return;
+        };
+        let delay = Duration::from_millis(at.saturating_sub(self.config.clock.now_ms()));
+        let core = Arc::downgrade(core);
+        let timer = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(delay).await;
+            let Some(core) = core.upgrade() else { return };
+            core.retry_replay();
+            // The core said "too early" (the wall clock stepped back): schedule again.
+            this.update(cx, |root, cx| {
+                if core.voice().replay_retry_at_ms == Some(at) {
+                    root.replay.retry = None;
+                    root.schedule_replay_retry(&core, cx);
+                }
+            })
+            .ok();
+        });
+        self.replay.retry = Some((at, timer));
     }
 
     /// Runs `update` with the window, after the event being handled (core events come without

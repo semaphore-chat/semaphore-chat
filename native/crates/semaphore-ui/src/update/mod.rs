@@ -175,16 +175,14 @@ impl UpdateBanner {
         cx: &mut Context<Self>,
     ) -> Button {
         let view = cx.entity().downgrade();
-        let button = Button::new(id, label)
-            .size(ButtonSize::Small)
-            .on_click(move |_, _, cx| {
-                view.update(cx, |_, cx| cx.emit(event)).ok();
-            });
-        if contained {
-            button.contained()
-        } else {
-            button
-        }
+        let button =
+            Button::new(id, label)
+                .text()
+                .size(ButtonSize::Sm)
+                .on_click(move |_, _, cx| {
+                    view.update(cx, |_, cx| cx.emit(event)).ok();
+                });
+        if contained { button.primary() } else { button }
     }
 }
 

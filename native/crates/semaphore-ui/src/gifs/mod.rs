@@ -477,8 +477,8 @@ impl GifPicker {
             )
             .child(
                 Button::new("gif-allow", "Allow")
-                    .contained()
-                    .size(ButtonSize::Small)
+                    .primary()
+                    .size(ButtonSize::Sm)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.focus_search(window, cx);
                         cx.emit(GifPickerEvent::Allow)
@@ -627,8 +627,7 @@ impl Render for GifPicker {
         let header = self.header(touch, window, cx);
         let body = self.body(window, cx);
         let sem = cx.sem();
-        let (paper, divider, primary, secondary) =
-            (sem.paper, sem.divider, sem.primary, sem.text_secondary);
+        let (paper, divider, secondary) = (sem.paper, sem.divider, sem.text_secondary);
         div()
             .id("gif-picker")
             .test_support()
@@ -669,8 +668,8 @@ impl Render for GifPicker {
                                     .into_any_element()
                             } else {
                                 Button::new("gif-more", "Load more")
-                                    .size(ButtonSize::Small)
-                                    .color(primary)
+                                    .text()
+                                    .size(ButtonSize::Sm)
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.focus_search(window, cx);
                                         cx.emit(GifPickerEvent::LoadMore)

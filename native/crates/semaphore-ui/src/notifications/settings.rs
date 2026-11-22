@@ -260,7 +260,7 @@ fn switch_row(switch: Switch, label: &'static str, caption: &'static str, cx: &A
         div()
             .flex_1()
             .min_w_0()
-            .pt(px(6.))
+            .pt(spacing(1.))
             .flex()
             .flex_col()
             .child(text(Variant::Body1, label).text_color(sem.text_primary))
@@ -358,6 +358,7 @@ impl Render for NotificationSettingsSection {
                         .gap(spacing(1.))
                         .child(
                             Button::new("notification-settings-discard", "Discard")
+                                .text()
                                 .disabled(self.saving)
                                 .on_click({
                                     let view = view.clone();
@@ -369,7 +370,7 @@ impl Render for NotificationSettingsSection {
                         )
                         .child(
                             Button::new("notification-settings-save", "Save")
-                                .contained()
+                                .primary()
                                 .disabled(error.is_some())
                                 .loading(self.saving)
                                 .on_click({
@@ -415,10 +416,12 @@ impl NotificationSettingsSection {
                       checked: bool,
                       set: fn(&mut NotificationSettings, bool)| {
             let view = view.clone();
-            Switch::new(id, label, checked).on_change(move |on, _, cx| {
-                view.update(cx, |section, cx| section.edit(cx, |draft| set(draft, on)))
-                    .ok();
-            })
+            Switch::new(id, label, checked)
+                .label_hidden()
+                .on_change(move |on, _, cx| {
+                    view.update(cx, |section, cx| section.edit(cx, |draft| set(draft, on)))
+                        .ok();
+                })
         };
         let sound = |id: &'static str, label: &'static str, value: NotifySound| {
             let view = view.clone();
@@ -641,8 +644,8 @@ impl NotificationSettingsSection {
                     .child(
                         div().child(
                             Button::new("notification-send-test", "Send Test Notification")
-                                .outlined()
-                                .size(ButtonSize::Small)
+                                .soft()
+                                .size(ButtonSize::Sm)
                                 .start_icon(DesignIcon::Send)
                                 .disabled(!self.form.saved.desktop_enabled)
                                 .on_click(

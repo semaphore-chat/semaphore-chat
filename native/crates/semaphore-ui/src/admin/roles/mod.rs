@@ -242,7 +242,7 @@ impl InstanceRolesPage {
 
     fn header_actions(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let create = Button::new("admin-roles-new", "New role")
-            .contained()
+            .primary()
             .start_icon(DesignIcon::PersonAdd)
             .on_click(cx.listener(|page, _, window, cx| page.open_create(window, cx)));
         vec![crate::community_settings::common::locked_button(
@@ -366,7 +366,7 @@ impl InstanceRolesPage {
         let close = cx.weak_entity();
         let close_button = cx.weak_entity();
         Some(
-            Dialog::new(format!("Role Users: {name}"))
+            Dialog::new("role-users-dialog", format!("Role Users: {name}"))
                 .body(
                     div()
                         .id("admin-roles-users-body")
@@ -374,13 +374,15 @@ impl InstanceRolesPage {
                         .overflow_y_scroll()
                         .child(body),
                 )
-                .action(Button::new("admin-roles-users-close", "Close").on_click(
-                    move |_, _, cx| {
-                        close_button
-                            .update(cx, |page, cx| page.close_users(cx))
-                            .ok();
-                    },
-                ))
+                .action(
+                    Button::new("admin-roles-users-close", "Close")
+                        .ghost()
+                        .on_click(move |_, _, cx| {
+                            close_button
+                                .update(cx, |page, cx| page.close_users(cx))
+                                .ok();
+                        }),
+                )
                 .on_close(move |_, cx| {
                     close.update(cx, |page, cx| page.close_users(cx)).ok();
                 }),

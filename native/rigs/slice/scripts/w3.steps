@@ -141,7 +141,8 @@ click desktop-link-preview-images
 expect settings /third_party_media false
 
 # "Open log folder" goes through the app's open seam; the rig records the path instead of opening
-# a file manager.
+# a file manager. The design-system controls make the page taller than the window: scroll down to it.
+scroll desktop-link-preview-images 0 -600
 click desktop-open-logs
 expect opened-url "app-data/logs"
 
@@ -201,6 +202,9 @@ shot 17-community-created
 navigate /
 wait core route home
 wait core element home-invite
+# The notice is a toast, and an inactive window holds toasts (the queue's "hidden" reason): the
+# user is at this window.
+window activate
 click home-invite-quick
 wait core requests InviteController_createInvite >= 1
 wait core element home-invite-code
@@ -208,8 +212,9 @@ wait core element home-invite-notice
 expect clipboard "/#/join/"
 wait idle
 shot 17b-home-invite
-# Its notice goes by itself after 3 s, as the web's snackbar; the code stays.
-tick 3000
+# Its notice is a toast of the window's queue now, and goes by itself after the queue's 4 s
+# (`motion.toast`, as the web's toasts); the code stays.
+tick 4000
 wait core no-element home-invite-notice
 expect core element home-invite-code
 # W19: an invite still on its way when I sign out (and back in) belongs to the old session: the new

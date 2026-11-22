@@ -4,9 +4,9 @@
 
 use super::ClipEvent;
 use super::model::{self, clip_attachment};
+use crate::kit::IconButtonVariant;
 use crate::kit::{
-    Alert, Button, ButtonTone, Dialog, IconButton, Severity, Skeleton, Spinner, Switch, Variant,
-    text, with_tip,
+    Alert, Button, Dialog, IconButton, Severity, Skeleton, Spinner, Switch, Variant, text, with_tip,
 };
 use crate::messages::TimeFormat;
 use crate::panel::common::{design_icon, empty_block, error_block, is_phone};
@@ -223,7 +223,7 @@ impl ClipLibrary {
                                 format!("Delete {}", clip.filename),
                             )
                             .small()
-                            .color(sem.error)
+                            .variant(IconButtonVariant::Danger)
                             .disabled(busy)
                             .on_click(cx.listener(
                                 move |library, _, _, cx| library.ask_delete(&delete_id, cx),
@@ -245,13 +245,13 @@ impl ClipLibrary {
                 .flex()
                 .items_center()
                 .gap(px(4.))
-                .ml(px(-12.))
                 .child(
                     Switch::new(
                         SharedString::from(format!("clip-public-{}", clip.id)),
                         label,
                         public,
                     )
+                    .label_hidden()
                     .disabled(busy)
                     .on_change(move |on, _, cx| {
                         let clip_id = clip_id.clone();
@@ -390,7 +390,7 @@ impl ClipLibrary {
                 .ok();
             }
         };
-        let dialog = Dialog::new("Delete Clip")
+        let dialog = Dialog::new("delete-clip-dialog", "Delete Clip")
             .on_close({
                 let cancel = cancel.clone();
                 move |_, cx| cancel(cx)
@@ -401,6 +401,7 @@ impl ClipLibrary {
             ))
             .action(
                 Button::new("clip-delete-cancel", "Cancel")
+                    .ghost()
                     .disabled(asked)
                     .on_click(move |_, _, cx| cancel(cx)),
             )
@@ -409,8 +410,7 @@ impl ClipLibrary {
                     "clip-delete-confirm",
                     if asked { "Deleting..." } else { "Delete" },
                 )
-                .contained()
-                .tone(ButtonTone::Danger)
+                .danger()
                 .disabled(asked)
                 .on_click(move |_, _, cx| {
                     view.update(cx, |library, cx| library.confirm_delete(cx))

@@ -943,7 +943,12 @@ impl Render for ConversationPane {
         div()
             .id("conversation")
             .key_context("ConversationPane")
-            .on_action(cx.listener(|pane, _: &EscapePane, window, cx| pane.escape(window, cx)))
+            .on_action(cx.listener(|pane, _: &EscapePane, window, cx| {
+                // A layer open over the pane (focus elsewhere in it) closes first.
+                if !semaphore_ui::kit::escape_open_layer(window, cx) {
+                    pane.escape(window, cx)
+                }
+            }))
             .relative()
             .size_full()
             .flex()

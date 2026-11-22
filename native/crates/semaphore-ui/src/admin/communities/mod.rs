@@ -24,9 +24,7 @@ use crate::community_settings::rules::{
     Outcome, Pending, act, confirms_name, date_label, failure, grouped, needs, running,
 };
 use crate::dms::picker::DEBOUNCE;
-use crate::kit::{
-    Alert, Button, ButtonTone, Dialog, Severity, TextField, Variant, spacing, text, text_state,
-};
+use crate::kit::{Alert, Button, Dialog, Severity, TextField, Variant, spacing, text, text_state};
 use crate::messages::TimeFormat;
 use crate::panel::common::{design_icon, error_block};
 use crate::shell::community_avatar;
@@ -335,7 +333,7 @@ impl CommunitiesPage {
             .justify_center()
             .child(
                 Button::new("admin-communities-more", "Load more")
-                    .outlined()
+                    .soft()
                     .loading(self.view.loading_more)
                     .disabled(self.view.loading_more)
                     .on_click(cx.listener(|_, _: &ClickEvent, _, cx| {
@@ -482,8 +480,7 @@ impl CommunitiesPage {
                     }))
                     .child(locked_button(
                         Button::new("admin-community-delete", "Delete Community")
-                            .contained()
-                            .tone(ButtonTone::Danger)
+                            .danger()
                             .loading(busy)
                             .on_click(cx.listener(move |page, _, window, cx| {
                                 page.start_delete(&id, window, cx);
@@ -534,7 +531,7 @@ impl CommunitiesPage {
         let close = cx.weak_entity();
         let confirm = cx.weak_entity();
         Some(
-            Dialog::new("Delete Community")
+            Dialog::new("delete-community-dialog", "Delete Community")
                 .width(480.)
                 .body(
                     div()
@@ -564,6 +561,7 @@ impl CommunitiesPage {
                 )
                 .action(
                     Button::new("admin-community-delete-cancel", "Cancel")
+                        .ghost()
                         .disabled(busy)
                         .on_click(move |_, _, cx| {
                             cancel
@@ -576,8 +574,7 @@ impl CommunitiesPage {
                 )
                 .action(
                     Button::new("admin-community-delete-confirm", "Delete Community")
-                        .contained()
-                        .tone(ButtonTone::Danger)
+                        .danger()
                         .disabled(!matched)
                         .loading(busy)
                         .on_click(move |_, _, cx| {

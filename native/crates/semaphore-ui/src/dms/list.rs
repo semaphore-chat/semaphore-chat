@@ -224,7 +224,7 @@ impl Render for DmListView {
                 )
                 .child(
                     Button::new("dm-list-start", "Start a conversation")
-                        .contained()
+                        .primary()
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(DmListEvent::NewMessage))),
                 )
                 .into_any_element(),

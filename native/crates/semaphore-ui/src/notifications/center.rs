@@ -313,7 +313,8 @@ impl Render for NotificationCenter {
                 .border_color(sem.divider)
                 .child(
                     Button::new("notifications-mark-all", "Mark all as read")
-                        .size(ButtonSize::Small)
+                        .text()
+                        .size(ButtonSize::Sm)
                         .start_icon(DesignIcon::CheckCircle)
                         .on_click(
                             cx.listener(|_, _, _, cx| cx.emit(NotificationEvent::MarkAllRead)),
@@ -380,7 +381,7 @@ impl Render for NotificationCenter {
                     ))
                     .child(
                         Button::new("notifications-refresh", "Refresh")
-                            .outlined()
+                            .soft()
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(NotificationEvent::Retry))),
                     )
                     .into_any_element(),
@@ -400,7 +401,7 @@ impl Render for NotificationCenter {
                             .p(spacing(2.))
                             .child(
                                 Button::new("notifications-more", "Load more")
-                                    .outlined()
+                                    .soft()
                                     .loading(self.loading_more)
                                     .on_click(cx.listener(|center, _, _, cx| {
                                         if !center.loading_more {

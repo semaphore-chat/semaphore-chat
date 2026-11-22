@@ -133,7 +133,7 @@ impl Render for AboutDialog {
         });
         let close = cx.entity().downgrade();
         let backdrop = cx.entity().downgrade();
-        Dialog::new("About Semaphore Chat")
+        Dialog::new("about-semaphore-chat-dialog", "About Semaphore Chat")
             .width(width)
             .body(
                 div()
@@ -184,15 +184,19 @@ impl Render for AboutDialog {
             // Close first: focus starts on the first action, so a stray Enter is safe.
             .action(
                 Button::new("about-close", "Close")
-                    .contained()
+                    .primary()
                     .on_click(move |_, _, cx| {
                         close.update(cx, |dialog, cx| dialog.close(cx)).ok();
                     }),
             )
             .action(
-                Button::new("about-copy-version", "Copy version").on_click(move |_, _, cx| {
-                    cx.write_to_clipboard(ClipboardItem::new_string(clipboard_version.to_string()));
-                }),
+                Button::new("about-copy-version", "Copy version")
+                    .text()
+                    .on_click(move |_, _, cx| {
+                        cx.write_to_clipboard(ClipboardItem::new_string(
+                            clipboard_version.to_string(),
+                        ));
+                    }),
             )
             .on_close(move |_, cx| {
                 backdrop.update(cx, |dialog, cx| dialog.close(cx)).ok();

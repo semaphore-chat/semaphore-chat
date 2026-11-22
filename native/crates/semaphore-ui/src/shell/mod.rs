@@ -8,6 +8,7 @@
 mod faces;
 #[cfg(feature = "stories")]
 pub mod fixtures;
+pub mod lounge;
 mod members;
 mod phone;
 mod press;
@@ -498,7 +499,6 @@ impl Shell {
         let pinned = self.pinned_count;
         let (secondary, primary_badge, on_primary_badge) =
             (sem.text_secondary, sem.primary, sem.primary_contrast);
-        let icon_color = sem.action_active;
         Some(
             Paper::new()
                 .w_full()
@@ -551,8 +551,7 @@ impl Shell {
                                         IconName::PushPin,
                                         format!("Pinned messages ({pinned})"),
                                     )
-                                    .tiny()
-                                    .color(icon_color)
+                                    .small()
                                     .on_click(
                                         cx.listener(|_, _, _, cx| cx.emit(ShellEvent::OpenPins)),
                                     ),
@@ -577,8 +576,7 @@ impl Shell {
                         )
                         .child(
                             IconButton::new("header-search", IconName::Search, "Search messages")
-                                .tiny()
-                                .color(icon_color)
+                                .small()
                                 .on_click(
                                     cx.listener(|_, _, _, cx| cx.emit(ShellEvent::OpenSearch)),
                                 ),
@@ -590,16 +588,14 @@ impl Shell {
                                 IconName::AlternateEmail,
                                 "Channel notifications",
                             )
-                            .small_with_large_icon()
-                            .color(icon_color)
+                            .small()
                             .into_any_element(),
                         })
                         .when(narrow, |row| {
                             let view = cx.entity().downgrade();
                             row.child(
                                 IconButton::new("members-toggle", IconName::People, "Members")
-                                    .small_with_large_icon()
-                                    .color(icon_color)
+                                    .small()
                                     .selected(self.members_open)
                                     .on_click(move |_, _, cx| {
                                         view.update(cx, |shell, cx| {
@@ -889,7 +885,7 @@ pub(crate) fn error_state(
         )
         .child(
             Button::new(id, "Try again")
-                .outlined()
+                .soft()
                 .on_click(move |_, _, cx| {
                     view.update(cx, |_, cx| cx.emit(ShellEvent::Retry)).ok();
                 }),
@@ -898,7 +894,9 @@ pub(crate) fn error_state(
 
 #[cfg(feature = "stories")]
 pub fn stories() -> Vec<crate::stories::Story> {
-    stories_impl::stories()
+    let mut all = stories_impl::stories();
+    all.extend(lounge::stories::stories());
+    all
 }
 
 /// A channel's header label: a text channel's hash and name, or a voice channel's name alone,
