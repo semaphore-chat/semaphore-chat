@@ -1,22 +1,26 @@
-//! `AttachmentTile`: a file sent with a message (`frontend/src/kit/chat/AttachmentTile.tsx`).
-//!
-//! The queued and uploading states (Remove, progress, an upload error with Retry) come with the
-//! Composer (B7 part 3).
+//! `AttachmentTile`: a file sent with a message, or one on its way: queued in the composer's tray
+//! (Remove) or uploading under a pending message (progress, an upload error with Retry)
+//! (`frontend/src/kit/chat/AttachmentTile.tsx`).
 
 use super::{child_id, one_line};
 use crate::kit::look::{focus_handle, focus_ring, shows_focus};
 use crate::kit::surface::{Surface, stand_out_fill, tint_base_token};
-use crate::kit::{Action, Icon, IconSize, Spinner};
+use crate::kit::{
+    Action, Button, ControlSize, Icon, IconButton, IconButtonVariant, IconSize, LinearProgress,
+    Spinner,
+};
 use crate::theme::SemTheme;
 use crate::theme::color::{blend, hsla_of};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_design::LoungeIcon;
-use semaphore_design::chat::{BoxSize, IMAGE_MAX, IMAGE_MIN_SIDE, image_box};
+use semaphore_design::chat::{
+    BoxSize, IMAGE_MAX, IMAGE_MIN_SIDE, image_box, remove_name, retry_name, uploading_name,
+};
 use semaphore_design::lounge::{
     AVATAR_MD, CONTROL_LG, CONTROL_MD, ICON_LG, RADIUS_FULL, RADIUS_MD, RADIUS_SM, SPACE_MD,
     SPACE_SM, SPACE_XS, STATE_HOVER, TEXT_BODY, TEXT_SMALL,
 };
+use semaphore_design::{Icon as I, LoungeIcon};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -66,6 +70,10 @@ pub struct AttachmentTile {
     on_open: Option<Action>,
     on_load_error: Option<Action>,
     player: Option<PlayerBuilder>,
+    on_remove: Option<Action>,
+    progress: Option<f32>,
+    error: Option<SharedString>,
+    on_retry: Option<Action>,
 }
 
 impl AttachmentTile {
@@ -88,6 +96,10 @@ impl AttachmentTile {
             on_open: None,
             on_load_error: None,
             player: None,
+            on_remove: None,
+            progress: None,
+            error: None,
+            on_retry: None,
         }
     }
 
@@ -152,6 +164,31 @@ impl AttachmentTile {
         self.on = Some(on);
         self
     }
+
+    /// A Remove button beside the tile ("Remove notes.txt"): a queued file, or an upload to
+    /// cancel.
+    pub fn on_remove(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_remove = Some(Rc::new(handler));
+        self
+    }
+
+    /// The upload is this far, 0 to 100: a bar under the tile ("Uploading notes.txt").
+    pub fn progress(mut self, percent: f32) -> Self {
+        self.progress = Some(percent);
+        self
+    }
+
+    /// The upload failed: this text, in the danger tone, in place of the size (and of the bar).
+    pub fn error(mut self, error: impl Into<SharedString>) -> Self {
+        self.error = Some(error.into());
+        self
+    }
+
+    /// With `error`: a Retry button ("Retry uploading notes.txt").
+    pub fn on_retry(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_retry = Some(Rc::new(handler));
+        self
+    }
 }
 
 /// "name, 2.4 MB", or the name alone.
@@ -201,7 +238,86 @@ impl RenderOnce for LoadFailed {
 }
 
 impl RenderOnce for AttachmentTile {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let on_remove = self.on_remove.take();
+        let progress = self.progress.take();
+        let error = self.error.take();
+        let on_retry = self.on_retry.take();
+        if on_remove.is_none() && progress.is_none() && error.is_none() {
+            return self.tile(window, cx);
+        }
+        let id = self.id.clone();
+        let name = self.name.to_string();
+        if error.is_some() {
+            self.detail = None;
+        }
+        let danger = cx.sem().role.danger;
+        let under = if let Some(error) = error {
+            Some(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap(px(SPACE_SM))
+                    .min_w_0()
+                    .text_color(danger)
+                    .child(
+                        crate::kit::overlays::type_text(TEXT_SMALL, error.clone())
+                            .id(child_id(&id, "error"))
+                            .test_support()
+                            .aria_label(error)
+                            .min_w_0(),
+                    )
+                    .children(on_retry.map(|on_retry| {
+                        Button::new(child_id(&id, "retry"), "Retry")
+                            .text()
+                            .size(ControlSize::Sm)
+                            .accessibility_label(retry_name(&name))
+                            .on_click(move |_, window, cx| on_retry(window, cx))
+                    }))
+                    .into_any_element(),
+            )
+        } else {
+            progress.map(|percent| {
+                LinearProgress::new(
+                    child_id(&id, "progress"),
+                    Some(percent),
+                    uploading_name(&name),
+                )
+                .into_any_element()
+            })
+        };
+        let tile = self.tile(window, cx);
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(SPACE_XS))
+            .min_w_0()
+            .w_full()
+            .max_w(px(IMAGE_MAX.width))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(SPACE_XS))
+                    .min_w_0()
+                    .child(div().flex_1().min_w_0().child(tile))
+                    .children(on_remove.map(|on_remove| {
+                        IconButton::new(child_id(&id, "remove"), I::Close, remove_name(&name))
+                            .lounge_icon(LoungeIcon::X)
+                            .small()
+                            .variant(IconButtonVariant::Ghost)
+                            .on_click(move |_, window, cx| on_remove(window, cx))
+                    })),
+            )
+            .children(under)
+            .into_any_element()
+    }
+}
+
+impl AttachmentTile {
+    /// The tile itself, without Remove, the bar or the failure.
+    fn tile(self, window: &mut Window, cx: &mut App) -> AnyElement {
         let row_tab = super::RowTabScope::active(cx);
         let sem = cx.sem().clone();
         let p = sem.roles;

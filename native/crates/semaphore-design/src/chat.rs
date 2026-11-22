@@ -239,3 +239,69 @@ pub fn image_box(width: Option<f64>, height: Option<f64>) -> BoxSize {
         height: clamp(height * scale, max_h),
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Composer (`Composer.tsx`) and its suggestions (`SuggestionList.tsx`)
+
+/// How tall a composer's field may grow before it scrolls (`ComposerCap`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ComposerCap {
+    /// The on-screen keyboard is up: 2 lines.
+    Keyboard,
+    /// A phone: 4 lines.
+    Phone,
+    /// A wide screen: 10 lines.
+    #[default]
+    Desktop,
+}
+
+/// The lines a field grows to under `cap` (`CAP_ROWS`), then it scrolls.
+pub fn cap_rows(cap: ComposerCap) -> usize {
+    match cap {
+        ComposerCap::Keyboard => 2,
+        ComposerCap::Phone => 4,
+        ComposerCap::Desktop => 10,
+    }
+}
+
+/// What a composer's trailing button does (`ComposerMode`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ComposerMode {
+    /// Send a new message: "Send message".
+    #[default]
+    Send,
+    /// Save an edit to one: "Save changes".
+    Save,
+}
+
+/// The trailing button's name in `mode` (`SUBMIT`).
+pub fn submit_label(mode: ComposerMode) -> &'static str {
+    match mode {
+        ComposerMode::Send => "Send message",
+        ComposerMode::Save => "Save changes",
+    }
+}
+
+/// Whether there is something to send (`canSend` when the screen gives none): the text is not
+/// blank.
+pub fn has_text_to_send(text: &str) -> bool {
+    !text.trim().is_empty()
+}
+
+/// A suggestion list shows this many rows, then it scrolls (`MAX_SHOWN`).
+pub const SUGGESTIONS_SHOWN: usize = 6;
+
+/// The Remove button of a queued or uploading file: "Remove notes.txt".
+pub fn remove_name(file: &str) -> String {
+    format!("Remove {file}")
+}
+
+/// The upload bar of a file on its way: "Uploading notes.txt".
+pub fn uploading_name(file: &str) -> String {
+    format!("Uploading {file}")
+}
+
+/// The Retry button of a failed upload: "Retry uploading notes.txt".
+pub fn retry_name(file: &str) -> String {
+    format!("Retry uploading {file}")
+}

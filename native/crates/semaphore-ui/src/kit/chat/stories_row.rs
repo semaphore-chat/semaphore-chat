@@ -1,13 +1,13 @@
 //! MessageRow and ChatPane, one story per state the web kit's stories show
 //! (`frontend/src/stories/kit/KitMessageRow.stories.tsx`, `KitChatPane.stories.tsx`), in the same
-//! words. The Composer is B7 part 3: until it lands, the panes' composer slot holds a story-only
-//! stand-in field, and the row's `editing` stories come with it.
+//! words.
 
 use super::stories::{Body, Palette, chat_column, colour, log_link, picture, view, words};
+use super::stories_composer::{field, live};
 use super::{
-    AttachmentKind, AttachmentTile, ChatPane, JumpToLatest, MentionKind, MentionSegment,
-    MessageQuote, MessageRow, MessageSegment as S, MessageState, MessageText, ReactionChip,
-    RowFocus, TypingLine,
+    AttachmentKind, AttachmentTile, BannerKind, ChatPane, Composer, ComposerBanner, ComposerCap,
+    ComposerMode, JumpToLatest, MentionKind, MentionSegment, MessageQuote, MessageRow,
+    MessageSegment as S, MessageState, MessageText, ReactionChip, RowFocus, TypingLine,
 };
 use crate::kit::overlays::type_text;
 use crate::kit::{Button, ControlSize, IconButton, Island, ListSeparator, Padding};
@@ -16,9 +16,7 @@ use crate::theme::{self, SemTheme};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_design::chat::TYPING_LINE_HEIGHT;
-use semaphore_design::lounge::{
-    self as t, LAYOUT_GUTTER, RADIUS_ISLAND, SPACE_LG, SPACE_MD, SPACE_SM, SPACE_XL,
-};
+use semaphore_design::lounge::{self as t, LAYOUT_GUTTER, SPACE_MD, SPACE_SM, SPACE_XL};
 use semaphore_design::{Icon as I, LoungeIcon};
 
 fn text(id: &'static str, words: &'static str) -> MessageText {
@@ -372,28 +370,83 @@ fn header(id: &'static str, back: &'static str, title: &'static str) -> AnyEleme
         .into_any_element()
 }
 
-/// The composer slot's stand-in until the Composer lands (B7 part 3): a field-shaped pill.
-fn composer_stand_in(placeholder: &'static str, cx: &App) -> AnyElement {
-    let sem = cx.sem();
-    div()
-        .pt(px(SPACE_SM))
-        .px(px(SPACE_MD))
-        .pb(px(SPACE_MD))
-        .child(
-            div()
-                .h(px(t::CONTROL_LG))
-                .px(px(SPACE_LG))
-                .flex()
-                .items_center()
-                .rounded(px(RADIUS_ISLAND))
-                .bg(crate::kit::surface::stand_out_fill(
-                    sem,
-                    crate::kit::Surface::Surface,
-                ))
-                .text_color(sem.role.text_secondary)
-                .child(type_text(t::TEXT_BODY, placeholder)),
+// ---------------------------------------------------------------------------------------------
+// MessageRow: editing in place
+
+/// A message being edited in place: an inline Composer in save mode as the row's body.
+fn inline_editor(
+    id: &'static str,
+    initial: &'static str,
+    cap: ComposerCap,
+    window: &mut Window,
+    cx: &mut App,
+) -> Composer {
+    Composer::new(id, "Edit message", field((id, 0usize), initial, window, cx))
+        .inline()
+        .mode(ComposerMode::Save)
+        .cap(cap)
+        .on_submit(|_, _| {})
+        .banner(
+            ComposerBanner::new(
+                BannerKind::Editing,
+                "Editing message",
+                "Cancel editing",
+                |_, _| {},
+            )
+            .detail("Escape to cancel, Enter to save"),
         )
-        .into_any_element()
+}
+
+fn editing_body(window: &mut Window, cx: &mut App) -> AnyElement {
+    let row = |id: &'static str, author: &'static str, hex: u32, time: &'static str| {
+        MessageRow::new(id, author, time).avatar_colour(colour(hex))
+    };
+    chat_column(
+        "row-editing",
+        640.,
+        vec![
+            row("e1", "kwam3", 0x6fb1f5, "8:20 PM")
+                .body(text("e1-body", "ok that run was cursed, same time tomorrow?"))
+                .into_any_element(),
+            row("e2", "alexk", 0x9aa0ff, "8:21 PM")
+                .on_open_author(|_, _| {})
+                .body(inline_editor(
+                    "edit-short",
+                    "yeah i'll bring it friday",
+                    ComposerCap::Desktop,
+                    window,
+                    cx,
+                ))
+                .into_any_element(),
+            row("e3", "alexk", 0x9aa0ff, "8:21 PM")
+                .continued(true)
+                .body(inline_editor(
+                    "edit-long",
+                    "a longer edit\nover a few lines\nstill inside the row\nand past the phone cap\nso it scrolls",
+                    ComposerCap::Phone,
+                    window,
+                    cx,
+                ))
+                .into_any_element(),
+            row("e4", "dropbear", 0x5fd49a, "8:22 PM")
+                .body(text("e4-body", "the rows around an editor stay as they are"))
+                .into_any_element(),
+        ],
+    )
+}
+
+// ---------------------------------------------------------------------------------------------
+// ChatPane
+
+/// The pane's composer: phone cap, as the web's pane stories.
+fn pane_composer(
+    id: &'static str,
+    label: &'static str,
+    initial: &'static str,
+    window: &mut Window,
+    cx: &mut App,
+) -> Composer {
+    live(id, label, initial, window, cx).cap(ComposerCap::Phone)
 }
 
 const WORDS: [&str; 7] = [
@@ -444,7 +497,7 @@ fn rows(id: &'static str) -> AnyElement {
         .into_any_element()
 }
 
-fn conversation_body(_: &mut Window, _: &mut App) -> AnyElement {
+fn pane(composer: Option<Composer>) -> AnyElement {
     frame(
         640.,
         ChatPane::new("pane")
@@ -452,11 +505,27 @@ fn conversation_body(_: &mut Window, _: &mut App) -> AnyElement {
             .list(rows("rows"))
             .typing(TypingLine::new(["aiko", "dropbear"]))
             .jump(JumpToLatest::new("jump", |_, _| {}).new_count(3))
-            .announcement("3 new messages"),
+            .announcement("3 new messages")
+            .when_some(composer, |pane, composer| pane.composer(composer)),
     )
 }
 
-fn covered_body(_: &mut Window, cx: &mut App) -> AnyElement {
+fn conversation_body(_: &mut Window, _: &mut App) -> AnyElement {
+    pane(None)
+}
+
+/// With a composer under the list.
+fn with_composer_body(window: &mut Window, cx: &mut App) -> AnyElement {
+    pane(Some(pane_composer(
+        "pane-composer",
+        "Message #lobby",
+        "",
+        window,
+        cx,
+    )))
+}
+
+fn covered_body(window: &mut Window, cx: &mut App) -> AnyElement {
     let thread = ChatPane::new("thread")
         .header(header("thread-back", "Back to #lobby", "Thread"))
         .list(
@@ -482,7 +551,13 @@ fn covered_body(_: &mut Window, cx: &mut App) -> AnyElement {
                         .body(words("t3-body", "another reply")),
                 ),
         )
-        .composer(composer_stand_in("Reply in thread", cx));
+        .composer(pane_composer(
+            "thread-composer",
+            "Reply in thread",
+            "",
+            window,
+            cx,
+        ));
     frame(
         640.,
         ChatPane::new("pane")
@@ -490,7 +565,13 @@ fn covered_body(_: &mut Window, cx: &mut App) -> AnyElement {
             .list(rows("rows"))
             .typing(TypingLine::new(Vec::<&str>::new()))
             .announcement("")
-            .composer(composer_stand_in("Message #lobby", cx))
+            .composer(pane_composer(
+                "pane-composer",
+                "Message #lobby",
+                "draft kept underneath",
+                window,
+                cx,
+            ))
             .cover(thread),
     )
 }
@@ -567,7 +648,8 @@ impl LongHistory {
 }
 
 impl Render for LongHistory {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let composer = pane_composer("long-composer", "Message #lobby", "", window, cx);
         let entity = cx.entity();
         let rows = list(self.list.clone(), move |index, _, cx| {
             entity.read(cx).row(index)
@@ -606,7 +688,7 @@ impl Render for LongHistory {
                 ChatPane::new("long-pane")
                     .header(header("back", "Back", "# lobby"))
                     .list(list_region)
-                    .composer(composer_stand_in("Message #lobby", cx)),
+                    .composer(composer),
             ))
     }
 }
@@ -633,6 +715,8 @@ pub fn stories() -> Vec<Story> {
         Story::new("kit-message-row-toolbar-tab-order", |_, window, cx| {
             toolbar_story(Dark, 3, true, window, cx)
         }),
+        story!("kit-message-row-editing", Dark, editing_body),
+        story!("kit-message-row-editing-light", Light, editing_body),
         story!("kit-chat-pane-conversation", Dark, conversation_body),
         story!("kit-chat-pane-conversation-light", Light, conversation_body),
         story!(
@@ -640,6 +724,7 @@ pub fn stories() -> Vec<Story> {
             Tinted,
             conversation_body
         ),
+        story!("kit-chat-pane-with-composer", Dark, with_composer_body),
         story!("kit-chat-pane-covered", Dark, covered_body),
         story!("kit-chat-pane-covered-light", Light, covered_body),
         Story::new("kit-chat-pane-long-history", |_, _, cx| {
