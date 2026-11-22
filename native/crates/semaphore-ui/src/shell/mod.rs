@@ -8,6 +8,7 @@
 mod faces;
 #[cfg(feature = "stories")]
 pub mod fixtures;
+pub mod lounge;
 mod members;
 mod phone;
 mod press;
@@ -893,7 +894,9 @@ pub(crate) fn error_state(
 
 #[cfg(feature = "stories")]
 pub fn stories() -> Vec<crate::stories::Story> {
-    stories_impl::stories()
+    let mut all = stories_impl::stories();
+    all.extend(lounge::stories::stories());
+    all
 }
 
 /// A channel's header label: a text channel's hash and name, or a voice channel's name alone,

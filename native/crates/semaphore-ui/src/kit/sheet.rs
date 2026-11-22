@@ -66,6 +66,7 @@ pub struct Sheet {
     actions: Vec<AnyElement>,
     size: SheetSize,
     on_close: Option<ValueAction<SheetCloseReason>>,
+    scroll: Option<ScrollHandle>,
 }
 
 impl Sheet {
@@ -79,6 +80,7 @@ impl Sheet {
             actions: Vec::new(),
             size: SheetSize::Md,
             on_close: None,
+            scroll: None,
         }
     }
 
@@ -97,6 +99,12 @@ impl Sheet {
     /// A kit Button in the row pinned to the bottom.
     pub fn action(mut self, element: impl IntoElement) -> Self {
         self.actions.push(element.into_any_element());
+        self
+    }
+
+    /// Tracks the scrolling body with `handle`, so the owner can bring a row into view.
+    pub fn scroll_handle(mut self, handle: &ScrollHandle) -> Self {
+        self.scroll = Some(handle.clone());
         self
     }
 
@@ -141,6 +149,7 @@ impl RenderOnce for Sheet {
             body,
             actions,
             size,
+            scroll,
             ..
         } = self;
         let has_actions = !actions.is_empty();
@@ -236,6 +245,7 @@ impl RenderOnce for Sheet {
                             .flex_1()
                             .min_h_0()
                             .overflow_y_scroll()
+                            .when_some(scroll.clone(), |body, handle| body.track_scroll(&handle))
                             .pt(px(SPACE_XS))
                             .px(px(SPACE_XL))
                             .pb(px(SPACE_XL))
