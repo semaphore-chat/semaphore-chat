@@ -598,10 +598,24 @@ Stories: `kit-media-tile--kinds`, `kit-media-tile--kinds-light`,
 `kit-media-tile--kinds-tinted`, `kit-media-tile--speaking`,
 `kit-media-tile--speaking-light`, `kit-media-tile--long-label`,
 `kit-media-tile--small-tiles`, `kit-media-tile--small-tiles-light`,
-`kit-media-tile--phone-pair`.
+`kit-media-tile--phone-pair`. The native kit adds `kit-media-tile--speaking-cropped`,
+`kit-media-tile--speaking-cropped-light`, `kit-media-tile--blank-label`,
+`kit-media-tile--blank-label-light` and `kit-media-tile--long-label-light`.
 
-Web kit only so far; the native kit has not caught up (see
-[Extending the system](extending.md#the-native-kit-is-catching-up)).
+**In the native kit** the tile is `MediaTile::new(id, label, kind)` with
+`.speaking(..)`, `.on_surface(..)` and `.fit(..)`, and the video is a slot, not
+a ref: `.video(|slot| ...)` returns the element that paints the frames (a
+`canvas` over the call's frames). The tile lays it out over its whole box,
+under the caption chip, and hands it a `VideoSlot` with the `fit` and the corner
+`radius`. The fit is `Contain` for a `screen` and `Cover` for a `camera`;
+`.fit(VideoFit::Contain)` shows a focused camera whole. The tile clips the
+element to its box and paints its own corner masks over it, so a frame painted
+square or oversized (cropped to cover) comes out rounded; the speaking ring is
+drawn after the masks, so it is always whole. Pass the slot only while the track
+is live; an `avatar` tile never builds it. A blank label draws no line under the
+avatar and no chip over video. GPUI has no container queries, so the avatar
+steps are chosen from the tile's laid-out width in the same frame, at the same
+widths as the web's.
 
 ## Badge
 
