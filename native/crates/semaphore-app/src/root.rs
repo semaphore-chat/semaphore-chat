@@ -126,7 +126,7 @@ pub struct AppRoot {
     account: account::Account,
     /// W3: the signed-out pages (`onboarding`).
     onboarding: onboarding::Onboarding,
-    /// W4: incoming calls, DM calls, the participant menu, soundboard, float card, debug panel.
+    /// W4: incoming calls, DM calls, the participant menu, soundboard, the call slot, debug panel.
     calls: calls::Calls,
     /// W4: capture, the clip library and sharing (`replay`).
     replay: replay::Replay,
@@ -1852,13 +1852,7 @@ fn content(
             .into_any_element()
     };
     let voice = core.voice();
-    let stage_shown = match (&props.route, &props.channel, &voice.room) {
-        (_, Some(channel), _) => voice.channel_id.as_deref() == Some(channel.id.as_str()),
-        (Route::DirectMessage { dm_group_id }, _, Some(VoiceRoom::Dm { dm_group_id: id })) => {
-            id == dm_group_id
-        }
-        _ => false,
-    };
+    let stage_shown = props.call_stage_drawn(&voice);
     let element = match (&props.route, &props.channel) {
         (_, Some(channel)) if channel.kind == ChannelKind::Text => {
             let conversation = props.route.conversation();

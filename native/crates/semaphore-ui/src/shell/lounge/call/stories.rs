@@ -305,6 +305,7 @@ pub fn stories() -> Vec<Story> {
         ))),
         story!("shell-voice-notice-lost-connection", || notice(
             ended_notice(&semaphore_core::model::VoiceEnded {
+                options: Default::default(),
                 room: semaphore_core::model::VoiceRoom::Dm {
                     dm_group_id: "d".into()
                 },
@@ -319,6 +320,7 @@ pub fn stories() -> Vec<Story> {
                 },
                 while_reconnecting: false,
                 error: None,
+                options: Default::default(),
             }
         ))),
     ]

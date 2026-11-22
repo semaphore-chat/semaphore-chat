@@ -16,11 +16,14 @@
 //!   audio of their screen shares), applied on every join.
 
 use super::AppRoot;
+use super::prejoin::was_left;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::CoreEvent;
-use semaphore_core::model::{IncomingCallView, SessionState, ViewKey, VoiceRoom, VoiceStatus};
+use semaphore_core::model::{
+    IncomingCallView, SessionState, ViewKey, VoiceJoinOptions, VoiceRoom, VoiceStatus,
+};
 use semaphore_ui::kit::{CallSlot, CallStack};
 use semaphore_ui::nav::Route;
 use semaphore_ui::shell::lounge::call::{
@@ -111,6 +114,101 @@ pub(super) struct Calls {
 pub(super) struct SlotNotice {
     pub(super) model: VoiceNoticeModel,
     pub(super) room: Option<VoiceRoom>,
+    /// The mute and deafen Retry joins with: the failed join's own, or the call's when it ended.
+    pub(super) options: VoiceJoinOptions,
+}
+
+/// What the notice's Retry joins: the room, and how the failed join or the ended call had it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum RetryJoin {
+    Channel {
+        channel_id: String,
+        options: VoiceJoinOptions,
+    },
+    Dm {
+        dm_group_id: String,
+        options: VoiceJoinOptions,
+    },
+}
+
+impl SlotNotice {
+    /// A join that failed: Retry joins the room the same way.
+    fn join_failed(room: VoiceRoom, options: VoiceJoinOptions) -> Self {
+        Self {
+            model: join_failed_notice(),
+            room: Some(room),
+            options,
+        }
+    }
+
+    /// A call that ended on its own: Retry rejoins it muted and deafened as it was.
+    fn ended(ended: &semaphore_core::model::VoiceEnded) -> Self {
+        Self {
+            model: ended_notice(ended),
+            room: Some(ended.room.clone()),
+            options: ended.options,
+        }
+    }
+
+    fn retry(&self) -> Option<RetryJoin> {
+        Some(match self.room.as_ref()? {
+            VoiceRoom::Channel { channel_id, .. } => RetryJoin::Channel {
+                channel_id: channel_id.clone(),
+                options: self.options,
+            },
+            VoiceRoom::Dm { dm_group_id } => RetryJoin::Dm {
+                dm_group_id: dm_group_id.clone(),
+                options: self.options,
+            },
+        })
+    }
+}
+
+impl Calls {
+    /// Watch: the surface shows this track, and the frame redraws as its frames come in from here.
+    fn watch(&mut self, sid: String, generation: u64) {
+        self.watch_generation = generation;
+        self.watched.insert(sid);
+    }
+
+    /// Stop watching: nothing is received until Watch again.
+    fn stop_watching(&mut self) {
+        self.watched.clear();
+    }
+
+    /// `ViewChanged { Voice }`: a leave forgets everything watched; otherwise the tracks that
+    /// went stop being watched, a join clears the notice, and an ending shows it.
+    fn on_voice(&mut self, voice: &semaphore_core::model::VoiceView) {
+        if voice.room.is_none() {
+            self.watched.clear();
+            *self.surface_demands.borrow_mut() = None;
+        } else {
+            let present: std::collections::BTreeSet<String> = voice
+                .participants
+                .iter()
+                .flat_map(|person| [&person.camera, &person.screen_share])
+                .flatten()
+                .map(|track| track.track_sid.clone())
+                .collect();
+            self.watched.retain(|sid| present.contains(sid));
+            // A join (or a call) replaces the notice.
+            self.notice = None;
+        }
+        if voice.ended != self.ended_seen {
+            self.ended_seen = voice.ended.clone();
+            if let Some(ended) = &voice.ended {
+                self.notice = Some(SlotNotice::ended(ended));
+            }
+        }
+    }
+
+    /// A DM join failed: the same notice a channel's failed join shows, with Retry.
+    fn dm_join_failed(&mut self, dm_group_id: String, options: VoiceJoinOptions) {
+        self.notice = Some(SlotNotice::join_failed(
+            VoiceRoom::Dm { dm_group_id },
+            options,
+        ));
+    }
 }
 
 impl AppRoot {
@@ -345,25 +443,69 @@ impl AppRoot {
         &mut self,
         dm_group_id: String,
         video: bool,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(core) = self.core() else {
+        self.start_dm_call_with(dm_group_id, video, None, window, cx);
+    }
+
+    /// A DM call, as `options` chose (`None`: the mute and deafen already chosen). A join that
+    /// fails is the voice notice's, with Retry, and keeps the options it failed with.
+    fn start_dm_call_with(
+        &mut self,
+        dm_group_id: String,
+        video: bool,
+        options: Option<VoiceJoinOptions>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(services) = &self.services else {
             return;
         };
+        let (core, exec) = (services.core.clone(), services.exec.clone());
+        let options = options.unwrap_or_else(|| self.join_options(&core));
         self.prepare_join();
-        let joined = self.fire_and_report(Box::pin(async move {
-            core.join_dm_call(dm_group_id).await?;
-            if video {
-                core.set_camera(true).await?;
-            }
-            Ok(())
-        }));
-        cx.spawn(async move |_, _| {
-            if let Err(error) = joined.await {
+        self.prejoin.joins += 1;
+        let join = self.prejoin.joins;
+        let joining = core;
+        let failed_dm = dm_group_id.clone();
+        exec.run(
+            window,
+            cx,
+            async move {
+                joining.join_dm_call_with(dm_group_id, options).await?;
+                if video && let Err(error) = joining.set_camera(true).await {
+                    // The call is up: only its camera failed, which is the stage's to say.
+                    log::warn!("starting the DM call's camera: {error}");
+                }
+                Ok::<_, semaphore_core::platform::CoreError>(())
+            },
+            move |this, result, _, cx| {
+                let Err(error) = result else {
+                    return;
+                };
                 log::warn!("starting the DM call: {error}");
-            }
-        })
-        .detach();
+                // Another join since, a leave, or a call that's up anyway: not this one's to say.
+                let idle = this
+                    .core()
+                    .is_none_or(|core| core.voice().status == VoiceStatus::Disconnected);
+                if this.prejoin.joins != join || was_left(&error) || !idle {
+                    return;
+                }
+                this.calls.dm_join_failed(failed_dm.clone(), options);
+                cx.notify();
+            },
+        );
+    }
+
+    /// What a join from here starts with: the mute and deafen already chosen on the bar or the
+    /// stage, captured before a failed join resets them.
+    pub(super) fn join_options(&self, core: &semaphore_core::Core) -> VoiceJoinOptions {
+        let voice = core.voice();
+        VoiceJoinOptions {
+            muted: voice.muted || voice.deafened,
+            deafened: voice.deafened,
+        }
     }
 
     // ---- The participant menu. ----
@@ -542,41 +684,19 @@ impl AppRoot {
         let Some(core) = self.core() else {
             return;
         };
-        let voice = core.voice();
-        if voice.room.is_none() {
-            self.calls.watched.clear();
-            *self.calls.surface_demands.borrow_mut() = None;
-        } else {
-            // Tracks that went: no longer watched.
-            let present: std::collections::BTreeSet<String> = voice
-                .participants
-                .iter()
-                .flat_map(|person| [&person.camera, &person.screen_share])
-                .flatten()
-                .map(|track| track.track_sid.clone())
-                .collect();
-            self.calls.watched.retain(|sid| present.contains(sid));
-            // A join (or a call) replaces the notice.
-            self.calls.notice = None;
-        }
-        if voice.ended != self.calls.ended_seen {
-            self.calls.ended_seen = voice.ended.clone();
-            if let Some(ended) = &voice.ended {
-                self.calls.notice = Some(SlotNotice {
-                    model: ended_notice(ended),
-                    room: Some(ended.room.clone()),
-                });
-            }
-        }
+        self.calls.on_voice(&core.voice());
         cx.notify();
     }
 
-    /// A join from the pre-join or a voice room card failed: the notice, with Retry.
-    pub(super) fn show_join_failed(&mut self, room: VoiceRoom, cx: &mut Context<Self>) {
-        self.calls.notice = Some(SlotNotice {
-            model: join_failed_notice(),
-            room: Some(room),
-        });
+    /// A join from the pre-join or a voice room card failed: the notice, with Retry, joining the
+    /// same way again.
+    pub(super) fn show_join_failed(
+        &mut self,
+        room: VoiceRoom,
+        options: VoiceJoinOptions,
+        cx: &mut Context<Self>,
+    ) {
+        self.calls.notice = Some(SlotNotice::join_failed(room, options));
         cx.notify();
     }
 
@@ -615,11 +735,11 @@ impl AppRoot {
         let Some(bar) = CallBarModel::from_stage(&model) else {
             let notice = self.calls.notice.clone()?;
             let root = cx.entity().downgrade();
-            let retry = notice.room.clone().map(|room| {
+            let retry = notice.retry().map(|retry| {
                 let root = root.clone();
                 Rc::new(move |window: &mut Window, cx: &mut App| {
-                    let room = room.clone();
-                    root.update(cx, |root, cx| root.retry_voice(room, window, cx))
+                    let retry = retry.clone();
+                    root.update(cx, |root, cx| root.retry_voice(retry, window, cx))
                         .ok();
                 }) as Rc<dyn Fn(&mut Window, &mut App)>
             });
@@ -657,9 +777,9 @@ impl AppRoot {
                         let sid = sid.to_owned();
                         watch_root
                             .update(cx, |root, cx| {
-                                root.calls.watch_generation =
+                                let generation =
                                     root.frames.as_ref().map_or(0, |frames| frames.generation());
-                                root.calls.watched.insert(sid);
+                                root.calls.watch(sid, generation);
                                 cx.notify();
                             })
                             .ok();
@@ -667,7 +787,7 @@ impl AppRoot {
                     stop_watching: Rc::new(move |_, cx| {
                         stop_root
                             .update(cx, |root, cx| {
-                                root.calls.watched.clear();
+                                root.calls.stop_watching();
                                 cx.notify();
                             })
                             .ok();
@@ -730,12 +850,19 @@ impl AppRoot {
         self.calls.video_redraw = Some(task);
     }
 
-    /// The notice's Retry: the same room again.
-    fn retry_voice(&mut self, room: VoiceRoom, window: &mut Window, cx: &mut Context<Self>) {
+    /// The notice's Retry: the same room again, muted and deafened as the join or the ended call
+    /// had it (a mic the user turned off never comes back on by itself).
+    fn retry_voice(&mut self, retry: RetryJoin, window: &mut Window, cx: &mut Context<Self>) {
         self.calls.notice = None;
-        match room {
-            VoiceRoom::Channel { channel_id, .. } => self.join_from_card(channel_id, window, cx),
-            VoiceRoom::Dm { dm_group_id } => self.start_dm_call(dm_group_id, false, cx),
+        match retry {
+            RetryJoin::Channel {
+                channel_id,
+                options,
+            } => self.join_from_card_with(channel_id, options, window, cx),
+            RetryJoin::Dm {
+                dm_group_id,
+                options,
+            } => self.start_dm_call_with(dm_group_id, false, Some(options), window, cx),
         }
         cx.notify();
     }
@@ -960,5 +1087,157 @@ impl AppRoot {
 
     pub fn ringing(&self) -> bool {
         self.inbox.sounds().is_some_and(|sounds| sounds.ringing())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use semaphore_core::model::{ParticipantView, UserView, VideoTrackView, VoiceEnded, VoiceView};
+    use std::prelude::rust_2024::test;
+
+    fn channel_room() -> VoiceRoom {
+        VoiceRoom::Channel {
+            channel_id: "vc".into(),
+            community_id: None,
+        }
+    }
+
+    fn track(sid: &str) -> VideoTrackView {
+        VideoTrackView {
+            track_sid: sid.into(),
+            width: 640,
+            height: 480,
+        }
+    }
+
+    fn person(id: &str, camera: Option<&str>, screen: Option<&str>) -> ParticipantView {
+        ParticipantView {
+            identity: id.into(),
+            user: UserView {
+                id: id.into(),
+                username: id.into(),
+                ..UserView::default()
+            },
+            camera: camera.map(track),
+            screen_share: screen.map(track),
+            ..ParticipantView::default()
+        }
+    }
+
+    fn ended(options: VoiceJoinOptions) -> VoiceEnded {
+        VoiceEnded {
+            room: channel_room(),
+            while_reconnecting: true,
+            error: None,
+            options,
+        }
+    }
+
+    /// "Join muted" failed: Retry starts the call muted, not with the mic open.
+    #[test]
+    fn retry_after_a_failed_muted_join_joins_muted() {
+        let options = VoiceJoinOptions {
+            muted: true,
+            deafened: false,
+        };
+        let notice = SlotNotice::join_failed(channel_room(), options);
+        assert_eq!(
+            notice.retry(),
+            Some(RetryJoin::Channel {
+                channel_id: "vc".into(),
+                options,
+            })
+        );
+    }
+
+    /// Muted in a call that ended: Retry rejoins muted.
+    #[test]
+    fn retry_after_a_muted_call_ends_joins_muted() {
+        let options = VoiceJoinOptions {
+            muted: true,
+            deafened: false,
+        };
+        let mut calls = Calls::default();
+        calls.on_voice(&VoiceView {
+            ended: Some(ended(options)),
+            ..VoiceView::default()
+        });
+        assert_eq!(
+            calls.notice.and_then(|notice| notice.retry()),
+            Some(RetryJoin::Channel {
+                channel_id: "vc".into(),
+                options,
+            })
+        );
+    }
+
+    /// A DM join that fails says so with Retry, as a channel's does.
+    #[test]
+    fn a_failed_dm_join_shows_the_retry_notice() {
+        let mut calls = Calls::default();
+        calls.dm_join_failed("dm-1".into(), VoiceJoinOptions::default());
+        let notice = calls.notice.expect("a notice");
+        assert!(notice.model.retry);
+        assert_eq!(
+            notice.retry(),
+            Some(RetryJoin::Dm {
+                dm_group_id: "dm-1".into(),
+                options: VoiceJoinOptions::default(),
+            })
+        );
+    }
+
+    /// Watch adds and counts frames from there; Stop watching and a leave clear the set.
+    #[test]
+    fn watch_adds_and_stop_watching_and_a_leave_clear_the_watched_set() {
+        let mut calls = Calls::default();
+        calls.watch("s1".into(), 4);
+        calls.watch("s2".into(), 9);
+        assert_eq!(
+            calls.watched.iter().cloned().collect::<Vec<_>>(),
+            ["s1", "s2"]
+        );
+        assert_eq!(calls.watch_generation, 9);
+        calls.stop_watching();
+        assert!(calls.watched.is_empty());
+        calls.watch("s1".into(), 1);
+        calls.on_voice(&VoiceView::default());
+        assert!(calls.watched.is_empty(), "a leave forgets every picture");
+        assert!(calls.surface_demands.borrow().is_none());
+    }
+
+    /// A track that goes stops being watched, so nothing is received for it.
+    #[test]
+    fn a_voice_change_drops_the_tracks_that_went() {
+        let mut calls = Calls::default();
+        calls.watch("cam".into(), 0);
+        calls.watch("gone".into(), 0);
+        calls.on_voice(&VoiceView {
+            room: Some(channel_room()),
+            participants: vec![person("pri", Some("cam"), None)],
+            ..VoiceView::default()
+        });
+        assert_eq!(calls.watched.iter().cloned().collect::<Vec<_>>(), ["cam"]);
+    }
+
+    /// The surface is handed watched flags for exactly the watched tracks: its demands are those
+    /// tiles and no others.
+    #[test]
+    fn demands_cover_the_watched_tiles_only() {
+        let mut calls = Calls::default();
+        calls.watch("cam".into(), 0);
+        let voice = VoiceView {
+            room: Some(channel_room()),
+            participants: vec![person("pri", Some("cam"), Some("screen"))],
+            ..VoiceView::default()
+        };
+        let tiles = surface_tiles(&voice, &calls.watched);
+        let demanded: Vec<&str> = tiles
+            .iter()
+            .filter(|tile| tile.watched)
+            .map(|tile| tile.id.as_str())
+            .collect();
+        assert_eq!(demanded, ["cam"], "the screen is offered, not received");
     }
 }

@@ -12,13 +12,15 @@ use crate::messages::fixture::{self, Body};
 use crate::messages::{ListData, ListOptions, ListStatus, MessageList, NoMedia};
 use crate::nav::Route;
 use core::prelude::v1::test;
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::*;
 use semaphore_core::ConnectionState;
 use semaphore_core::model::{
-    ChannelKind, ChannelRow, CommunityRow, SessionState, UserView, VoiceView,
+    ChannelKind, ChannelRow, CommunityRow, SessionState, UserView, VoiceRoom, VoiceStatus,
+    VoiceView,
 };
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
@@ -112,17 +114,30 @@ fn shell(
     width: f32,
     route: Route,
 ) -> (Entity<Shell>, &mut VisualTestContext, Events, Asked) {
-    cx.update(|cx| {
-        gpui_kit::init(cx);
-        crate::theme::init(cx);
-        crate::kit::set_reduced_motion(true, cx);
-        crate::messages::init(cx);
-    });
     let asked: Asked = Rc::default();
     let seen = asked.clone();
     let content: ContentSlot = Rc::new(move |props, _, _| {
         seen.borrow_mut().push(props.take_focus);
         div().size_full().into_any_element()
+    });
+    shell_with(cx, width, route, Rc::new(Couch), content, None, asked)
+}
+
+/// `shell`, with the source, the content slot and the frame's call slot the test chooses.
+fn shell_with(
+    cx: &mut TestAppContext,
+    width: f32,
+    route: Route,
+    source: Rc<dyn ShellSource>,
+    content: ContentSlot,
+    voice_bar: Option<crate::shell::VoiceBarSlot>,
+    asked: Asked,
+) -> (Entity<Shell>, &mut VisualTestContext, Events, Asked) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::theme::init(cx);
+        crate::kit::set_reduced_motion(true, cx);
+        crate::messages::init(cx);
     });
     // Under gpui-kit's window root, as `gpui_kit::open_window` puts every app view: it moves
     // focus on Tab.
@@ -130,15 +145,19 @@ fn shell(
     let keep = made.clone();
     let (_, cx) = cx.add_window_view(move |window, cx| {
         let shell = cx.new(|cx| {
-            Shell::new(
-                Rc::new(Couch),
+            let shell = Shell::new(
+                source,
                 route,
                 content,
                 ConnectionState::Connected,
                 window,
                 cx,
             )
-            .with_instance_label("moss.social")
+            .with_instance_label("moss.social");
+            match voice_bar {
+                Some(bar) => shell.with_voice_bar(bar),
+                None => shell,
+            }
         });
         *keep.borrow_mut() = Some(shell.clone());
         let host = cx.new(|_| Host { shell });
@@ -515,6 +534,91 @@ fn a_side_panels_list_gets_the_height_at_every_width(cx: &mut TestAppContext) {
 
 // ---------------------------------------------------------------------------------------------
 // The phone's panes and focus
+
+/// A source in a call in Squad Up, for the frame's call slot.
+struct InCall;
+
+fn call_voice() -> VoiceView {
+    VoiceView {
+        status: VoiceStatus::Connected,
+        channel_id: Some("squad".into()),
+        room: Some(VoiceRoom::Channel {
+            channel_id: "squad".into(),
+            community_id: Some("c1".into()),
+        }),
+        ..VoiceView::default()
+    }
+}
+
+impl ShellSource for InCall {
+    fn session(&self) -> SessionState {
+        Couch.session()
+    }
+    fn communities(&self) -> Load<Vec<CommunityRow>> {
+        Couch.communities()
+    }
+    fn channels(&self, community_id: &str) -> Load<Vec<ChannelRow>> {
+        Couch.channels(community_id)
+    }
+    fn members(&self, community_id: &str) -> Load<Vec<MemberRow>> {
+        Couch.members(community_id)
+    }
+    fn rail_counts(&self) -> RailCounts {
+        Couch.rail_counts()
+    }
+    fn voice(&self) -> VoiceView {
+        call_voice()
+    }
+    fn can_create_community(&self) -> bool {
+        Couch.can_create_community()
+    }
+}
+
+#[gpui_kit::test]
+fn a_phone_back_from_the_call_view_keeps_the_call_bar(cx: &mut TestAppContext) {
+    // The app's content slot: it reports the stage as shown only while the centre is drawn.
+    let voice = call_voice();
+    let stage_shown: Rc<Cell<bool>> = Rc::default();
+    let showing = stage_shown.clone();
+    let content: ContentSlot = Rc::new(move |props, _, _| {
+        showing.set(props.call_stage_drawn(&voice));
+        div().size_full().into_any_element()
+    });
+    // The app's call slot: no bar while the stage draws its own controls.
+    let drawn = stage_shown.clone();
+    let bar: crate::shell::VoiceBarSlot = Rc::new(move |_, _| {
+        (!drawn.get()).then(|| div().id("frame-call-bar").test_support().into())
+    });
+    let route = Route::Channel {
+        community_id: "c1".into(),
+        channel_id: "squad".into(),
+    };
+    let (view, cx, _, _) = shell_with(
+        cx,
+        390.,
+        route,
+        Rc::new(InCall),
+        content,
+        Some(bar),
+        Rc::default(),
+    );
+    assert!(has(cx, "phone-back"));
+    assert!(!has(cx, "frame-call-bar"), "the stage's own bar");
+    // Back to the left pane: the route is still the call's channel, nothing of the stage shows,
+    // so the bar must.
+    click(cx, "phone-back");
+    assert_eq!(
+        view.read_with(cx, |shell, _| shell.phone_pane),
+        PhonePane::Left
+    );
+    assert!(
+        has(cx, "frame-call-bar"),
+        "left pane in front: nobody loses Mute, Deafen and Leave"
+    );
+    // Its channel row shows the centre again, with the stage.
+    click(cx, "channel-squad");
+    assert!(!has(cx, "frame-call-bar"));
+}
 
 #[gpui_kit::test]
 fn a_phone_asks_the_composer_for_focus_only_when_the_centre_shows(cx: &mut TestAppContext) {

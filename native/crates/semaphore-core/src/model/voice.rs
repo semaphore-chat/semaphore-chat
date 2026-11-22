@@ -186,6 +186,9 @@ pub struct VoiceEnded {
     pub while_reconnecting: bool,
     /// What the engine said, as `error`.
     pub error: Option<String>,
+    /// How the call was muted and deafened when it ended: Retry joins it again that way, never
+    /// with a mic the user had turned off.
+    pub options: VoiceJoinOptions,
 }
 
 /// One thing we may send, as its button shows it.

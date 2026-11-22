@@ -35,8 +35,8 @@ use semaphore_core::model::{
     MessageDraft, MessageLink, MessageRow, ParticipantView, PinnedList, PinnedRow, RailCounts,
     ReactionUsers, ReactionView, ReplyToView, ScreenShareRequest, SearchHit, SearchScope, SegKind,
     SendState, SessionState, ShareResolution, TextSeg, TextStyle, ThreadInfo, UnreadMarker,
-    UploadView, UserView, VideoDemand, VideoTrackView, ViewKey, VoiceEnded, VoiceStatus, VoiceView,
-    WebhookView,
+    UploadView, UserView, VideoDemand, VideoTrackView, ViewKey, VoiceEnded, VoiceJoinOptions,
+    VoiceStatus, VoiceView, WebhookView,
 };
 use semaphore_core::model::{ChannelPreset, RemovalCause, RestoreOutcome};
 use semaphore_core::model::{ReplayState, ShareTracks, SoundCue, VoiceRoom};
@@ -429,6 +429,7 @@ pub struct VoiceEnded {
     pub room: VoiceRoom,
     pub while_reconnecting: bool,
     pub error: Option<String>,
+    pub options: VoiceJoinOptions,
 }
 
 #[uniffi::remote(Enum)]

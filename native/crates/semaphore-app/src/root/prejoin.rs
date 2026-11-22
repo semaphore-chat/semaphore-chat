@@ -17,13 +17,15 @@
 //!   (presence, my mute) and `ViewChanged { Channels }` of its community (names, capabilities).
 //! - **A failed join** resets core's voice to nothing, so the bar and stage go and the panel shows
 //!   again; a snackbar at the top says why (the voice bar is at the bottom, so it never covers it).
-//! - **No float card over it**: in a call elsewhere, the card would sit on the joins ("joining
-//!   moves you here"); the bar still shows the call (`prejoin_shows`, read by `root.rs`).
+//! - **The call bar shows a call elsewhere**: the frame's call slot keeps Mute, Deafen and Leave
+//!   reachable while the pre-join is on screen.
 
 use super::AppRoot;
 use gpui_kit::*;
 use semaphore_core::CoreEvent;
-use semaphore_core::model::{ChannelKind, ChannelRow, ViewKey, VoiceRoom, VoiceStatus};
+use semaphore_core::model::{
+    ChannelKind, ChannelRow, ViewKey, VoiceJoinOptions, VoiceRoom, VoiceStatus,
+};
 use semaphore_core::platform::CoreError;
 use semaphore_ui::kit::{Variant, text};
 use semaphore_ui::messages::MediaSource;
@@ -41,7 +43,7 @@ pub struct PreJoinArea {
     /// its community and channel.
     pending: Option<(String, String)>,
     /// Counts the joins pressed here: only the latest one's failure is shown.
-    joins: u64,
+    pub(super) joins: u64,
 }
 
 struct Shown {
@@ -60,7 +62,7 @@ fn room_of(channel_id: &str, community_id: Option<String>) -> VoiceRoom {
 }
 
 /// What core says when the user left (or moved on) while the join ran: nobody's failure.
-fn was_left(error: &CoreError) -> bool {
+pub(super) fn was_left(error: &CoreError) -> bool {
     matches!(error, CoreError::Failed { message } if message == "the call was left while joining")
 }
 
@@ -289,7 +291,7 @@ impl AppRoot {
                 if this.prejoin.joins != join || was_left(&error) || !idle {
                     return;
                 }
-                this.prejoin_fail(failed.clone(), cx);
+                this.prejoin_fail(failed.clone(), options, cx);
             },
         );
         cx.notify();
@@ -300,6 +302,20 @@ impl AppRoot {
     pub(crate) fn join_from_card(
         &mut self,
         channel_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let options = self
+            .core()
+            .map_or_else(VoiceJoinOptions::default, |core| self.join_options(&core));
+        self.join_from_card_with(channel_id, options, window, cx);
+    }
+
+    /// The card's Join, with the mute and deafen it starts (and Retry starts) with.
+    pub(super) fn join_from_card_with(
+        &mut self,
+        channel_id: String,
+        options: VoiceJoinOptions,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -330,7 +346,7 @@ impl AppRoot {
         exec.run(
             window,
             cx,
-            async move { joining.join_voice(channel_id).await },
+            async move { joining.join_voice_with(channel_id, options).await },
             move |this, result, _, cx| {
                 let Err(error) = result else {
                     return;
@@ -342,7 +358,7 @@ impl AppRoot {
                 if this.prejoin.joins != join || was_left(&error) || !idle {
                     return;
                 }
-                this.prejoin_fail(failed.clone(), cx);
+                this.prejoin_fail(failed.clone(), options, cx);
             },
         );
         cx.notify();
@@ -350,7 +366,7 @@ impl AppRoot {
 
     /// The failed join: the voice notice in the call slot, with Retry; the error chain is in the
     /// log (`joining voice`).
-    fn prejoin_fail(&mut self, room: VoiceRoom, cx: &mut Context<Self>) {
-        self.show_join_failed(room, cx);
+    fn prejoin_fail(&mut self, room: VoiceRoom, options: VoiceJoinOptions, cx: &mut Context<Self>) {
+        self.show_join_failed(room, options, cx);
     }
 }

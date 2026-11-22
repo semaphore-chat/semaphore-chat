@@ -7,10 +7,11 @@ use crate::kit::BehaviourRoot;
 use crate::voice::{PttState, TileDemand, VoiceController, VoiceStageModel};
 use core::prelude::v1::test;
 use gpui_kit::prelude::*;
+use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
 use gpui_kit::*;
 use semaphore_core::model::{
-    LocalShare, ParticipantView, UserView, VideoTrackView, VoiceEnded, VoiceRoom, VoiceStatus,
-    VoiceView,
+    LocalShare, ParticipantView, UserView, VideoTrackView, VoiceEnded, VoiceJoinOptions, VoiceRoom,
+    VoiceStatus, VoiceView,
 };
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -259,6 +260,7 @@ fn a_lost_connection_offers_retry_and_a_plain_ending_does_not() {
         room: room.clone(),
         while_reconnecting: true,
         error: Some("no route".into()),
+        options: VoiceJoinOptions::default(),
     });
     assert!(lost.retry);
     assert_eq!(lost.severity, NoticeSeverity::Error);
@@ -270,6 +272,7 @@ fn a_lost_connection_offers_retry_and_a_plain_ending_does_not() {
         room,
         while_reconnecting: false,
         error: None,
+        options: VoiceJoinOptions::default(),
     });
     assert!(!plain.retry);
     assert!(join_failed_notice().retry);
@@ -344,11 +347,27 @@ fn the_bar_mutes_deafens_leaves_and_opens_the_call_view(cx: &mut TestAppContext)
     assert!(!rig.has(cx, "call-bar-line"), "a short line shares the row");
 }
 
+/// What the announcer has said through the bar's `BehaviourRoot`.
+fn said(rig: &Rig<Host, ()>, cx: &mut TestAppContext) -> Vec<String> {
+    rig.with(cx, |_, window, _| {
+        window
+            .find_all_by_role(Role::Status)
+            .iter()
+            .filter_map(|node| node.label().map(str::to_owned))
+            .collect()
+    })
+}
+
 #[gpui_kit::test]
 fn an_unavailable_mic_does_nothing_and_its_reason_is_the_line(cx: &mut TestAppContext) {
     let (rig, calls) = bar_rig(cx, bar(|m| m.server_muted = true));
     rig.click(cx, "call-bar-mic");
     assert!(calls.calls().is_empty(), "the mic stays shut");
+    assert_eq!(
+        said(&rig, cx),
+        ["Muted by a moderator"],
+        "pressing says why nobody hears a thing"
+    );
     assert!(
         rig.has(cx, "call-bar-line"),
         "read in full, on its own line"
@@ -356,6 +375,7 @@ fn an_unavailable_mic_does_nothing_and_its_reason_is_the_line(cx: &mut TestAppCo
     let (rig, calls) = bar_rig(cx, bar(|m| m.mode = ptt("V")));
     rig.click(cx, "call-bar-mic");
     assert!(calls.calls().is_empty());
+    assert_eq!(said(&rig, cx), ["Hold V to talk"]);
 }
 
 #[gpui_kit::test]
@@ -373,8 +393,28 @@ fn joining_offers_nothing_to_press(cx: &mut TestAppContext) {
 fn reconnecting_has_cancel_and_never_says_connected(cx: &mut TestAppContext) {
     let (rig, calls) = bar_rig(cx, bar(|m| m.phase = CallPhase::Reconnecting(2)));
     assert!(rig.has(cx, "call-bar-reconnecting"));
+    let description = |rig: &Rig<Host, ()>, cx: &mut TestAppContext| {
+        rig.with(cx, |_, window, _| {
+            window
+                .find("call-bar-open")
+                .description()
+                .map(str::to_owned)
+        })
+    };
+    // The mic is open, so the line says nothing at all: the status row above says what's up, and
+    // nothing here claims the call is connected while it isn't.
+    assert_eq!(description(&rig, cx), None);
     rig.click(cx, "call-bar-cancel");
     assert_eq!(calls.calls(), ["leave"]);
+    // Muted, it says so, still without "connected".
+    let (rig, _) = bar_rig(
+        cx,
+        bar(|m| {
+            m.phase = CallPhase::Reconnecting(2);
+            m.muted = true;
+        }),
+    );
+    assert_eq!(description(&rig, cx).as_deref(), Some("Muted"));
 }
 
 type Log = Rc<RefCell<Vec<String>>>;
@@ -469,6 +509,24 @@ fn nothing_is_received_until_watch_and_stop_watching_stops_it(cx: &mut TestAppCo
 }
 
 #[gpui_kit::test]
+fn demands_cover_the_watched_tiles_only(cx: &mut TestAppContext) {
+    let (_, log) = surface_rig(
+        cx,
+        vec![
+            offered("screen", TileKind::Screen, false),
+            offered("camera", TileKind::Camera, true),
+        ],
+        false,
+    );
+    assert_eq!(
+        asked(&log),
+        ["demands camera"],
+        "the offered screen is never received"
+    );
+    assert!(actions(&log).is_empty());
+}
+
+#[gpui_kit::test]
 fn past_three_offers_a_summary_with_see_all_comes_first(cx: &mut TestAppContext) {
     let tiles: Vec<SurfaceTile> = (0..5)
         .map(|n| offered(&format!("c{n}"), TileKind::Camera, false))
@@ -499,6 +557,7 @@ fn the_notice_retries_only_when_it_can_help(cx: &mut TestAppContext) {
                     },
                     while_reconnecting: false,
                     error: None,
+                    options: VoiceJoinOptions::default(),
                 })
             };
             VoiceNoticeBar::new(

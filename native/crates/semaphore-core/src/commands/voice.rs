@@ -429,7 +429,10 @@ impl Core {
                     state.voice = VoiceView::default();
                     state.media = None;
                     state.view_changed(ViewKey::Voice);
-                    return (Err(error), false);
+                    // A failed join may have left the engine in an earlier call (the join failed
+                    // before it connected, or it connected and then failed): nobody may stay in
+                    // a call with no bar showing. `disconnect` is a no-op when nothing is up.
+                    return (Err(error), true);
                 }
                 Ok(joined) => joined,
             };
@@ -780,12 +783,19 @@ impl Core {
                     let room = state.voice.room.take();
                     let was = state.voice.status;
                     let status = status_name(was);
+                    // Retry joins the room again as the call was left, never with a mic the user
+                    // had turned off (see `VoiceJoinOptions`: deafened means muted).
+                    let options = VoiceJoinOptions {
+                        muted: state.voice.muted || state.voice.deafened,
+                        deafened: state.voice.deafened,
+                    };
                     state.voice = VoiceView {
                         error: media.error.clone(),
                         ended: room.clone().map(|room| VoiceEnded {
                             room,
                             while_reconnecting: was == VoiceStatus::Reconnecting,
                             error: media.error.clone(),
+                            options,
                         }),
                         ..VoiceView::default()
                     };

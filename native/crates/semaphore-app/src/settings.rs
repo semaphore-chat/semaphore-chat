@@ -247,7 +247,7 @@ impl Default for Settings {
     }
 }
 
-/// W4: the float card's placement as saved, one per `semaphore_ui::voice::dock::viewport_bucket`.
+/// The old float card's placement, one per `semaphore_ui::voice::dock::viewport_bucket`.
 /// `anchor` is `PipAnchor::name`; one that doesn't parse, or isn't `PipPlacement::is_valid`, is
 /// ignored.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

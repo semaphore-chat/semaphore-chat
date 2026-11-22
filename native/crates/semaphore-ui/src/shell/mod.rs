@@ -30,7 +30,9 @@ pub(crate) use faces::{community_avatar, user_avatar};
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{ChannelKind, ChannelRow, CommunityRow, SessionState, ViewKey};
+use semaphore_core::model::{
+    ChannelKind, ChannelRow, CommunityRow, SessionState, ViewKey, VoiceRoom, VoiceView,
+};
 use semaphore_core::{ConnectionState, CoreEvent};
 use semaphore_design::Icon as IconName;
 use std::cell::Cell;
@@ -70,11 +72,33 @@ pub struct ContentProps {
     pub route: Route,
     pub channel: Option<ChannelRow>,
     pub community: Option<CommunityRow>,
+    /// Whether the middle column is drawn now. On a phone one pane shows at a time: with the left
+    /// pane in front the route stays, but this column and the stage in it aren't on screen.
+    pub centre_drawn: bool,
     /// The shell just appeared or navigated: the owner moves keyboard focus into what it shows (the
     /// composer), as it does on opening another conversation. Set on the first drawing of a channel
     /// after it, even when the conversation is the one already open: the shell's first render, and
     /// a click on a rail or channel row, took the focus.
     pub take_focus: bool,
+}
+
+impl ContentProps {
+    /// Whether the middle column is showing the call's own view: the route is the room of the call
+    /// that's up, *and* the centre is drawn. A phone's left pane can leave the route on the call
+    /// while the stage isn't on screen; then nothing of the call is drawn, so the frame's call
+    /// slot must keep the call bar.
+    pub fn call_stage_drawn(&self, voice: &VoiceView) -> bool {
+        if !self.centre_drawn {
+            return false;
+        }
+        match (&self.route, &self.channel, &voice.room) {
+            (_, Some(channel), _) => voice.channel_id.as_deref() == Some(channel.id.as_str()),
+            (Route::DirectMessage { dm_group_id }, _, Some(VoiceRoom::Dm { dm_group_id: id })) => {
+                id == dm_group_id
+            }
+            _ => false,
+        }
+    }
 }
 
 /// What the owner acts on. Core's commands are the owner's to call, so stories need no core.
@@ -431,6 +455,7 @@ impl Shell {
             route: self.nav.current().clone(),
             channel,
             community: self.community(),
+            centre_drawn,
             take_focus,
         };
         (self.content)(&props, window, cx)
