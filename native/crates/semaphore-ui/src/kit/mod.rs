@@ -21,6 +21,11 @@ mod lists;
 mod live;
 mod look;
 mod lounge;
+mod media;
+#[cfg(feature = "stories")]
+mod media_stories;
+#[cfg(test)]
+mod media_tests;
 mod modal;
 mod overlays;
 mod sheet;
@@ -75,6 +80,10 @@ pub use lounge::{
     Card, DOCK_FADE, Dock, DockDivider, DockEntry, DockItem, Island, Landmark, Padding, card_name,
     dock_fades, dock_item_name, reveal_scroll,
 };
+pub use media::{
+    MediaKind, MediaStep, MediaTile, VideoFit, VideoSlot, media_step, media_tile_breakpoints,
+    media_tile_label,
+};
 pub use overlays::{
     ANCHOR_GAP, Dialog, DialogCloseReason, DialogSize, Menu, MenuCloseReason, MenuEntry, MenuItem,
     MenuTone, Paper, Placement, Popover, PopoverPadding, PopoverPanel, SecondaryTone, Tip,
@@ -102,6 +111,7 @@ pub fn stories() -> Vec<crate::stories::Story> {
     all.extend(stories_lists_overlays::stories());
     all.extend(stories_controls::stories());
     all.extend(stories_lounge::stories());
+    all.extend(media_stories::stories());
     all.extend(behaviour::stories::stories());
     all.extend(stories_layout::stories());
     all

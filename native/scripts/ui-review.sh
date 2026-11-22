@@ -297,7 +297,7 @@ python3 "$REPORT" jobs \
 : >"$WORK/compare.tsv"
 log "comparing $(wc -l <"$WORK/jobs.tsv" | tr -d ' ') shots ..."
 if ! in_native "$NATIVE" "$RIG" --compare "$WORK/jobs.tsv" \
-  --composites "$OUT/composites" --fuzz "$FUZZ" >"$WORK/compare.tsv"; then
+  --composites "$OUT/composites" --fuzz "$FUZZ" --threads "$SHARDS" >"$WORK/compare.tsv"; then
   log "the comparison could not read every shot — see the report"
 fi
 
