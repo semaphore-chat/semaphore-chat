@@ -36,6 +36,16 @@ impl std::fmt::Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
+/// The code of a call that never got a usable answer because the TLS handshake failed: the
+/// server's certificate wasn't trusted, or it doesn't speak TLS on that port. Status 0.
+pub const CLIENT_TLS: &str = "CLIENT_TLS";
+/// The code of a call that never reached the server: refused, no route, no DNS answer, or timed
+/// out. Status 0.
+pub const CLIENT_UNREACHABLE: &str = "CLIENT_UNREACHABLE";
+/// The code of a call whose success response wasn't the JSON the contract describes, e.g. an
+/// HTML page from something that isn't a Semaphore server. Status 0.
+pub const CLIENT_INVALID_RESPONSE: &str = "CLIENT_INVALID_RESPONSE";
+
 /// Converts a generated client's error into one the rest of the app can handle.
 ///
 /// No operation declares a typed error (the contract's `default` responses are stripped
@@ -127,11 +137,44 @@ fn from_other(other: Error<()>) -> ApiError {
     };
     ApiError {
         status: other.status().map_or(0, |status| status.as_u16()),
-        code: ErrorCode::Unknown(String::from("UNKNOWN")),
+        code: ErrorCode::Unknown(String::from(client_code(&other))),
         message: capped(message),
         retryable: other.is_retryable(),
         retry_after_ms: None,
     }
+}
+
+/// The client-side code for a failure with no server code: which way the call failed.
+fn client_code(error: &Error<()>) -> &'static str {
+    match error {
+        Error::InvalidResponsePayload(..) => CLIENT_INVALID_RESPONSE,
+        Error::CommunicationError(error) if is_tls(error) => CLIENT_TLS,
+        Error::CommunicationError(error) if error.is_connect() || error.is_timeout() => {
+            CLIENT_UNREACHABLE
+        }
+        _ => "UNKNOWN",
+    }
+}
+
+/// Whether a rustls error is anywhere in this error's chain. The TLS stream reports its errors
+/// as an `io::Error` wrapping the rustls one, and `io::Error::source` skips what it wraps, so
+/// each `io::Error` is opened too.
+fn is_tls(error: &(dyn std::error::Error + 'static)) -> bool {
+    let mut next = Some(error);
+    while let Some(error) = next {
+        if error.is::<rustls::Error>() {
+            return true;
+        }
+        if let Some(inner) = error
+            .downcast_ref::<std::io::Error>()
+            .and_then(std::io::Error::get_ref)
+            && is_tls(inner)
+        {
+            return true;
+        }
+        next = error.source();
+    }
+    false
 }
 
 /// `text` cut to [`MAX_BODY_IN_MESSAGE`] bytes at a character boundary, with a marker.
@@ -208,6 +251,7 @@ mod tests {
                 converted.message
             );
         }
+        assert_eq!(converted.code.as_str(), CLIENT_INVALID_RESPONSE);
         assert!(
             converted
                 .message
@@ -330,5 +374,45 @@ mod tests {
         assert!(error.message.ends_with("…(truncated)"));
         assert!(error.retryable);
         assert_eq!(unparsed(500, "short".into()).message, "short");
+    }
+
+    #[test]
+    fn a_rustls_error_is_found_inside_the_io_errors_that_carry_it() {
+        #[derive(Debug)]
+        struct Wrapper(std::io::Error);
+        impl std::fmt::Display for Wrapper {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("connect failed")
+            }
+        }
+        impl std::error::Error for Wrapper {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+        let refused = rustls::Error::InvalidCertificate(rustls::CertificateError::UnknownIssuer);
+        let io = std::io::Error::new(std::io::ErrorKind::InvalidData, refused);
+        assert!(is_tls(&Wrapper(io)));
+        let plain = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
+        assert!(!is_tls(&Wrapper(plain)));
+    }
+
+    #[tokio::test]
+    async fn a_closed_port_is_unreachable() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        // Bind and drop a listener: nothing is listening on that port any more.
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let error = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{port}/"))
+            .send()
+            .await
+            .expect_err("nothing listens there");
+        let converted = from_other(Error::CommunicationError(error));
+        assert_eq!(converted.status, 0);
+        assert_eq!(converted.code.as_str(), CLIENT_UNREACHABLE);
     }
 }

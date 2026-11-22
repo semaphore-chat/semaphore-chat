@@ -28,7 +28,13 @@ ARG SYSTEM_IMAGE_SHA256=b57f6386af25b0fe5488e77196b43c03778c6760e6f4311611d09039
 
 # What the emulator needs beyond the X, GL, ALSA, NSS and Mesa libraries the build image already
 # carries (the GPUI rig installed those). libbsd is QEMU's and the emulator's own libc++'s.
-RUN pacman -S --noconfirm --needed libbsd libxext libxcursor libxi libpng bzip2 \
+# The dated archive mirror drops downloads now and then: retry, as Dockerfile.build does.
+RUN for attempt in 1 2 3 4; do \
+      pacman -S --noconfirm --needed libbsd libxext libxcursor libxi libpng bzip2 && break; \
+      if [ "$attempt" = 4 ]; then echo "pacman failed 4 times" >&2; exit 1; fi; \
+      echo "pacman attempt $attempt failed; retrying" >&2; \
+      sleep $((attempt * 20)); \
+    done \
  && rm -rf /var/cache/pacman/pkg/*
 
 COPY docker/android-emulator/emulator-package.xml /tmp/emulator-package.xml

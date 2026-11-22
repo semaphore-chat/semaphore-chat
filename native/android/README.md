@@ -93,15 +93,23 @@ stacks, and the core's requests go through rustls and reqwest in Rust.
 
 ## The core on Android
 
-- `SemaphoreHost` starts the core once per process (`semaphore_mobile::start`), and restores the
-  session on the server signed in to last (semaphore-mobile remembers it in `data_dir`).
-- Every core event bumps a counter the screen re-reads its views on. Events arrive on whatever
-  thread changed core state, so the listener does nothing else.
+- `SemaphoreHost` starts the core once per process (`semaphore_mobile::start`) on
+  `Dispatchers.Default`, with an `AppModel` over it that restores the session on the server
+  signed in to last (semaphore-mobile remembers it in `data_dir`).
+- Core events go into an unbounded channel (`EventPipe`) and nothing else: they arrive on whatever
+  thread changed core state. `CoreStore` drains each burst on a background coroutine and re-reads
+  core's views into `StateFlow`s of the screens' models (`screens/.../Models.kt`).
+- `AppModel` holds the screen stack (`Navigator`, hand-rolled: the session replaces it, taps push,
+  Back pops; an open sheet takes Back first), the connect and sign-in forms, and the last community
+  per server (`last-community` in `noBackupFilesDir`).
+- Await uniffi's `suspend` functions on a dispatcher that dispatches (Default, IO, Main), never one
+  that resumes inline: the resumption comes through a JNA callback on a Tokio worker, and running
+  the next poll inside it makes JNA's detach abort the process.
 - Lifecycle: `MainActivity.onStop` (not for a rotation) suspends the core, then waits up to
   300 ms for the secret store to finish its queued writes, while Android still counts the app as
-  visible; `onStart` resumes it. Both are recorded before the core exists, so a core that finishes
-  starting in the background starts suspended. A default-network callback maps onto
-  `network_changed`.
+  visible; `onStart` resumes it and re-reads the core's views. Both are recorded before the core
+  exists, so a core that finishes starting in the background starts suspended. A default-network
+  callback maps onto `network_changed`.
 - `NativeLib.init` sends the library's log records and panics to logcat (tag `semaphore`). A secret
   store that fails is logged there at error level once, and `MobileHost.secretStoreFailure()`
   says so: the session then won't survive a restart.
@@ -137,6 +145,10 @@ kit a `KitPalette`.
 - **Fonts:** Figtree and Bricolage Grotesque from `design/fonts/` (pinned and hash-checked there),
   copied into the kit's font resources at build time. Their licence and the icons' ship in the
   APK as `assets/open_source_licences.txt`.
+- **Screens:** `screens/` is a library module with the app's screens (connect, sign-in, start,
+  the phone Lounge with the dock and the "All communities" sheet, a channel), fed plain Kotlin
+  models, so they render without the core. Their stories (`ScreenStories.kt`, `screen-*`) render
+  like the kit's.
 - **Stories:** `kit/src/test/.../stories/KitStories.kt`. `KitStoryShotsTest` renders every story
   under Robolectric (native graphics, SDK 34) at two phone sizes in four themes (light and dark,
   violet and amber, palettes from `design/vectors/colour.json`). `native/scripts/android.sh` runs

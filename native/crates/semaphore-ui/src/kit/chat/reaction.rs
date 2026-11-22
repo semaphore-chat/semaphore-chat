@@ -124,6 +124,7 @@ pub(crate) fn is_context_menu_key(keystroke: &Keystroke) -> bool {
 
 impl RenderOnce for ReactionChip {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let row_tab = super::RowTabScope::active(cx);
         let sem = cx.sem().clone();
         let p = sem.roles;
         let on = Surface::or_current(self.on, cx);
@@ -182,6 +183,7 @@ impl RenderOnce for ReactionChip {
         let (repeat_click, repeat_down, repeat_up) =
             (repeating.clone(), repeating.clone(), repeating);
         base::Button::new(self.id)
+            .when(!row_tab, |button| button.tab_stop(false))
             .track_focus(&focus)
             .aria_toggled(if self.mine {
                 Toggled::True

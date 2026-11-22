@@ -10,7 +10,8 @@
 #   --pr <n>           the pull request to publish the section to (--update-pr writes it)
 #   --update-pr        replace (or append) the marked section in PR <n>'s description
 #
-# A story is a composable in native/android/kit/src/test/.../stories/KitStories.kt. Each renders
+# A story is a composable in native/android/kit/src/test/.../stories/KitStories.kt (kit-*) or
+# native/android/screens/src/test/.../stories/ScreenStories.kt (screen-*). Each renders
 # under Robolectric's native graphics (KitStoryShotsTest, no emulator and no Rust library) at
 # every phone size (phone 360x800 dp, phone-large 412x915 dp, both xhdpi) in four themes (light
 # and dark, violet and amber), so one story id here is `<story>-<theme>`, e.g.
@@ -64,6 +65,7 @@ SHOTS="$UIR/shots"
 OUT="$UIR/out"
 WORK="$UIR/work"
 STORY_TEST="native/android/kit/src/test/java/app/semaphorechat/android/kit/stories/KitStoryShotsTest.kt"
+SCREEN_STORY_TEST="native/android/screens/src/test/java/app/semaphorechat/android/screens/stories/ScreenStoryShotsTest.kt"
 # The sizes the stories render at (StoryPalettes.kt's STORY_SIZES), for the report.
 SIZES="phone:360:800,phone-large:412:915"
 
@@ -110,8 +112,12 @@ render() { # <checkout-root> <shots-dir>
   rm -rf "$dir"
   mkdir -p "$dir"
   local args=(./gradlew --no-daemon --console=plain --quiet :kit:testDebugUnitTest
-    --tests 'app.semaphorechat.android.kit.stories.KitStoryShotsTest'
-    "-Psemaphore.shotsDir=$dir")
+    --tests 'app.semaphorechat.android.kit.stories.KitStoryShotsTest')
+  # The screens' stories (native/android/screens), where the checkout has them.
+  if [[ -f "$checkout/$SCREEN_STORY_TEST" ]]; then
+    args+=(:screens:testDebugUnitTest --tests 'app.semaphorechat.android.screens.stories.ScreenStoryShotsTest')
+  fi
+  args+=("-Psemaphore.shotsDir=$dir")
   [[ -z "$STORIES" ]] || args+=("-Psemaphore.stories=$STORIES")
   if ! in_image "$checkout/native/android" "${args[@]}" >"$WORK/render-$(basename "$dir").log" 2>&1; then
     tail -n 60 "$WORK/render-$(basename "$dir").log" >&2

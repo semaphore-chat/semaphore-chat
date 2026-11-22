@@ -61,9 +61,10 @@ pub use behaviour::{
 };
 pub use bus::{emit_core_event, on_core_event};
 pub use chat::{
-    AttachmentKind, AttachmentTile, JumpToLatest, LINK_CARD_BANNER_RATIO, LinkCard, MentionKind,
-    MentionSegment, MessageQuote, MessageSegment, MessageText, PlayerSlot, ReactionChip,
-    SegmentStyle, TypingLine,
+    AttachmentKind, AttachmentTile, ChatPane, JumpToLatest, LINK_CARD_BANNER_RATIO, LinkCard,
+    MentionKind, MentionSegment, MessageQuote, MessageRow, MessageSegment, MessageState,
+    MessageText, OpenActionsRequest, PlayerSlot, ReactionChip, RowFocus, RowTabScope, SegmentStyle,
+    TypingLine,
 };
 pub use controls::{
     Button, ButtonSize, CheckState, Checkbox, IconButton, IconButtonVariant, KeyCap, Orientation,
@@ -124,6 +125,7 @@ pub fn stories() -> Vec<crate::stories::Story> {
     all.extend(media_stories::stories());
     all.extend(behaviour::stories::stories());
     all.extend(chat::stories::stories());
+    all.extend(chat::stories_row::stories());
     all.extend(stories_layout::stories());
     all
 }

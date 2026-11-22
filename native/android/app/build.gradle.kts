@@ -148,6 +148,8 @@ val rustlsAndroidVersion = providers.of(RustlsAndroidVersion::class.java) {
 dependencies {
     // The Compose kit: the theme, the density, the fonts and the components (native/android/kit).
     implementation(project(":kit"))
+    // The screens, fed plain models by CoreStore (native/android/screens).
+    implementation(project(":screens"))
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.material3:material3")
@@ -173,4 +175,7 @@ dependencies {
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    // The device flow test drives the real screens through Compose's test rule.
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }

@@ -7,5 +7,11 @@
 ARG BASE
 FROM ${BASE}
 
-RUN pacman -S --noconfirm --needed wireplumber pipewire-pulse pipewire-audio gdb \
+# The dated archive mirror drops downloads now and then: retry, as Dockerfile.build does.
+RUN for attempt in 1 2 3 4; do \
+      pacman -S --noconfirm --needed wireplumber pipewire-pulse pipewire-audio gdb && break; \
+      if [ "$attempt" = 4 ]; then echo "pacman failed 4 times" >&2; exit 1; fi; \
+      echo "pacman attempt $attempt failed; retrying" >&2; \
+      sleep $((attempt * 20)); \
+    done \
  && rm -rf /var/cache/pacman/pkg/*
