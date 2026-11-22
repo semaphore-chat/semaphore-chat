@@ -785,6 +785,16 @@ fn the_home_has_the_load_faces_while_the_communities_load_or_fail(cx: &mut TestA
     );
     assert!(has(cx, "community-home-face"));
     assert!(!has(cx, "community-home-create"));
+    // A channel's route too: nothing of the community is drawn until the list is in.
+    let (_, cx, _, _) = shell_on(
+        cx,
+        1280.,
+        general(),
+        Rc::new(RoomsOnly {
+            lists: Some(Load::Loading),
+        }),
+    );
+    assert!(has(cx, "community-home-face"));
     let failed = Load::Failed(semaphore_core::model::ErrorView {
         code: "UNAVAILABLE".into(),
         message: "The server didn't answer.".into(),

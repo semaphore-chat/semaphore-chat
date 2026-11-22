@@ -399,11 +399,12 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         if let Some(community_id) = self.nav.current().community_id().map(str::to_owned) {
-            let home = match self.nav.current() {
-                Route::Community { .. } => true,
-                Route::Channel { .. } => self.channel().is_none(),
-                _ => !matches!(self.source.communities(), Load::Ready(_)),
-            };
+            let home = !matches!(self.source.communities(), Load::Ready(_))
+                || match self.nav.current() {
+                    Route::Community { .. } => true,
+                    Route::Channel { .. } => self.channel().is_none(),
+                    _ => false,
+                };
             if home {
                 return self
                     .community_home(&community_id, members_shown, cx)
