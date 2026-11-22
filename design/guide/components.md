@@ -1146,10 +1146,10 @@ ListSeparator, ReactionChip, Composer and JumpToLatest. They hold no chat logic:
 the screen brings the data, the message list's scrolling and roving focus,
 drafts, mentions and sending.
 
-The native kit (`native/crates/semaphore-ui/src/kit/chat/`) has MessageText,
-ListSeparator, ReactionChip, JumpToLatest, MessageQuote, AttachmentTile,
-LinkCard and TypingLine, with the same names, props and words (B7 part 1).
-MessageRow, ChatPane, Composer and SuggestionList are web kit only so far; the
+The native kit (`native/crates/semaphore-ui/src/kit/chat/`) has MessageRow,
+ChatPane, MessageText, ListSeparator, ReactionChip, JumpToLatest, MessageQuote,
+AttachmentTile, LinkCard and TypingLine, with the same names, props and words
+(B7 parts 1 and 2). Composer and SuggestionList are web kit only so far; the
 native kit has not caught up (see
 [Extending the system](extending.md#the-native-kit-is-catching-up)). The pure
 rules are shared Rust: `semaphore_design::chat` (counts, the typing line, the
@@ -1247,6 +1247,18 @@ Stories: `kit-message-row--states`, `kit-message-row--states-light`,
 `kit-message-row--long-content-light`, `kit-message-row--actions`,
 `kit-message-row--actions-light`, `kit-message-row--editing`,
 `kit-message-row--editing-light`, `kit-message-row--toolbar-tab-order`.
+
+**Native.** `focus` is a `RowFocus` (the row's `FocusHandle`, from the list,
+and `tab_stop`); the list moves focus between rows. The row's controls read
+`RowTabScope`, the native `RowTabScopeContext`: the kit's Button and IconButton
+and the chat pieces skip Tab outside the list's Tab stop row and a row focus is
+in, and a control in a slot that is not a kit piece reads
+`RowTabScope::active(cx)`. The toolbar (and a continued row's gutter time)
+shows on hover and while focus is in the row, which includes a Menu opened
+from the toolbar. `onOpenActions` gets `OpenActionsRequest::Pointer` with the
+window position for a right-click and `Keyboard` for Enter, the Menu key and
+Shift+F10 on the row itself; the desktop has no long press, so `Touch` is never
+sent. The editing stories come with the Composer (B7 part 3).
 
 ### MessageText
 
@@ -1483,6 +1495,19 @@ Stories: `kit-chat-pane--conversation`, `kit-chat-pane--conversation-light`,
 `kit-chat-pane--conversation-tinted`, `kit-chat-pane--with-composer`,
 `kit-chat-pane--covered`, `kit-chat-pane--covered-light`,
 `kit-chat-pane--long-history` (2,000 rows on the list core: the performance check).
+
+**Native.** The drop zone is `on_drop_files` (the paths) and `on_files_over`
+(true while files are over the conversation, false when they leave or drop).
+Under a `cover` the conversation is still rendered and laid out but not
+prepainted or painted, so it is not drawn, focusable, pressable or in the
+accessibility tree; a list that must keep its scroll under the cover keeps its
+`ListState` or `ScrollHandle` in the screen. A covered conversation still lays
+out, so the screen should not leave animated states (spinners, progress) under
+a cover. `announcement` is a polite live
+node, silent under a cover. Until the Composer lands, the native stories hold
+a stand-in field in the composer slot, and `kit-chat-pane-with-composer` comes
+with it. `kit-chat-pane-long-history` draws its 2,000 rows in GPUI's `list`
+with roving focus (the last row is the Tab stop; the arrows move it).
 
 ### MessageQuote
 

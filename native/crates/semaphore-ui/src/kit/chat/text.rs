@@ -478,6 +478,7 @@ fn inline_element(
     cx: &mut App,
 ) -> InlineText {
     let sem = cx.sem().clone();
+    let row_tab = super::RowTabScope::active(cx);
     let p = sem.roles;
     let under = crate::kit::surface::tint_base_token(&p, on);
     let mention_tint = hsla_of(blend(p.accent, under, STATE_HOVER_ON_FILL));
@@ -637,6 +638,7 @@ fn inline_element(
             let focused = shows_focus(&handle, window);
             let activate = spec.activate.clone();
             let node = base::Button::new(node_id)
+                .when(!row_tab, |button| button.tab_stop(false))
                 .track_focus(&handle)
                 .role(spec.role)
                 .accessibility_label(spec.label.clone())

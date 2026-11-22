@@ -3,17 +3,15 @@
 //! TypingLine,JumpToLatest,LinkCard,AttachmentTile}.stories.tsx`), in the same words, on the
 //! web's three chat palettes: dark, light, and tinted (`#0d9488`, vibrant).
 //!
-//! The web stories put each piece in a MessageRow. MessageRow is B7 part 2, so until it lands the
-//! rows here are a story-only stand-in (avatar, name, time, then the slots), which part 2 swaps
-//! for the real row.
+//! Each piece sits in a MessageRow, as on the web.
 
 use super::{
     AttachmentKind, AttachmentTile, JumpToLatest, LinkCard, MentionKind, MentionSegment,
-    MessageQuote, MessageSegment as S, MessageText, PlayerSlot, ReactionChip, SegmentStyle,
-    TypingLine,
+    MessageQuote, MessageRow, MessageSegment as S, MessageText, PlayerSlot, ReactionChip,
+    SegmentStyle, TypingLine,
 };
 use crate::kit::overlays::type_text;
-use crate::kit::{Avatar, AvatarSize, Icon, Island, LinearProgress, ListSeparator, Padding};
+use crate::kit::{Icon, Island, LinearProgress, ListSeparator, Padding};
 use crate::stories::Story;
 use crate::theme::{self, SemTheme, ThemeInput};
 use gpui_kit::prelude::*;
@@ -27,14 +25,14 @@ use std::sync::Arc;
 
 /// The three palettes every chat-piece story renders in (`kitChatData.ts`'s `PALETTES`).
 #[derive(Clone, Copy)]
-enum Palette {
+pub(super) enum Palette {
     Dark,
     Light,
     Tinted,
 }
 
 impl Palette {
-    fn input(self) -> ThemeInput {
+    pub(super) fn input(self) -> ThemeInput {
         match self {
             Palette::Dark => ThemeInput::new(theme::DEFAULT_BASE, Mode::Dark, Intensity::Minimal),
             Palette::Light => ThemeInput::new(theme::DEFAULT_BASE, Mode::Light, Intensity::Minimal),
@@ -43,7 +41,7 @@ impl Palette {
     }
 }
 
-type Body = fn(&mut Window, &mut App) -> AnyElement;
+pub(super) type Body = fn(&mut Window, &mut App) -> AnyElement;
 
 struct ChatStory {
     body: Body,
@@ -65,13 +63,13 @@ impl Render for ChatStory {
     }
 }
 
-fn view(palette: Palette, body: Body, cx: &mut App) -> AnyView {
+pub(super) fn view(palette: Palette, body: Body, cx: &mut App) -> AnyView {
     theme::apply(palette.input(), cx);
     cx.new(|_| ChatStory { body }).into()
 }
 
 /// A centre island the width of a chat column, capped to the window (`ChatColumn`).
-fn chat_column(id: &'static str, width: f32, children: Vec<AnyElement>) -> AnyElement {
+pub(super) fn chat_column(id: &'static str, width: f32, children: Vec<AnyElement>) -> AnyElement {
     div()
         .w(px(width))
         .max_w_full()
@@ -89,7 +87,7 @@ fn chat_column(id: &'static str, width: f32, children: Vec<AnyElement>) -> AnyEl
 }
 
 /// A labelled group of pieces (`kitStory`'s `Row`).
-fn labelled(label: &'static str, children: Vec<AnyElement>, cx: &App) -> AnyElement {
+pub(super) fn labelled(label: &'static str, children: Vec<AnyElement>, cx: &App) -> AnyElement {
     div()
         .px(px(SPACE_LG))
         .flex()
@@ -108,7 +106,7 @@ fn labelled(label: &'static str, children: Vec<AnyElement>, cx: &App) -> AnyElem
 }
 
 /// A person's colour, as `#rrggbb` in the web stories.
-fn colour(hex: u32) -> Rgba {
+pub(super) fn colour(hex: u32) -> Rgba {
     Rgba((hex << 8) | 0xff)
 }
 
@@ -119,54 +117,52 @@ fn row(
     hex: u32,
     time: &'static str,
     slots: Vec<AnyElement>,
-    cx: &App,
+    _: &App,
 ) -> AnyElement {
-    div()
-        .id(id)
-        .flex()
-        .gap(px(SPACE_MD))
-        .px(px(SPACE_LG))
-        .py(px(SPACE_XS))
-        .min_w_0()
-        .child(
-            Avatar::new(author)
-                .size(AvatarSize::Md)
-                .colour(colour(hex))
-                .decorative(true),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .gap(px(t::SPACE_2XS))
-                .child(
-                    div()
-                        .flex()
-                        .items_baseline()
-                        .gap(px(SPACE_SM))
-                        .child(type_text(t::TEXT_BODY_STRONG, author))
-                        .child(
-                            type_text(t::TEXT_SMALL, time).text_color(cx.sem().role.text_secondary),
-                        ),
-                )
-                .children(slots),
-        )
-        .into_any_element()
+    let mut slots = slots.into_iter();
+    let mut row = MessageRow::new(id, author, time).avatar_colour(colour(hex));
+    // The web stories' rows: a quote first when there is one, then the body, then attachments.
+    let first = slots.next();
+    let second = slots.next();
+    match (first, second) {
+        (Some(body), None) => row = row.body(body),
+        (Some(first), Some(second)) => row = row.body(first).attachments(second),
+        _ => {}
+    }
+    row.into_any_element()
+}
+
+/// A row whose first slot is a reply quote and second its words.
+fn quote_row(
+    id: &'static str,
+    author: &'static str,
+    hex: u32,
+    time: &'static str,
+    slots: Vec<AnyElement>,
+    _: &App,
+) -> AnyElement {
+    let mut slots = slots.into_iter();
+    let mut row = MessageRow::new(id, author, time).avatar_colour(colour(hex));
+    if let Some(quote) = slots.next() {
+        row = row.quote(quote);
+    }
+    if let Some(body) = slots.next() {
+        row = row.body(body);
+    }
+    row.into_any_element()
 }
 
 /// What a story does with a pressed link: logs it. A story never opens anything.
-fn log_link(href: &str, _: &mut Window, _: &mut App) {
+pub(super) fn log_link(href: &str, _: &mut Window, _: &mut App) {
     eprintln!("story: link pressed: {href}");
 }
 
-fn words(id: &'static str, text: &'static str) -> AnyElement {
+pub(super) fn words(id: &'static str, text: &'static str) -> AnyElement {
     MessageText::new(id, vec![S::text(text)]).into_any_element()
 }
 
 /// A smooth two-colour picture with a dark disc, as the web stories' SVG pictures (BGRA frames).
-fn picture(width: u32, height: u32, rgb: u32) -> ImageSource {
+pub(super) fn picture(width: u32, height: u32, rgb: u32) -> ImageSource {
     let (r, g, b) = ((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8);
     let (cx_, cy_) = (width as f32 / 2., height as f32 / 2.);
     let radius = width.min(height) as f32 / 4.;
@@ -194,7 +190,7 @@ fn never_arrives() -> ImageSource {
     ImageSource::Custom(Arc::new(|_, _| None))
 }
 
-fn parrot() -> ImageSource {
+pub(super) fn parrot() -> ImageSource {
     picture(24, 24, 0x6fd39a)
 }
 
@@ -465,7 +461,7 @@ fn quote_body(_: &mut Window, cx: &mut App) -> AnyElement {
         "quotes",
         390.,
         vec![
-            row(
+            quote_row(
                 "q1",
                 "dropbear",
                 0x5fd49a,
@@ -478,7 +474,7 @@ fn quote_body(_: &mut Window, cx: &mut App) -> AnyElement {
                 ],
                 cx,
             ),
-            row(
+            quote_row(
                 "q2",
                 "aiko",
                 0xff8fb8,
@@ -495,7 +491,7 @@ fn quote_body(_: &mut Window, cx: &mut App) -> AnyElement {
                 ],
                 cx,
             ),
-            row(
+            quote_row(
                 "q3",
                 "gracie",
                 0xffa366,
@@ -508,7 +504,7 @@ fn quote_body(_: &mut Window, cx: &mut App) -> AnyElement {
                 ],
                 cx,
             ),
-            row(
+            quote_row(
                 "q4",
                 "gracie",
                 0xffa366,
@@ -647,7 +643,7 @@ fn jump_body(_: &mut Window, cx: &mut App) -> AnyElement {
 // ---------------------------------------------------------------------------------------------
 // LinkCard
 
-fn stack(children: Vec<AnyElement>) -> AnyElement {
+pub(super) fn stack(children: Vec<AnyElement>) -> AnyElement {
     div()
         .flex()
         .flex_col()

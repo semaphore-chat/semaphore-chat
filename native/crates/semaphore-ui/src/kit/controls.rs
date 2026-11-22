@@ -232,6 +232,10 @@ fn pill(
     let (hover, pressed) = (c(look.hover(p)), c(look.pressed(p)));
     base::Button::new(id)
         .track_focus(&focus)
+        // In a message row that is not the list's Tab stop, Tab skips it (`RowTabScope`).
+        .when(!super::chat::RowTabScope::active(cx), |pill| {
+            pill.tab_stop(false)
+        })
         .disabled(state.disabled)
         .relative()
         .flex()
