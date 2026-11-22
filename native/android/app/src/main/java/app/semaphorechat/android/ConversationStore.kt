@@ -152,6 +152,40 @@ fun chatMessage(row: MessageRow, meId: String?, rules: ChatRules): ChatMessage {
 }
 
 /**
+ * Core's rows as the screen's messages, mapping again only rows that changed. A cached message is
+ * reused only for a row equal to the one it was made from: core's `(seq, revision)` is unique
+ * within one window, but a window core forgot and loaded again numbers its rows the same way, for
+ * other messages. A reset whose rows carry other ids under seqs the cache holds empties it.
+ */
+class RowMapper(private val rules: ChatRules) {
+    private val cache = HashMap<Long, Pair<MessageRow, ChatMessage>>()
+
+    /** A reset arrived: if it isn't the window the cache was filled from, forget everything. */
+    fun reset(rows: List<MessageRow>) {
+        if (rows.any { row -> cache[row.seq]?.first?.let { it.id != row.id || it.clientNonce != row.clientNonce } == true }) {
+            cache.clear()
+        }
+    }
+
+    fun map(rows: List<MessageRow>, meId: String?): List<ChatMessage> {
+        val seen = HashSet<Long>(rows.size)
+        val mapped = rows.map { row ->
+            seen += row.seq
+            val cached = cache[row.seq]
+            if (cached != null && cached.first == row) {
+                cached.second
+            } else {
+                chatMessage(row, meId, rules).also { cache[row.seq] = row to it }
+            }
+        }
+        cache.keys.retainAll(seen)
+        return mapped
+    }
+
+    val size: Int get() = cache.size
+}
+
+/**
  * One conversation's list for the chat screen: core's rows, kept current by core's list changes
  * ([apply], from CoreStore's one collector), with the paging, the typing line and "Jump to
  * latest" around them, as one [state]. Commands run on [scope]; every state change is under one
@@ -172,7 +206,7 @@ class ConversationStore(
     private val lock = Any()
     private val rows = ArrayList<MessageRow>()
     private var mapped: List<ChatMessage> = emptyList()
-    private val cache = HashMap<Long, Pair<ULong, ChatMessage>>()
+    private val mapper = RowMapper(rules)
     private var face: ChatFace = ChatFace.Loading
     private var opening = false
     private var loadingOlder = false
@@ -181,6 +215,10 @@ class ConversationStore(
     private var newCount = 0
     private var connection = ConnectionState.CONNECTED
     private var marked: String? = null
+    /** On screen with the app in front: only then is anything marked read. */
+    private var shown = false
+    /** The edge as last published: rows landing at the end count as new only from the live edge. */
+    private var wasAtLiveEdge = true
     private var typingCheck: Job? = null
     private val meId: String? by lazy { (core.session() as? SessionState.SignedIn)?.me?.id }
 
@@ -189,20 +227,11 @@ class ConversationStore(
 
     /** Core's list changes for this conversation. On CoreStore's collector. */
     fun apply(ops: List<ListOp>) = synchronized(lock) {
+        ops.filterIsInstance<ListOp.Reset>().forEach { mapper.reset(it.rows) }
         val arrived = applyOps(rows, ops)
-        if (away) newCount += arrived
-        val me = meId
-        val seen = HashSet<Long>(rows.size)
-        mapped = rows.map { row ->
-            seen += row.seq
-            val cached = cache[row.seq]
-            if (cached != null && cached.first == row.revision) {
-                cached.second
-            } else {
-                chatMessage(row, me, rules).also { cache[row.seq] = row.revision to it }
-            }
-        }
-        cache.keys.retainAll(seen)
+        // A page `load_newer` brought toward the present lands at the end too: that is history.
+        if (away && wasAtLiveEdge) newCount += arrived
+        mapped = mapper.map(rows, meId)
         // Rows arriving while the first page loads mean it is there.
         if (face != ChatFace.Ready && rows.isNotEmpty()) face = ChatFace.Ready
         publish()
@@ -284,20 +313,51 @@ class ConversationStore(
         publish()
     }
 
-    /** The newest row is on screen in the foreground: marks it read, once per row. */
+    /**
+     * The chat is on screen with the app resumed ([shown]), or not. Core is told whether a chat is
+     * being looked at, so it bumps unread counts while none is; coming back marks the newest row
+     * read if the reader is at it.
+     */
+    fun setShown(shown: Boolean) {
+        synchronized(lock) { this.shown = shown }
+        core.setFocused(shown)
+        if (shown) markSeen()
+    }
+
+    /**
+     * The chat left the screen: core no longer treats the conversation as open (its messages
+     * count as unread again, its notifications stay unread) until it is opened again.
+     */
+    fun leave() {
+        setShown(false)
+        core.closeConversation(conversation)
+    }
+
+    /**
+     * The newest row may be marked read: only while [shown] and at the bottom (not away), once per
+     * row. A mark that fails is sent again the next time.
+     */
     fun markSeen() {
         val newest = synchronized(lock) {
+            if (!shown || away) return
             val id = rows.lastOrNull { it.id != null && it.sendState == SendState.Sent }?.id
             if (id == null || id == marked) return
             marked = id
             id
         }
-        scope.launch { runCatching { core.markRead(conversation, newest) } }
+        scope.launch {
+            try {
+                core.markRead(conversation, newest)
+            } catch (error: CoreException) {
+                synchronized(lock) { if (marked == newest) marked = null }
+            }
+        }
     }
 
     /** Builds the state from what is held and what core says now. Under [lock]. */
     private fun publish() {
         val atLiveEdge = core.atLiveEdge(conversation)
+        wasAtLiveEdge = atLiveEdge
         val typingNames = core.typingUsers(conversation).map(::nameOf)
         stateFlow.value = ChatModel(
             face = face,

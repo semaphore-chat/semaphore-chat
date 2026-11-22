@@ -651,21 +651,36 @@ async fn unread_counts_follow_the_web_rules() {
     rig.core.ingest(new_message("a", "someone", "x"));
     assert_eq!(unread_of(&rig, CHANNEL), 0);
 
+    // Closed, though the app is focused: it counts.
+    rig.core.close_conversation(channel());
+    rig.core.ingest(new_message("a2", "someone", "x"));
+    assert_eq!(unread_of(&rig, CHANNEL), 1);
+    // Opened again: its rows come back as one reset, and it is on screen once more.
+    rig.sync();
+    rig.core.open_conversation(channel()).await.unwrap();
+    let reopened = rig.sync();
+    assert!(reopened.iter().any(|event| matches!(
+        event,
+        CoreEvent::MessagesChanged { ops, .. } if ops.iter().any(|op| matches!(op, ListOp::Reset { .. }))
+    )));
+    rig.core.ingest(new_message("a3", "someone", "x"));
+    assert_eq!(unread_of(&rig, CHANNEL), 1);
+
     // Not focused: it counts.
     rig.core.set_focused(false);
     rig.core.ingest(new_message("b", "someone", "x"));
-    assert_eq!(unread_of(&rig, CHANNEL), 1);
+    assert_eq!(unread_of(&rig, CHANNEL), 2);
 
     // My own messages never count.
     rig.core.ingest(new_message("c", ME, "x"));
-    assert_eq!(unread_of(&rig, CHANNEL), 1);
+    assert_eq!(unread_of(&rig, CHANNEL), 2);
 
     // A peer's read mark says nothing about mine.
     let read_at = "2026-09-22T18:01:00.000Z";
     rig.core.ingest(event("readReceiptUpdated", json!({
         "channelId": CHANNEL, "directMessageGroupId": null, "lastReadMessageId": "b", "lastReadAt": read_at, "userId": "ava",
     })));
-    assert_eq!(unread_of(&rig, CHANNEL), 1);
+    assert_eq!(unread_of(&rig, CHANNEL), 2);
 
     rig.core.ingest(event("readReceiptUpdated", json!({
         "channelId": CHANNEL, "directMessageGroupId": null, "lastReadMessageId": "b", "lastReadAt": read_at,

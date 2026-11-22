@@ -63,8 +63,12 @@ const val GROUP_WINDOW_MS: Long = 5 * 60 * 1000
 sealed interface ChatEntry {
     val key: String
 
-    data class Day(val label: String, val epochDay: Long) : ChatEntry {
-        override val key get() = "day-$epochDay"
+    /**
+     * Keyed by the message it comes before, not by the day: rows out of day order (a phone clock
+     * a day off) give the same day twice, and a list can't hold one key twice.
+     */
+    data class Day(val label: String, val epochDay: Long, val beforeKey: Long) : ChatEntry {
+        override val key get() = "day-$beforeKey"
     }
 
     /** [continued]: drawn without the avatar and the header, under the row before. */
@@ -93,7 +97,7 @@ fun chatEntries(messages: List<ChatMessage>, format: ChatFormat): List<ChatEntry
     for (message in messages) {
         val day = format.day(message.sentAtMs)
         val newDay = previous == null || format.day(previous.sentAtMs) != day
-        if (newDay) entries += ChatEntry.Day(format.dayLabel(message.sentAtMs), day.toEpochDay())
+        if (newDay) entries += ChatEntry.Day(format.dayLabel(message.sentAtMs), day.toEpochDay(), message.key)
         val continued = !newDay && previous != null && continues(previous, message, format)
         entries += ChatEntry.Message(message, continued)
         previous = message

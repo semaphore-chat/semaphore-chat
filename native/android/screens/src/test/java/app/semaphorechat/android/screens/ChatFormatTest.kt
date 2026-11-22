@@ -67,12 +67,21 @@ class ChatFormatTest {
         val y = at(2026, 9, 17, 9, 0)
         val t = at(2026, 9, 18, 9, 0)
         val entries = chatEntries(listOf(row(1, "a", y), row(2, "a", y + 1000), row(3, "a", t), row(4, "b", t + 1000)), format)
-        assertEquals(
-            listOf("day-${java.time.LocalDate.of(2026, 9, 17).toEpochDay()}", "m-1", "m-2", "day-${java.time.LocalDate.of(2026, 9, 18).toEpochDay()}", "m-3", "m-4"),
-            entries.map { it.key },
-        )
+        assertEquals(listOf("day-1", "m-1", "m-2", "day-3", "m-3", "m-4"), entries.map { it.key })
         assertEquals(listOf("Yesterday", "Today"), entries.filterIsInstance<ChatEntry.Day>().map { it.label })
         assertEquals(listOf(false, true, false, false), entries.filterIsInstance<ChatEntry.Message>().map { it.continued })
         assertTrue(chatEntries(emptyList(), format).isEmpty())
+    }
+
+    @Test
+    fun aDayThatComesBackGetsASeparatorWithAKeyOfItsOwn() {
+        // Days D, D+1, D: out of day order, as a pending row stamped by a phone clock a day off.
+        val d = at(2026, 9, 16, 12, 0)
+        val next = at(2026, 9, 17, 12, 0)
+        val entries = chatEntries(listOf(row(1, "a", d), row(2, "a", next), row(3, "a", d + 60_000)), format)
+        val days = entries.filterIsInstance<ChatEntry.Day>()
+        assertEquals(3, days.size)
+        assertEquals(days[0].epochDay, days[2].epochDay)
+        assertEquals("every key once", entries.size, entries.map { it.key }.toSet().size)
     }
 }

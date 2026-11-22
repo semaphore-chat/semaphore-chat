@@ -154,6 +154,42 @@ class ConversationStoreTest {
         assertEquals("w1", hook.authorId)
     }
 
+    /** Counts the rows it maps, so a test can tell a cache hit from a miss. */
+    private class CountingRules : ChatRules by FakeRules {
+        var mapped = 0
+        override fun pieces(display: String, segs: List<TextSeg>): List<MessagePiece> {
+            mapped++
+            return FakeRules.pieces(display, segs)
+        }
+    }
+
+    @Test
+    fun aWindowCoreLoadedAgainWithTheSameSeqsShowsItsOwnMessages() {
+        val rules = CountingRules()
+        val mapper = RowMapper(rules)
+        val first = (1L..3L).map { row(it, display = "old $it", revision = it.toULong()) }
+        mapper.reset(first)
+        assertEquals(listOf("old 1", "old 2", "old 3"), mapper.map(first, null).map { it.pieces.single().text })
+        // The same window sent again (a reopen): every row from the cache.
+        mapper.reset(first)
+        mapper.map(first, null)
+        assertEquals(3, rules.mapped)
+
+        // Core forgot the window and loaded it again: the same (seq, revision) pairs, other messages.
+        val renumbered = (1L..3L).map { row(it, display = "new $it", revision = it.toULong()).copy(id = "other$it") }
+        mapper.reset(renumbered)
+        val shown = mapper.map(renumbered, null)
+        assertEquals(listOf("new 1", "new 2", "new 3"), shown.map { it.pieces.single().text })
+        assertEquals(listOf("other1", "other2", "other3"), shown.map { it.id })
+
+        // Even with the same id and revision, a row that changed is mapped again.
+        val edited = renumbered.mapIndexed { i, r -> if (i == 1) r.copy(display = "new 2!", segs = listOf(TextSeg(6u, SegKind.Text, plain))) else r }
+        assertEquals("new 2!", mapper.map(edited, null)[1].pieces.single().text)
+        // Rows gone from the list leave the cache.
+        mapper.map(edited.take(1), null)
+        assertEquals(1, mapper.size)
+    }
+
     @Test
     fun sizesReadAsPeopleWriteThem() {
         assertEquals("0 B", sizeText(0))

@@ -205,7 +205,7 @@ class DeviceChatTest {
     }
 
     @Test
-    fun aThousandRowResetReachesTheChatStateQuickly() {
+    fun aThousandRowResetReachesTheChatStateWithinTwoSeconds() {
         val server = argument("server")
         val channel = argument("bulkChannel")
         val author = argument("author")
@@ -266,6 +266,10 @@ class DeviceChatTest {
             val mapped = (System.nanoTime() - mapStart) / 1_000_000.0
             Log.i(TIMING_TAG, "the same reset mapped with no cache (every row through message_pieces): %.1f ms".format(mapped))
             assertTrue("$rows rows", rows >= 1_000)
+            // Generous: about 45 ms on the x86_64 emulator, and 600 ms uncached. A regression to
+            // seconds (a row mapped again for every row, say) fails here.
+            assertTrue("the reset took %.1f ms to reach the chat state".format(totalMs), totalMs < 2_000)
+            assertTrue("mapping 1000 rows uncached took %.1f ms".format(mapped), mapped < 5_000)
         } finally {
             timed.pipe.close()
             scope.cancel()

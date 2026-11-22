@@ -137,6 +137,13 @@ impl Core {
         })
     }
 
+    /// The conversation left the screen: core stops treating it as read as it arrives (no unread
+    /// bump skipped, no notification marked read for it) until it is opened again, which sends its
+    /// rows as a reset again. A no-op for a conversation that isn't the one on screen.
+    pub fn close_conversation(&self, conversation: Conversation) {
+        self.write(|state, _| state.close(&conversation));
+    }
+
     /// Whether the oldest row loaded is the conversation's first, so [`Core::load_older`] has
     /// nothing left to load: a UI shows the conversation's start there. False before the first
     /// page has loaded. Read it again after `CoreEvent::MessagesChanged`.

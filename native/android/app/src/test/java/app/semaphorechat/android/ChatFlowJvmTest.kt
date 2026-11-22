@@ -86,6 +86,22 @@ class ChatFlowJvmTest {
         control("post_as", """{"channelId":"$channelId","authorId":"$authorId","text":"$text","broadcast":$broadcast}""")
     }
 
+    /** The `lastReadMessageId` of every `markAsRead` the fake server has seen for the channel, in order. */
+    private fun readMarks(): List<String> {
+        val connection = URI("$server/__control/requests").toURL().openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.outputStream.use { it.write("{}".toByteArray()) }
+        val body = connection.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
+        connection.disconnect()
+        return Regex("\\{[^{}]*\"event\":\"markAsRead\"[^{}]*\"payload\":\\{([^{}]*)\\}")
+            .findAll(body)
+            .map { it.groupValues[1] }
+            .filter { "\"$channelId\"" in it }
+            .mapNotNull { Regex("\"lastReadMessageId\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) }
+            .toList()
+    }
+
     @Test
     fun readsPagesHearsTypesAndCatchesUpAfterAReconnect() {
         assumeTrue("android.sh passes the fake server", server != null && channelId != null && authorId != null)
@@ -144,7 +160,28 @@ class ChatFlowJvmTest {
             postAs("live one")
             until("the live message") { chat.state.value.messages.last().pieces.joinToString("") { it.text } == "live one" }
             assertNull(chat.state.value.jump)
+
+            // Read marks: none while the chat isn't shown (the app not resumed); shown at the
+            // bottom, the newest row once; scrolled away, none; a resume marks what arrived.
+            fun newestId() = chat.state.value.messages.last().id!!
+            val earlier = readMarks().size
+            fun marks() = readMarks().drop(earlier)
             chat.markSeen()
+            assertEquals("not shown: no read mark", emptyList<String>(), marks())
+            chat.setShown(true)
+            until("the read mark") { marks() == listOf(newestId()) }
+            chat.markSeen()
+            chat.setAway(true)
+            postAs("read later")
+            until("the next live message") { chat.state.value.messages.last().pieces.joinToString("") { it.text } == "read later" }
+            chat.markSeen()
+            chat.setAway(false)
+            chat.setShown(false)
+            chat.markSeen()
+            assertEquals("once, and nothing while away or not shown", 1, marks().size)
+            chat.setShown(true)
+            until("the mark on resume") { marks().lastOrNull() == newestId() }
+            assertEquals(2, marks().size)
 
             // Scrolled away: the next ones count as new, and coming back clears them.
             chat.setAway(true)
@@ -159,8 +196,8 @@ class ChatFlowJvmTest {
             // Typing from another member shows, by name.
             control("emit", """{"event":"userTyping","payload":{"channelId":"$channelId","userId":"$authorId","isTyping":true}}""")
             until("the typing line") { chat.state.value.typing.endsWith("is typing…") }
-            control("emit", """{"event":"userTyping","payload":{"channelId":"$channelId","userId":"$authorId","isTyping":false}}""")
-            until("the typing line clears") { chat.state.value.typing.isEmpty() }
+            // No stop event: the line clears when core's typing timeout passes (8 s), by the re-read.
+            until("the typing line clears by itself", timeoutMs = 20_000) { chat.state.value.typing.isEmpty() }
 
             // The socket goes and stays down; a message posted meanwhile arrives with the reconnect.
             control("refuse_connections", """{"refuse":true}""")
@@ -174,10 +211,29 @@ class ChatFlowJvmTest {
             }
             assertNotNull(chat.state.value.messages.lastOrNull())
 
+            // Leaving the chat: core counts the channel's new messages as unread again.
+            fun unread() = core.communities().flatMap { core.channels(it.id) }.firstOrNull { it.id == channelId }?.unreadCount ?: 0u
+            until("the channel listed") { core.communities().any { c -> core.channels(c.id).any { it.id == channelId } } }
+            until("read up to the newest") { unread() == 0u }
+            chat.leave()
+            postAs("after leaving")
+            until("the unread count") { unread() > 0u }
+            // And opening it again reads it.
+            chat.open()
+            chat.setShown(true)
+            until("the reopened list") { chat.state.value.messages.last().pieces.joinToString("") { it.text } == "after leaving" }
+            chat.markSeen()
+            until("read again") { unread() == 0u }
+
+            // Only the lists of the conversations opened last are kept.
+            (1..KEPT_CONVERSATIONS + 2).forEach { store.conversation(Conversation.Channel("elsewhere-$it")) }
+            assertEquals(KEPT_CONVERSATIONS, store.keptConversations)
+            assertTrue(store.conversation(Conversation.Channel(channelId)) !== chat)
+
             // Signing out drops the lists: they belong to the account.
             runBlocking { core.signOut() }
             until("the signed-out store") { store.session.value !is SessionState.SignedIn }
-            assertTrue(store.conversation(Conversation.Channel(channelId)) !== chat)
+            until("the lists dropped") { store.keptConversations == 0 }
         } finally {
             pipe.close()
             scope.cancel()

@@ -23,7 +23,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -206,7 +208,9 @@ private fun Screens(model: AppModel, links: LinkOpener, openWeb: (String) -> Uni
                 val channel = (channels as? Load.Ready)?.value?.text?.firstOrNull { it.id == route.channelId }
                 val communityName = (communities as? Load.Ready)?.value
                     ?.firstOrNull { it.id == route.communityId }?.name.orEmpty()
-                ChannelChat(model, links, route.channelId, ChatHeaderModel(channel?.name.orEmpty(), channel?.icon ?: app.semaphorechat.android.screens.ChannelIcon.Hash, communityName))
+                // Keyed: another channel at this call site (a #mention, then Back) is a new chat, with
+                // its own remembered state and effects.
+                key(route.channelId) { ChannelChat(model, links, route.channelId, ChatHeaderModel(channel?.name.orEmpty(), channel?.icon ?: app.semaphorechat.android.screens.ChannelIcon.Hash, communityName)) }
             }
         }
         notice?.let {
@@ -227,6 +231,11 @@ private fun ChannelChat(model: AppModel, links: LinkOpener, channelId: String, h
     LaunchedEffect(chat) { chat.open() }
     val state by chat.state.collectAsState()
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val resumed = lifecycle.currentStateFlow.collectAsState().value.isAtLeast(Lifecycle.State.RESUMED)
+    // Shown while the app is resumed: core counts unread and the newest row is marked read only
+    // then. Leaving closes the conversation in core, so it counts as unread again.
+    LaunchedEffect(chat, resumed) { chat.setShown(resumed) }
+    DisposableEffect(chat) { onDispose { chat.leave() } }
     // The phone's 12/24-hour setting and zone, read when the screen shows.
     val format = remember(context) {
         ChatFormat(ZoneId.systemDefault(), android.text.format.DateFormat.is24HourFormat(context)) { System.currentTimeMillis() }
@@ -239,8 +248,8 @@ private fun ChannelChat(model: AppModel, links: LinkOpener, channelId: String, h
             onLoadNewer = chat::loadNewer,
             onJump = chat::jump,
             onAwayChanged = chat::setAway,
-            // Read marks only while the app is in front: a list behind the lock screen isn't read.
-            onSeenNewest = { if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) chat.markSeen() },
+            // The store marks only while shown (resumed) and at the bottom.
+            onSeenNewest = chat::markSeen,
             onOpenLink = { links.open(it) },
             onOpenChannel = model::openMentionedChannel,
         )

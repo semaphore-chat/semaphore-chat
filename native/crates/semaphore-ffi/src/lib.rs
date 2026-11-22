@@ -1008,6 +1008,11 @@ impl SemaphoreCore {
         self.sync(move |core| core.at_live_edge(conversation))
     }
 
+    /// The conversation left the screen: no longer read as messages arrive, until opened again.
+    pub fn close_conversation(&self, conversation: Conversation) {
+        self.sync(move |core| core.close_conversation(conversation))
+    }
+
     pub fn at_history_start(&self, conversation: Conversation) -> bool {
         self.sync(move |core| core.at_history_start(conversation))
     }
@@ -1293,7 +1298,7 @@ mod tests {
         assert_eq!(asyncs, runs, "every async export awaits `self.run`");
         // Exact, so an export the check stops seeing fails here: change these with the exports.
         assert_eq!(asyncs, 134, "async exports found");
-        assert_eq!(syncs, 101, "sync exports found");
+        assert_eq!(syncs, 102, "sync exports found");
     }
 
     #[test]

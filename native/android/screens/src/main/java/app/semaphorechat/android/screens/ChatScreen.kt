@@ -212,30 +212,32 @@ private fun ChatList(
 
     // Read at composition, before the new rows are laid out: was the newest row on screen?
     val newest = chat.messages.lastOrNull()?.key
-    val pinned = remember(newest) { listState.firstVisibleItemIndex == 0 }
+    val pinned = remember(newest, listState) { listState.firstVisibleItemIndex == 0 }
     LaunchedEffect(newest) {
         // A new row below one the reader was at: follow it. Scrolled up, the row they read stays put.
         if (pinned && chat.atLiveEdge) listState.scrollToItem(0)
     }
 
-    val away by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
-    LaunchedEffect(away) { actions.onAwayChanged(away) }
-    LaunchedEffect(newest, away, chat.atLiveEdge) {
+    // Everything read from the list is keyed on it, and every effect on the actions: one call site
+    // shows one channel, then another (a #mention, then Back), each with its own list and actions.
+    val away by remember(listState) { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
+    LaunchedEffect(away, actions) { actions.onAwayChanged(away) }
+    LaunchedEffect(newest, away, chat.atLiveEdge, actions) {
         if (!away && chat.atLiveEdge) actions.onSeenNewest()
     }
 
-    val nearTop by remember {
+    val nearTop by remember(listState) {
         derivedStateOf {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
             info.totalItemsCount > 0 && last >= info.totalItemsCount - PAGE_AHEAD
         }
     }
-    LaunchedEffect(nearTop, chat.messages.size, chat.atStart, chat.loadingOlder, chat.olderFailed) {
+    LaunchedEffect(nearTop, chat.messages.size, chat.atStart, chat.loadingOlder, chat.olderFailed, actions) {
         if (nearTop && !chat.atStart && !chat.loadingOlder && chat.olderFailed == null) actions.onLoadOlder()
     }
-    val nearBottom by remember { derivedStateOf { listState.firstVisibleItemIndex < PAGE_AHEAD } }
-    LaunchedEffect(nearBottom, chat.messages.size, chat.atLiveEdge) {
+    val nearBottom by remember(listState) { derivedStateOf { listState.firstVisibleItemIndex < PAGE_AHEAD } }
+    LaunchedEffect(nearBottom, chat.messages.size, chat.atLiveEdge, actions) {
         if (nearBottom && !chat.atLiveEdge) actions.onLoadNewer()
     }
 

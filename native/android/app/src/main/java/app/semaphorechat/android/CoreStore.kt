@@ -57,6 +57,9 @@ class EventPipe : CoreListener {
     }
 }
 
+/** How many conversations' lists CoreStore keeps: core keeps 8 idle windows. */
+const val KEPT_CONVERSATIONS = 8
+
 /** Something to say once, from a core event: a community or a channel went away. */
 sealed interface CoreNotice {
     data class CommunityRemoved(val communityId: String, val message: String) : CoreNotice
@@ -82,7 +85,14 @@ class CoreStore(
     private val communityState = MutableStateFlow(readCommunities())
     private val channelStates = ConcurrentHashMap<String, MutableStateFlow<Load<CommunityChannels>>>()
     private val noticeFlow = MutableSharedFlow<CoreNotice>(extraBufferCapacity = 16)
-    private val conversations = ConcurrentHashMap<Conversation, ConversationStore>()
+    /**
+     * The lists, the most recently opened last, at most [KEPT_CONVERSATIONS]: core forgets idle
+     * windows past 8 too, and a list opened again starts from core's reset. Guarded by itself.
+     */
+    private val conversations = object : LinkedHashMap<Conversation, ConversationStore>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Conversation, ConversationStore>) =
+            size > KEPT_CONVERSATIONS
+    }
 
     val session: StateFlow<SessionState> = sessionState
     val connection: StateFlow<ConnectionState> = connectionState
@@ -118,8 +128,12 @@ class CoreStore(
      * A conversation's list, kept current by core's list changes from here on. Created before the
      * conversation is opened, so the reset core sends on opening lands in it.
      */
-    fun conversation(conversation: Conversation): ConversationStore =
+    fun conversation(conversation: Conversation): ConversationStore = synchronized(conversations) {
         conversations.getOrPut(conversation) { ConversationStore(conversation, core, scope) }
+    }
+
+    /** How many lists are kept now (for the tests). */
+    val keptConversations: Int get() = synchronized(conversations) { conversations.size }
 
     /**
      * Re-reads everything: at start, on resume, and after a retry. Asks the collector to, so every
@@ -146,18 +160,20 @@ class CoreStore(
                     CoreNotice.ChannelRemoved(event.communityId, event.channelId),
                 )
                 // In order, on this one coroutine: a reset and the inserts after it stay in order.
-                is CoreEvent.MessagesChanged -> conversations[event.conversation]?.apply(event.ops)
+                is CoreEvent.MessagesChanged ->
+                    synchronized(conversations) { conversations.entries.firstOrNull { it.key == event.conversation }?.value }
+                        ?.apply(event.ops)
                 else -> Unit
             }
         }
         val session = core.session()
         // A new session starts with no lists: the old one's rows are another account's.
-        if (session !is SessionState.SignedIn) conversations.clear()
+        if (session !is SessionState.SignedIn) synchronized(conversations) { conversations.clear() }
         sessionState.value = session
         val connection = core.connection()
         connectionState.value = connection
         // The edges, the typing line and the connection line, which change without a list change.
-        conversations.values.forEach { it.refresh(connection) }
+        synchronized(conversations) { conversations.values.toList() }.forEach { it.refresh(connection) }
         appearanceState.value = core.appearance().appearance
         communityState.value = readCommunities()
         // Only some communities' channels changed: re-read those; anything else, all of them.
