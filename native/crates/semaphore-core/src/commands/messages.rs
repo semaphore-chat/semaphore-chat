@@ -41,12 +41,11 @@ impl Core {
     /// Nothing is on screen in the main column any more (a phone showing a list instead of the
     /// chat): the conversation's window is hidden, and its new messages count as unread and notify
     /// again. [`Core::open_conversation`] puts it back on screen.
+    /// The same path as [`Core::close_conversation`], for whatever is main.
     pub fn close_main_conversation(&self) {
         self.write(|state, _| {
-            if let Some(previous) = state.main_conversation.take()
-                && let Some(window) = state.windows.get_mut(&previous)
-            {
-                window.hide();
+            if let Some(main) = state.main_conversation.clone() {
+                state.close(&main);
             }
         });
     }
@@ -139,7 +138,8 @@ impl Core {
 
     /// The conversation left the screen: core stops treating it as read as it arrives (no unread
     /// bump skipped, no notification marked read for it) until it is opened again, which sends its
-    /// rows as a reset again. A no-op for a conversation that isn't the one on screen.
+    /// rows as a reset again. A no-op for a conversation that isn't the one on screen. For the main
+    /// column it does what [`Core::close_main_conversation`] does (one path, `State::close`).
     pub fn close_conversation(&self, conversation: Conversation) {
         self.write(|state, _| state.close(&conversation));
     }
