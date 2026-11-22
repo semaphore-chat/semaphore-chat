@@ -494,6 +494,7 @@ fn inline_element(
                     rest: stand_out_fill(&sem, on),
                     hover: None,
                     target: None,
+                    spill: true,
                 });
             }
             PieceKind::Link { href, style } => {
@@ -550,6 +551,7 @@ fn inline_element(
                         rest,
                         hover: hover.filter(|_| interactive),
                         target,
+                        spill: false,
                     });
                 }
             }
@@ -645,6 +647,8 @@ struct ChipPaint {
     hover: Option<Hsla>,
     /// The target it belongs to, for its hover.
     target: Option<usize>,
+    /// Spills past its glyphs (inline code).
+    spill: bool,
 }
 
 struct Target {
@@ -760,15 +764,17 @@ fn range_quads(
     quads
 }
 
-/// A chip's box around its glyphs: runs cannot be padded, so it spills `space.2xs` past them.
-fn chip_box(quad: Bounds<Pixels>) -> Bounds<Pixels> {
+/// A chip's box around its glyphs. Runs cannot be padded, so inline code spills `space.2xs` past
+/// them; a mention does not, or two mentions a space apart would touch.
+fn chip_box(quad: Bounds<Pixels>, spill: bool) -> Bounds<Pixels> {
+    let side = if spill { px(SPACE_2XS) } else { px(0.) };
     Bounds::from_corners(
         point(
-            quad.left() - px(SPACE_2XS),
+            quad.left() - side,
             quad.top() + px(BORDER_HAIRLINE),
         ),
         point(
-            quad.right() + px(SPACE_2XS),
+            quad.right() + side,
             quad.bottom() - px(BORDER_HAIRLINE),
         ),
     )
@@ -884,13 +890,13 @@ impl Element for InlineText {
                 _ => chip.rest,
             };
             for quad in range_quads(&lines, &chip.range, bounds, line_height) {
-                window.paint_quad(fill(chip_box(quad), colour).corner_radii(px(RADIUS_SM)));
+                window.paint_quad(fill(chip_box(quad, chip.spill), colour).corner_radii(px(RADIUS_SM)));
             }
         }
         for target in self.targets.iter().filter(|target| target.focused) {
             for quad in range_quads(&lines, &target.range, bounds, line_height) {
                 window.paint_quad(
-                    outline(chip_box(quad), self.focus, BorderStyle::Solid)
+                    outline(chip_box(quad, true), self.focus, BorderStyle::Solid)
                         .border_widths(px(BORDER_FOCUS))
                         .corner_radii(px(RADIUS_SM)),
                 );

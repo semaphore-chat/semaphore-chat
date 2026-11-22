@@ -155,10 +155,11 @@ impl RenderOnce for ReactionChip {
         let emoji: AnyElement = match self.src {
             Some(src) => img(src)
                 .h(px(ICON_MD))
-                .max_w(px(ICON_MD * 2.))
+                .min_w(px(ICON_MD))
                 .object_fit(ObjectFit::Contain)
                 .with_fallback(move || {
                     div()
+                        .whitespace_nowrap()
                         .text_size(px(ICON_MD))
                         .line_height(px(ICON_MD))
                         .child(emoji_text.clone())

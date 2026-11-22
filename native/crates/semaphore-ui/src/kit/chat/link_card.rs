@@ -145,6 +145,7 @@ impl RenderOnce for LinkCard {
                     type_text(TEXT_BODY_STRONG, title)
                         .text_color(sem.role.accent_text)
                         .line_clamp(2)
+                        .text_ellipsis()
                         .into_any_element()
                 })
                 .unwrap_or_else(|| Empty.into_any_element()),
@@ -153,6 +154,7 @@ impl RenderOnce for LinkCard {
                     type_text(TEXT_META, description)
                         .text_color(secondary)
                         .line_clamp(2)
+                        .text_ellipsis()
                         .into_any_element()
                 })
                 .unwrap_or_else(|| Empty.into_any_element()),
