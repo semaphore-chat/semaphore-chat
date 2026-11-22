@@ -4,8 +4,9 @@ The native Android client (epic #848): a Jetpack Compose app over the client cor
 `native/crates/semaphore-core`. The app loads one native library, `libsemaphore_mobile.so`
 (`native/crates/semaphore-mobile`), which carries the core's UniFFI surface
 (`native/crates/semaphore-ffi`) and the real transports behind it (`native/crates/semaphore-net`).
-So far it has one screen: sign in to a server, then see the session, the connection and the
-communities.
+So far it connects to a server, signs in (and restores the session next start), shows the
+communities and their channels, and reads a text channel: its messages, paged back to the start,
+with live messages, the typing line and "Jump to latest". Writing comes next (D6 part 2).
 
 The app is licensed AGPL-3.0-only, like the rest of the workspace: see `LICENSE.md` at the
 repository root.
@@ -145,10 +146,23 @@ kit a `KitPalette`.
 - **Fonts:** Figtree and Bricolage Grotesque from `design/fonts/` (pinned and hash-checked there),
   copied into the kit's font resources at build time. Their licence and the icons' ship in the
   APK as `assets/open_source_licences.txt`.
+- **Chat pieces:** `kit/.../kit/chat/` has the web chat kit's read side: `MessageText` (drawn
+  from pre-cut pieces), `MessageRow`, `MessageQuote`, `DayDivider`, `TypingLine` and
+  `JumpToLatest`. Their rules come from Rust through the FFI, not a Kotlin copy:
+  `message_pieces` cuts a message's text at core's UTF-8 byte offsets and checks each link with
+  `semaphore_core::links::check_link` (a link draws its checked label, a lookalike host as
+  punycode; a refused one is plain text), and `typing_text` and `jump_text` are
+  `semaphore_design::chat`'s. `LinkOpener` opens only the address `check_link` returns.
 - **Screens:** `screens/` is a library module with the app's screens (connect, sign-in, start,
-  the phone Lounge with the dock and the "All communities" sheet, a channel), fed plain Kotlin
-  models, so they render without the core. Their stories (`ScreenStories.kt`, `screen-*`) render
-  like the kit's.
+  the phone Lounge with the dock and the "All communities" sheet, a channel's chat), fed plain
+  Kotlin models, so they render without the core. Their stories (`ScreenStories.kt`,
+  `ChatStories.kt`, `screen-*`) render like the kit's.
+- **Live chat:** `CoreStore` hands core's `MessagesChanged` list changes, in order, to one
+  `ConversationStore` per conversation, which applies them to its rows and publishes one
+  `ChatModel` per burst. The list is a reversed `LazyColumn` keyed by core's row `seq`, so a page
+  of older rows lands above what is read without moving it; its scroll state lives in the store,
+  so it survives leaving the channel and a rotation. Core re-syncs the open conversation after a
+  reconnect or a resume and sends the changes like any others.
 - **Stories:** `kit/src/test/.../stories/KitStories.kt`. `KitStoryShotsTest` renders every story
   under Robolectric (native graphics, SDK 34) at two phone sizes in four themes (light and dark,
   violet and amber, palettes from `design/vectors/colour.json`). `native/scripts/android.sh` runs
@@ -239,8 +253,7 @@ adb install -r native/android/out/semaphore-android-debug.apk
 ```
 
 `-r` re-installs over an existing copy, which works because the debug key comes from the volume
-above. The app has one screen: a sign-in form (server, username, password), then the session,
-the connection and the communities' names.
+above.
 
 ## CI
 

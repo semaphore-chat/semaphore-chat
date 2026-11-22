@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uniffi.semaphore.Conversation
 import uniffi.semaphore.CoreException
 import uniffi.semaphore.ProbeOutcome
 import uniffi.semaphore.RegistrationMode
@@ -324,6 +325,16 @@ class AppModel(
     fun openChannel(id: String) {
         val community = navigator.community ?: return
         navigator.push(Route.Channel(community, id))
+    }
+
+    /** A text channel's chat: its list, kept for as long as the session. */
+    fun chat(channelId: String): ConversationStore = store.conversation(Conversation.Channel(channelId))
+
+    /** A tapped #channel mention: opens it when it is a text channel of the community shown. */
+    fun openMentionedChannel(channelId: String) {
+        val community = navigator.community ?: return
+        val channels = (store.watch(community).value as? Load.Ready)?.value ?: return
+        if (channels.text.any { it.id == channelId }) openChannel(channelId)
     }
 
     fun openAll() {
