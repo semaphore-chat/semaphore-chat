@@ -10,7 +10,9 @@ use crate::kit::{Action, Island, Padding, Sheet};
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_design::lounge::{LAYOUT_DOCK, LAYOUT_GUTTER, LAYOUT_LEFT_COLUMN, LAYOUT_RIGHT_COLUMN};
+use semaphore_design::lounge::{
+    LAYOUT_DOCK, LAYOUT_GUTTER, LAYOUT_LEFT_COLUMN, LAYOUT_RIGHT_COLUMN,
+};
 use std::rc::Rc;
 
 /// Which pane a phone shows.
@@ -136,14 +138,8 @@ impl ThreeIslands {
     }
 }
 
-
-
 fn dock_slot(dock: AnyElement) -> Div {
-    div()
-        .flex_none()
-        .h(px(LAYOUT_DOCK))
-        .min_w_0()
-        .child(dock)
+    div().flex_none().h(px(LAYOUT_DOCK)).min_w_0().child(dock)
 }
 
 impl RenderOnce for ThreeIslands {

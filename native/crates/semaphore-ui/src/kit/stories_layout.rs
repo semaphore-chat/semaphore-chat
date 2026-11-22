@@ -8,9 +8,10 @@ use super::{
     Alert, AppFrame, Avatar, AvatarShape, AvatarSize, Badge, Button, ButtonSize, CallStack, Card,
     Dock, DockDivider, DockEntry, DockItem, FieldShape, Icon, IconButton, IconButtonVariant,
     Island, ListRow, Padding, PhonePane, Pill, PillTone, Presence, RowSize, SettingsLayout,
-    SettingsPane, Severity, StageLayout, Surface, Switch, TextField, ThreeIslands,
-    WidthRange, text_state,
+    SettingsPane, Severity, StageLayout, Surface, Switch, TextField, ThreeIslands, WidthRange,
+    text_state,
 };
+use crate::kit::Action;
 use crate::kit::overlays::type_text;
 use crate::stories::Story;
 use crate::theme::{self, DEFAULT_BASE, SemTheme, ThemeInput};
@@ -21,6 +22,7 @@ use semaphore_design::lounge::{
     self as t, LAYOUT_DIALOG_MD, SPACE_2XS, SPACE_LG, SPACE_MD, SPACE_SM, SPACE_XL, SPACE_XS,
 };
 use semaphore_design::{Icon as I, Intensity, LoungeIcon, Mode, Rgba};
+use std::rc::Rc;
 
 // ---------------------------------------------------------------------------------------------
 // Sample content
@@ -142,9 +144,11 @@ fn channels(on_pick: impl Fn(&mut Window, &mut App) + Clone + 'static, cx: &App)
                                             .child(type_text(t::TEXT_BODY_STRONG, "Squad Up"))
                                             .child(Pill::new("You're here").tone(PillTone::Accent)),
                                     )
-                                    .child(Button::new("room-leave", "Leave").soft().size(
-                                        ButtonSize::Sm,
-                                    )),
+                                    .child(
+                                        Button::new("room-leave", "Leave")
+                                            .soft()
+                                            .size(ButtonSize::Sm),
+                                    ),
                             )
                             .child(
                                 div()
@@ -183,7 +187,12 @@ const MESSAGES: [(&str, u32, &str, &str); 5] = [
         "8:41",
         "found the clip from last night, it is somehow even better in slow motion",
     ),
-    ("pri", 0xc792f0ff, "8:43", "send it over, the couch demands it"),
+    (
+        "pri",
+        0xc792f0ff,
+        "8:43",
+        "send it over, the couch demands it",
+    ),
     (
         "aiko",
         0xff8fb8ff,
@@ -207,7 +216,7 @@ const MESSAGES: [(&str, u32, &str, &str); 5] = [
 fn conversation(
     draft: &Entity<InputState>,
     on_members: impl Fn(&mut Window, &mut App) + 'static,
-    on_back: Option<Box<dyn Fn(&mut Window, &mut App)>>,
+    on_back: Option<Action>,
     cx: &App,
 ) -> Div {
     column()
@@ -312,11 +321,13 @@ fn members(cx: &App) -> Div {
     column()
         .gap(px(SPACE_SM))
         .child(div().px(px(SPACE_SM)).child(meta("5 of 12 here", cx)))
-        .child(column().children(
-            PEOPLE
-                .iter()
-                .map(|(name, note, colour, presence)| person(name, note, *colour, *presence)),
-        ))
+        .child(
+            column().children(
+                PEOPLE
+                    .iter()
+                    .map(|(name, note, colour, presence)| person(name, note, *colour, *presence)),
+            ),
+        )
 }
 
 fn call_bar() -> Card {
@@ -412,14 +423,14 @@ impl Demo {
                 });
             }
         };
-        let back: Option<Box<dyn Fn(&mut Window, &mut App)>> = phone.then(|| {
+        let back: Option<Action> = phone.then(|| {
             let this = this.clone();
-            Box::new(move |_: &mut Window, cx: &mut App| {
+            Rc::new(move |_: &mut Window, cx: &mut App| {
                 let _ = this.update(cx, |demo, cx| {
                     demo.setup.pane = PhonePane::Left;
                     cx.notify();
                 });
-            }) as Box<dyn Fn(&mut Window, &mut App)>
+            }) as Action
         });
         let close = move |_: &mut Window, cx: &mut App| {
             let _ = this.update(cx, |demo, cx| {
@@ -480,7 +491,10 @@ impl Demo {
             }),
         );
         let rows = [
-            ("Manage messages", "Delete and pin messages in every channel."),
+            (
+                "Manage messages",
+                "Delete and pin messages in every channel.",
+            ),
             ("Manage members", "Kick and time out members."),
             ("Mention everyone", "Notify the whole community."),
         ];
@@ -575,21 +589,26 @@ impl Demo {
         // height: GPUI has no `cqw`/`cqh`, so it reads the stage's size.
         let screen = container_query(move |room, _, _| {
             let width = room.width.min(room.height * (16. / 9.));
-            div().size_full().flex().items_center().justify_center().child(
-                div()
-                    .id("stage-screen")
-                    .w(width)
-                    .h(width * (9. / 16.))
-                    .rounded(px(t::RADIUS_CARD))
-                    .bg(fill)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        type_text(t::TEXT_BODY, "dropbear is sharing their screen")
-                            .text_color(secondary),
-                    ),
-            )
+            div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .id("stage-screen")
+                        .w(width)
+                        .h(width * (9. / 16.))
+                        .rounded(px(t::RADIUS_CARD))
+                        .bg(fill)
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            type_text(t::TEXT_BODY, "dropbear is sharing their screen")
+                                .text_color(secondary),
+                        ),
+                )
         });
         let tiles = [
             ("dropbear", 0x5fd49aff, Presence::Speaking),
@@ -679,7 +698,10 @@ impl Demo {
         );
         let surface = Card::new("stack-surface").padding(Padding::Md).child(
             column()
-                .child(meta("Taller than two fifths of the frame: it scrolls here.", cx))
+                .child(meta(
+                    "Taller than two fifths of the frame: it scrolls here.",
+                    cx,
+                ))
                 .children((1..=14).map(|row| {
                     ListRow::new(
                         SharedString::from(format!("surface-row-{row}")),
@@ -693,7 +715,10 @@ impl Demo {
         );
         let summary = Card::new("stack-summary")
             .padding(Padding::Md)
-            .child(ListRow::new("stack-summary-row", "14 rows · the surface in one line"));
+            .child(ListRow::new(
+                "stack-summary-row",
+                "14 rows · the surface in one line",
+            ));
         let mut stack = CallStack::new(bar).summary(summary);
         if self.setup.surface {
             stack = stack.surface(surface);
@@ -741,16 +766,14 @@ impl Render for Demo {
                         })),
                 )
             }
-            Screen::BannerFrame => {
-                AppFrame::new(self.chat(window, cx)).banner(
-                    Alert::new(
-                        "frame-reconnecting",
-                        Severity::Warning,
-                        "You are offline. Messages you send will wait until the connection is back.",
-                    )
-                    .title("Reconnecting"),
+            Screen::BannerFrame => AppFrame::new(self.chat(window, cx)).banner(
+                Alert::new(
+                    "frame-reconnecting",
+                    Severity::Warning,
+                    "You are offline. Messages you send will wait until the connection is back.",
                 )
-            }
+                .title("Reconnecting"),
+            ),
         }
     }
 }
@@ -786,51 +809,105 @@ pub fn stories() -> Vec<Story> {
         story!(
             "kit-app-frame-with-banner",
             Mode::Dark,
-            Setup { right: false, dock: false, ..with(Screen::BannerFrame) }
+            Setup {
+                right: false,
+                dock: false,
+                ..with(Screen::BannerFrame)
+            }
         ),
         story!("kit-three-islands-chat", Mode::Dark, CHAT),
-        story!("kit-three-islands-no-right", Mode::Dark, Setup { right: false, ..CHAT }),
-        story!("kit-three-islands-right-open", Mode::Dark, Setup { open: Some(true), ..CHAT }),
+        story!(
+            "kit-three-islands-no-right",
+            Mode::Dark,
+            Setup {
+                right: false,
+                ..CHAT
+            }
+        ),
+        story!(
+            "kit-three-islands-right-open",
+            Mode::Dark,
+            Setup {
+                open: Some(true),
+                ..CHAT
+            }
+        ),
         story!(
             "kit-three-islands-right-closed-wide",
             Mode::Dark,
-            Setup { open: Some(false), ..CHAT }
+            Setup {
+                open: Some(false),
+                ..CHAT
+            }
         ),
         story!(
             "kit-three-islands-phone-left",
             Mode::Dark,
-            Setup { pane: PhonePane::Left, ..CHAT }
+            Setup {
+                pane: PhonePane::Left,
+                ..CHAT
+            }
         ),
         story!("kit-three-islands-chat-light", Mode::Light, CHAT),
-        story!("kit-three-islands-no-dock", Mode::Dark, Setup { dock: false, ..CHAT }),
-        story!("kit-three-islands-in-call", Mode::Dark, Setup { call: true, ..CHAT }),
+        story!(
+            "kit-three-islands-no-dock",
+            Mode::Dark,
+            Setup {
+                dock: false,
+                ..CHAT
+            }
+        ),
+        story!(
+            "kit-three-islands-in-call",
+            Mode::Dark,
+            Setup { call: true, ..CHAT }
+        ),
         story!("kit-settings-layout-community", Mode::Dark, SETTINGS),
         story!(
             "kit-settings-layout-phone-nav",
             Mode::Dark,
-            Setup { settings_pane: SettingsPane::Nav, ..SETTINGS }
+            Setup {
+                settings_pane: SettingsPane::Nav,
+                ..SETTINGS
+            }
         ),
         story!("kit-settings-layout-phone-content", Mode::Dark, SETTINGS),
         story!("kit-settings-layout-community-light", Mode::Light, SETTINGS),
         story!(
             "kit-settings-layout-no-footer",
             Mode::Dark,
-            Setup { footer: false, ..SETTINGS }
+            Setup {
+                footer: false,
+                ..SETTINGS
+            }
         ),
         story!("kit-stage-layout-sharing", Mode::Dark, STAGE),
         story!(
             "kit-stage-layout-people-open",
             Mode::Dark,
-            Setup { open: Some(true), ..STAGE }
+            Setup {
+                open: Some(true),
+                ..STAGE
+            }
         ),
         story!("kit-stage-layout-sharing-light", Mode::Light, STAGE),
-        story!("kit-stage-layout-no-strip", Mode::Dark, Setup { strip: false, ..STAGE }),
+        story!(
+            "kit-stage-layout-no-strip",
+            Mode::Dark,
+            Setup {
+                strip: false,
+                ..STAGE
+            }
+        ),
         story!("kit-call-stack-bounded", Mode::Dark, STACK),
         story!("kit-call-stack-bounded-light", Mode::Light, STACK),
         story!(
             "kit-call-stack-bar-only",
             Mode::Dark,
-            Setup { surface: false, ..STACK }
+            Setup {
+                surface: false,
+                ..STACK
+            }
         ),
     ]
 }

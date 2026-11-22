@@ -4,8 +4,8 @@
 
 use super::layout::focus::{FocusMove, decide};
 use super::{
-    AppFrame, CallStack, PANE_MIN, PhonePane, SettingsLayout, SettingsPane, StageLayout,
-    ThreeIslands, Toasts, ToastRequest, WidthRange, BehaviourRoot,
+    AppFrame, BehaviourRoot, CallStack, PANE_MIN, PhonePane, SettingsLayout, SettingsPane,
+    StageLayout, ThreeIslands, ToastRequest, Toasts, WidthRange,
 };
 use crate::dms::rig::{Rig, rig_sized};
 use core::prelude::v1::test;
@@ -309,7 +309,8 @@ impl T {
     }
 
     fn bounds(&self, cx: &mut TestAppContext, id: &'static str) -> Bounds<Pixels> {
-        self.rig.with(cx, move |_, window, _| window.find(id).bounds())
+        self.rig
+            .with(cx, move |_, window, _| window.find(id).bounds())
     }
 
     fn has(&self, cx: &mut TestAppContext, id: &'static str) -> bool {
@@ -318,7 +319,8 @@ impl T {
 
     fn focus(&self, cx: &mut TestAppContext, id: &'static str) {
         let handle = self.handle(id);
-        self.rig.with(cx, move |_, window, cx| window.focus(&handle, cx));
+        self.rig
+            .with(cx, move |_, window, cx| window.focus(&handle, cx));
         self.redraw(cx);
     }
 
@@ -340,8 +342,9 @@ impl T {
 
     /// Whether the layout moved focus to this pane (its own handle is the one focused).
     fn focus_in(&self, cx: &mut TestAppContext, pane: &'static str) -> bool {
-        self.rig
-            .with(cx, move |_, window, _| window.find(pane).focused() == Some(true))
+        self.rig.with(cx, move |_, window, _| {
+            window.find(pane).focused() == Some(true)
+        })
     }
 
     fn made(&self, name: &'static str) -> u32 {
@@ -816,7 +819,10 @@ fn a_call_stack_without_a_surface_is_just_the_bar(cx: &mut TestAppContext) {
     );
     assert!(!t.has(cx, "kit-call-surface"));
     let left = t.bounds(cx, "three-islands-left");
-    near!(t.bounds(cx, "kit-call-bar").origin.y, f32::from(left.bottom()) + G);
+    near!(
+        t.bounds(cx, "kit-call-bar").origin.y,
+        f32::from(left.bottom()) + G
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -843,7 +849,10 @@ fn settings_wide_and_compact_put_nav_beside_content(cx: &mut TestAppContext) {
         // The footer is pinned to the content island's foot, under the body.
         let footer = t.bounds(cx, "settings-layout-footer");
         near!(footer.bottom(), 800. - G);
-        near!(t.bounds(cx, "settings-layout-body").bottom(), footer.origin.y);
+        near!(
+            t.bounds(cx, "settings-layout-body").bottom(),
+            footer.origin.y
+        );
         assert!(!t.has(cx, "settings-layout-header"));
         assert_eq!(t.roles(cx, Role::Main), ["Community settings"]);
         assert_eq!(t.roles(cx, Role::Navigation), ["Settings sections"]);
@@ -881,7 +890,10 @@ fn a_phone_settings_page_shows_one_pane_with_back(cx: &mut TestAppContext) {
     assert!(t.has(cx, "settings-layout-nav"));
     assert!(!t.has(cx, "settings-layout-content"));
     assert_eq!(t.roles(cx, Role::Main), [""]);
-    near!(t.bounds(cx, "settings-layout-nav").size.width, 390. - 2. * G);
+    near!(
+        t.bounds(cx, "settings-layout-nav").size.width,
+        390. - 2. * G
+    );
     t.focus(cx, "nav-focus");
     t.set(cx, |cfg| cfg.settings_pane = SettingsPane::Content);
     assert!(t.has(cx, "settings-layout-header"));
@@ -924,7 +936,10 @@ fn the_stage_holds_its_content_inside_and_the_controls_at_the_foot(cx: &mut Test
         assert!(stage.size.height > px(100.));
         // Never wider or taller than the stage.
         let content = t.bounds(cx, "stage-content");
-        assert!(content.size.width <= stage.size.width, "{content:?} {stage:?}");
+        assert!(
+            content.size.width <= stage.size.width,
+            "{content:?} {stage:?}"
+        );
         assert_eq!(t.roles(cx, Role::Main), ["Squad Up"]);
     }
 }
@@ -943,7 +958,10 @@ fn no_strip_leaves_no_gap(cx: &mut TestAppContext) {
     );
     assert!(!t.has(cx, "stage-layout-strip"));
     let stage = t.bounds(cx, "stage-layout-stage");
-    near!(stage.bottom(), t.bounds(cx, "stage-layout-controls").origin.y);
+    near!(
+        stage.bottom(),
+        t.bounds(cx, "stage-layout-controls").origin.y
+    );
 }
 
 #[gpui_kit::test]
@@ -1001,7 +1019,9 @@ fn show_toast(t: &T, cx: &mut TestAppContext) -> Bounds<Pixels> {
             .show(ToastRequest::new("Saved").id("saved"), cx);
     });
     t.redraw(cx);
-    let regions = t.rig.with(cx, |_, window, _| window.find_all("kit-toast-region").len());
+    let regions = t
+        .rig
+        .with(cx, |_, window, _| window.find_all("kit-toast-region").len());
     assert_eq!(regions, 1, "exactly one toast region");
     t.bounds(cx, "kit-toast-region")
 }

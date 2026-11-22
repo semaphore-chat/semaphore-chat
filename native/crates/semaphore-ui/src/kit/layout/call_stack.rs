@@ -87,7 +87,11 @@ impl CallSlot {
         };
         match self {
             CallSlot::Bar(element) => vec![bar(element, LAYOUT_GUTTER)],
-            CallSlot::Stack(CallStack { bar: element, surface: None, .. }) => {
+            CallSlot::Stack(CallStack {
+                bar: element,
+                surface: None,
+                ..
+            }) => {
                 vec![bar(element, LAYOUT_GUTTER)]
             }
             CallSlot::Stack(CallStack {

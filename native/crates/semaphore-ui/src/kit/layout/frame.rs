@@ -103,7 +103,9 @@ struct FrameToasts;
 
 impl RenderOnce for FrameToasts {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let placed = cx.try_global::<ToastsPlaced>().is_some_and(|placed| placed.0);
+        let placed = cx
+            .try_global::<ToastsPlaced>()
+            .is_some_and(|placed| placed.0);
         set_placed(false, cx);
         if placed {
             div().into_any_element()

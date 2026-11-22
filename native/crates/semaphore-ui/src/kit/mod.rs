@@ -37,11 +37,11 @@ mod stories_lounge;
 mod surface;
 mod tabs;
 #[cfg(test)]
+mod tests_layout;
+#[cfg(test)]
 mod tests_lists_overlays;
 #[cfg(test)]
 mod tests_lounge;
-#[cfg(test)]
-mod tests_layout;
 mod typography;
 
 pub use assets::{UiAssets, icon_path, lounge_icon_path};

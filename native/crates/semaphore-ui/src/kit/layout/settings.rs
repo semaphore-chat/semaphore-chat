@@ -87,7 +87,6 @@ impl SettingsLayout {
     }
 }
 
-
 fn title_text(title: SharedString) -> Div {
     type_text(TEXT_TITLE, title).min_w_0().truncate()
 }
@@ -214,4 +213,3 @@ impl RenderOnce for SettingsLayout {
         }
     }
 }
-
