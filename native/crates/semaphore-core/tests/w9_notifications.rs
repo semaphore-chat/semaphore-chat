@@ -106,6 +106,31 @@ async fn a_notification_arriving_while_the_conversation_is_open_is_read_at_once(
 }
 
 #[tokio::test]
+async fn a_notification_for_a_closed_conversation_stays_unread() {
+    let rig = rig_with(vec![]).await;
+    rig.core.run_until_idle().await;
+    rig.core.close_conversation(channel());
+    // Closing another conversation, or this one twice, changes nothing more.
+    rig.core.close_conversation(Conversation::Channel {
+        id: "elsewhere".into(),
+    });
+    rig.core.close_conversation(channel());
+    rig.core.ingest(RealtimeEvent::Event {
+        name: "newNotification".into(),
+        payload: json!({
+            "notificationId": "n-7", "type": "USER_MENTION", "messageId": "msg-7",
+            "channelId": CHANNEL, "communityId": "comm", "channelName": "general",
+            "authorId": "u-ava",
+            "author": { "id": "u-ava", "username": "ava", "displayName": "Ava", "avatarUrl": null },
+            "createdAt": "2026-09-22T18:00:00.000Z", "read": false,
+        }),
+    });
+    rig.core.run_until_idle().await;
+    assert!(read_ids(&rig).is_empty());
+    assert!(!rig.core.notifications().rows[0].read);
+}
+
+#[tokio::test]
 async fn a_notification_arriving_elsewhere_stays_unread() {
     let rig = rig_with(vec![]).await;
     rig.core.run_until_idle().await;

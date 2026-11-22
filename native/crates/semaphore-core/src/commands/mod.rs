@@ -463,6 +463,21 @@ impl State {
         !loaded
     }
 
+    /// The conversation is no longer on screen; its window stays loaded for the next open.
+    fn close(&mut self, conversation: &Conversation) {
+        let slot = match conversation {
+            Conversation::Thread { .. } => &mut self.thread_conversation,
+            _ => &mut self.main_conversation,
+        };
+        if slot.as_ref() != Some(conversation) {
+            return;
+        }
+        *slot = None;
+        if let Some(window) = self.windows.get_mut(conversation) {
+            window.hide();
+        }
+    }
+
     fn hide_if_replaced(&mut self, previous: Option<Conversation>, next: &Conversation) {
         if let Some(previous) = previous
             && previous != *next

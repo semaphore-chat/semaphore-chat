@@ -205,6 +205,9 @@ pub struct FakeBackend {
     pub files: Mutex<HashMap<String, Vec<u8>>>,
     /// W4: the next channel presence join waits for this.
     pub join_gate: Mutex<Option<oneshot::Receiver<()>>>,
+    /// The next connection-info read fails with this (a join that fails before the engine
+    /// connects), while set.
+    pub connection_info_error: Mutex<Option<BackendError>>,
     pub page_requests: AtomicU64,
     /// Holds the next page until this fires, to test what happens while one is in flight.
     pub gate: Mutex<Option<oneshot::Receiver<()>>>,
@@ -761,6 +764,9 @@ impl VoiceBackend for FakeBackend {
     async fn livekit_controller_get_connection_info(
         &self,
     ) -> BackendResult<wire::ConnectionInfoResponseDto> {
+        if let Some(error) = self.connection_info_error.lock().unwrap().take() {
+            return Err(error);
+        }
         decoded(json!({ "url": "ws://livekit" }))
     }
 

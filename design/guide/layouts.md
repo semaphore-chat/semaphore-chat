@@ -281,6 +281,12 @@ sharing. The kit's CallStack does this; see
 call, the slot shows the voice notice instead: a join that failed or why the
 call ended, with Retry when trying again can help, and Dismiss.
 
+In the native app the slot's pieces are `shell::lounge::call` (`CallBar`,
+`CallSurface`, `VoiceNoticeBar`), in the same places and with the same rules.
+A desktop window has no on-screen keyboard, so the summary line never shows.
+Native core does not sort why a call ended yet: a connection lost while
+rejoining has Retry, any other ending says only that the call ended.
+
 **What goes where**
 
 |Region|Goes here|Does not go here|

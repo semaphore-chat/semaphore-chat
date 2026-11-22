@@ -79,7 +79,7 @@
 //! `frames N`, `device ID|default` and `released` (no test runs and every fake camera closed),
 //! `engine vad N`, `soundboard playing ID|none`,
 //! `livekit track ROOM IDENTITY NAME` (LiveKit's server lists it), `livekit participant ROOM
-//! IDENTITY present|gone` (LiveKit's server lists them in the room at all), `float shown|hidden`, `saved NAME` (a download reached the
+//! IDENTITY present|gone` (LiveKit's server lists them in the room at all), `surface shown|hidden`, `watching N`, `saved NAME` (a download reached the
 //! run's `saved/NAME`). `save-as NAME` answers the next save dialog with `saved/NAME`. The step
 //! `mic tone on|off` makes the virtual mic play a tone; `clock hold|run` stops the scenario clock
 //! counting real time (only `tick` moves it), and starts it again. `tick N` also moves
@@ -460,8 +460,12 @@ enum W4 {
         identity: String,
         present: bool,
     },
-    /// `float shown|hidden`: the float card over the middle column.
-    Float(bool),
+    /// `surface shown|hidden`: the call surface in the frame's call slot (B11).
+    Surface(bool),
+    /// `watching N`: how many tracks the call surface shows (Watch).
+    Watching(usize),
+    /// `surface-frames`: every watched track has a frame to show, and frames came in since Watch.
+    SurfaceFrames,
     /// `saved NAME`: a download reached `<data dir>/saved/NAME`, not empty.
     Saved(String),
 }
@@ -830,7 +834,11 @@ fn condition(words: &[&str]) -> Result<Condition> {
             identity: (*identity).into(),
             present: *state == "present",
         }),
-        ["float", state @ ("shown" | "hidden")] => Condition::W4(W4::Float(*state == "shown")),
+        ["surface", state @ ("shown" | "hidden")] => Condition::W4(W4::Surface(*state == "shown")),
+        ["surface-frames"] => Condition::W4(W4::SurfaceFrames),
+        ["watching", count] => Condition::W4(W4::Watching(
+            count.parse().map_err(|_| anyhow!("watching N"))?,
+        )),
         ["saved", name] => Condition::W4(W4::Saved((*name).into())),
         ["dialog", name, state @ ("open" | "closed")] => {
             dialog_element(name)?;
@@ -1605,16 +1613,35 @@ impl Rig {
                 .load(std::sync::atomic::Ordering::Relaxed)
                 == *on);
         }
-        if let W4::Float(shown) = condition {
+        if let W4::Surface(shown) = condition {
             let found = self.driver.query(|window| {
                 window
-                    .try_find(ElementId::Name("float-card".into()))
+                    .try_find(ElementId::Name("call-surface".into()))
                     .is_some()
-                    || window
-                        .try_find(ElementId::Name("float-pill".into()))
-                        .is_some()
             })?;
             return Ok(found == *shown);
+        }
+        if let W4::SurfaceFrames = condition {
+            let app = self.app()?.clone();
+            return Ok(self.driver.cx.update(|cx| {
+                let root = app.read(cx);
+                let watched = root.watched_tracks();
+                root.stage().is_some_and(|stage| {
+                    let frames = stage.read(cx).frames().clone();
+                    // Frames that came in since Watch: the track is received again.
+                    !watched.is_empty()
+                        && watched.iter().all(|sid| frames.has_frame(sid))
+                        && frames.generation() >= root.watch_generation() + 10
+                })
+            }));
+        }
+        if let W4::Watching(count) = condition {
+            let app = self.app()?.clone();
+            let watched = self
+                .driver
+                .cx
+                .update(|cx| app.read(cx).watched_tracks().len());
+            return Ok(watched == *count);
         }
         let app = self.app()?.clone();
         // Every fake camera the rig started has let go, for `camera-test released`.
@@ -1696,7 +1723,9 @@ impl Rig {
                 | W4::LiveKitTrack { .. }
                 | W4::LiveKitParticipant { .. }
                 | W4::KeepAwake(_)
-                | W4::Float(_)
+                | W4::Surface(_)
+                | W4::Watching(_)
+                | W4::SurfaceFrames
                 | W4::Saved(_) => {
                     unreachable!("answered above")
                 }

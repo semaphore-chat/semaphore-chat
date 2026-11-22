@@ -227,10 +227,15 @@ gradle_status=0
   -Pandroid.testInstrumentationRunnerArguments.server="http://10.0.2.2:$FAKE_PORT" \
   -Pandroid.testInstrumentationRunnerArguments.channel="$(entity cc-general)" \
   -Pandroid.testInstrumentationRunnerArguments.author="$(entity u-priya)" \
+  -Pandroid.testInstrumentationRunnerArguments.bulkChannel="$(entity cc-lfg)" \
   -Pandroid.testInstrumentationRunnerArguments.tlsServer="https://10.0.2.2:$TLS_PORT" \
   -Pandroid.testInstrumentationRunnerArguments.tlsSha256="$tls_sha" \
   -Pandroid.testInstrumentationRunnerArguments.trustedServer="$TRUSTED_SERVER" \
   || gradle_status=$?
+
+# DeviceChatTest's timing of a 1000-row reset crossing the FFI into the chat's state.
+echo "=== timings"
+"$ADB" logcat -d -s SemaphoreTiming:I 2>/dev/null | grep SemaphoreTiming || true
 
 # A crash ends the instrumentation with no stack trace in the results: print the device's.
 if [ "$gradle_status" != 0 ]; then

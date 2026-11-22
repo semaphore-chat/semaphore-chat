@@ -26,7 +26,7 @@ use crate::client::{Core, Effect, State};
 use crate::model::{
     Conversation, ErrorView, IncomingCallView, JoinFailure, LoadState, LocalShare,
     MediaDiagnostics, MessageLink, OsNotification, REPLAY_AUDIO_WAIT_MS, RING_MS, ReplayState,
-    SoundCue, UserView, ViewKey, VoiceDiagnosticEvent, VoiceRoom, VoiceStatus,
+    SoundCue, UserView, ViewKey, VoiceDiagnosticEvent, VoiceJoinOptions, VoiceRoom, VoiceStatus,
 };
 use crate::platform::{CoreError, CoreEvent, KeepAwake};
 use crate::resync::unavailable;
@@ -702,6 +702,16 @@ impl Core {
     /// a blocked 1:1 DM is the server's refusal.
     pub async fn join_dm_call(&self, dm_group_id: String) -> Result<(), CoreError> {
         self.join_room(VoiceRoom::Dm { dm_group_id }, None).await
+    }
+
+    /// Joins a DM's call as Retry chose: muted and deafened as the call it replaces was.
+    pub async fn join_dm_call_with(
+        &self,
+        dm_group_id: String,
+        options: VoiceJoinOptions,
+    ) -> Result<(), CoreError> {
+        self.join_room(VoiceRoom::Dm { dm_group_id }, Some(options))
+            .await
     }
 
     /// The call ringing now, if any (`ViewKey::IncomingCall`).

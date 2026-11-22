@@ -33,7 +33,7 @@ class ScreenStoryShotsTest(
 ) {
     @Test
     fun render() {
-        val story = SCREEN_STORIES.single { it.id == storyId }
+        val story = (SCREEN_STORIES + CHAT_STORIES).single { it.id == storyId }
         val size = STORY_SIZES.single { it.name == sizeName }
         val theme = STORY_THEMES.single { it.name == themeName }
         RuntimeEnvironment.setQualifiers(size.qualifiers)
@@ -61,7 +61,7 @@ class ScreenStoryShotsTest(
 
         @JvmStatic
         @ParameterizedRobolectricTestRunner.Parameters(name = "{3}")
-        fun cases(): List<Array<Any>> = SCREEN_STORIES.filter { selected(it.id) }.flatMap { story ->
+        fun cases(): List<Array<Any>> = (SCREEN_STORIES + CHAT_STORIES).filter { selected(it.id) }.flatMap { story ->
             STORY_SIZES.flatMap { size ->
                 STORY_THEMES.map { theme ->
                     arrayOf<Any>(story.id, size.name, theme.name, "${size.name}/${story.id}-${theme.name}")

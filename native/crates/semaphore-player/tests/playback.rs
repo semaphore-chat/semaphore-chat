@@ -7,6 +7,9 @@ use semaphore_core::player::{
     PlayerFactory,
 };
 use semaphore_media_livekit::audio::virtual_io::VirtualIo;
+use semaphore_media_livekit::audio::{
+    AudioDevices, AudioIo, AudioStream, ErrorCallback, InputCallback, OutputCallback,
+};
 use semaphore_player::{DesktopPlayers, Nv12Frame, Opener, Player, VideoSink};
 use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -71,6 +74,44 @@ struct Rig {
     speaker: Arc<Mutex<Vec<i16>>>,
 }
 
+/// An output stream that is open but never calls its callback: a headset pulled out, or a
+/// driver that stopped. Everything else is the virtual device's.
+struct DeadOutput(VirtualIo);
+
+impl AudioIo for DeadOutput {
+    fn devices(&self) -> Result<AudioDevices, String> {
+        self.0.devices()
+    }
+
+    fn open_input(
+        &self,
+        device: Option<&str>,
+        on_audio: InputCallback,
+        on_error: ErrorCallback,
+    ) -> Result<AudioStream, String> {
+        self.0.open_input(device, on_audio, on_error)
+    }
+
+    fn open_output(
+        &self,
+        _: Option<&str>,
+        _: OutputCallback,
+        _: ErrorCallback,
+    ) -> Result<AudioStream, String> {
+        Ok(AudioStream::new(()))
+    }
+
+    fn open_output_channels(
+        &self,
+        _: Option<&str>,
+        _: u16,
+        _: OutputCallback,
+        _: ErrorCallback,
+    ) -> Result<AudioStream, String> {
+        Ok(AudioStream::new(()))
+    }
+}
+
 impl Rig {
     fn new() -> Self {
         let io = VirtualIo::new();
@@ -79,6 +120,11 @@ impl Rig {
         io.set_speaker(Box::new(move |frame| {
             heard.lock().unwrap().extend_from_slice(frame);
         }));
+        Self::with_audio(Arc::new(io), speaker)
+    }
+
+    /// A rig on any output device; `speaker` records what the virtual one plays.
+    fn with_audio(audio: Arc<dyn AudioIo>, speaker: Arc<Mutex<Vec<i16>>>) -> Self {
         let opener: Opener = Arc::new(
             |source: &PlaybackSource,
              _: &semaphore_player::Cancel,
@@ -94,7 +140,7 @@ impl Rig {
             },
         );
         Self {
-            players: DesktopPlayers::new(Arc::new(io), opener),
+            players: DesktopPlayers::new(audio, opener),
             speaker,
         }
     }
@@ -359,6 +405,75 @@ fn playing_one_pauses_the_other() {
     assert_eq!(rig.players.active(), Some(second.id()));
     drop(second);
     assert_eq!(rig.players.active(), None);
+}
+
+#[test]
+fn a_device_that_never_calls_back_pauses_within_the_timeout() {
+    let rig = Rig::with_audio(
+        Arc::new(DeadOutput(VirtualIo::new())),
+        Arc::new(Mutex::new(Vec::new())),
+    );
+    let (player, rx) = rig.open("sine.wav", None);
+    player.play();
+    until(&rx, "playing", state(PlaybackState::Playing));
+    let asked = Instant::now();
+    player.pause();
+    until(&rx, "paused", state(PlaybackState::Paused));
+    let waited = asked.elapsed();
+    assert!(
+        waited >= Duration::from_millis(400),
+        "paused after only {waited:?}: the output acknowledged nothing"
+    );
+    assert!(
+        waited < Duration::from_secs(2),
+        "paused after {waited:?}: the wait is not bounded"
+    );
+
+    // The engine thread is free again after giving up on the acknowledgement, and takes the
+    // next command in order.
+    player.play();
+    until(&rx, "playing again", state(PlaybackState::Playing));
+}
+
+#[test]
+fn pause_then_play_before_paused_leaves_the_player_active() {
+    let rig = Rig::new();
+    let (first, first_rx) = rig.open("sine.flac", None);
+    let (second, second_rx) = rig.open("vorbis.ogg", None);
+    first.play();
+    until(
+        &first_rx,
+        "the first playing",
+        state(PlaybackState::Playing),
+    );
+    // Several rounds: the queued pause may release the registration on either side of the
+    // queued play, and the play has to leave the player registered either way.
+    for _ in 0..3 {
+        first.pause();
+        first.play();
+        until(
+            &first_rx,
+            "the first playing again",
+            state(PlaybackState::Playing),
+        );
+    }
+    assert_eq!(
+        rig.players.active(),
+        Some(first.id()),
+        "playing but unregistered after pause then play"
+    );
+
+    second.play();
+    until(
+        &second_rx,
+        "the second playing",
+        state(PlaybackState::Playing),
+    );
+    until(
+        &first_rx,
+        "the first paused by the second",
+        state(PlaybackState::Paused),
+    );
 }
 
 #[test]

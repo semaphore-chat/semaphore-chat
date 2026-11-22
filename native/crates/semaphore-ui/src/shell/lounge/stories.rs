@@ -468,7 +468,7 @@ struct Demo {
     right_scroll: ScrollHandle,
 }
 
-fn sample_centre(cx: &App) -> Div {
+pub(crate) fn sample_centre(cx: &App) -> Div {
     let secondary = cx.sem().role.text_secondary;
     let lines = [
         (

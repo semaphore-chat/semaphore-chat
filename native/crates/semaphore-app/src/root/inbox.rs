@@ -880,7 +880,7 @@ impl AppRoot {
                     .as_ref()
                     .map(|shell| shell.read(cx).nav().current().clone());
                 if let Some(Route::DirectMessage { dm_group_id }) = route {
-                    self.start_dm_call(dm_group_id, *video, cx);
+                    self.start_dm_call(dm_group_id, *video, window, cx);
                 }
             }
             // No members drawer yet: its button isn't offered.

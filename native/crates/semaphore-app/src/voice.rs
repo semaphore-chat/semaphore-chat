@@ -145,6 +145,8 @@ pub enum VoiceRequest {
     OpenDevices,
     /// The narrow bar's "more".
     OpenMore,
+    /// B11: the call bar's room name: the call view.
+    OpenCallView,
     /// Our own picker (X11, Windows): open it, loading, while the sources are listed.
     OpenPicker,
     /// The sources for the picker, or why they couldn't be listed.
@@ -289,6 +291,10 @@ impl VoiceController for AppVoice {
 
     fn open_more(&self) {
         let _ = self.requests.try_send(VoiceRequest::OpenMore);
+    }
+
+    fn open_call_view(&self) {
+        let _ = self.requests.try_send(VoiceRequest::OpenCallView);
     }
 
     fn open_participant_menu(&self, identity: String, position: gpui_kit::Point<gpui_kit::Pixels>) {

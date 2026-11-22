@@ -392,29 +392,3 @@ private fun AllCommunitiesSheet(
         }
     }
 }
-
-/**
- * A channel, on a phone (the web's phone chat route): its header with Back to the community.
- * The messages come with D6; this is the route and the Back for now.
- */
-@Composable
-fun ChannelScreen(name: String, communityName: String, onBack: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(Tokens.Space.Sm),
-        verticalArrangement = Arrangement.spacedBy(Tokens.Space.Sm),
-    ) {
-        Island(modifier = Modifier.fillMaxSize(), padding = SurfacePadding.Md) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Xs)) {
-                IconButton(Icons.ArrowLeft, label = LoungeText.BACK, onClick = onBack)
-                Icon(Icons.Hash, size = IconSize.Md)
-                Column(Modifier.weight(1f)) {
-                    Text(name, variant = TextVariant.Name, heading = true, truncate = true)
-                    Text(communityName, variant = TextVariant.Meta, tone = TextTone.Secondary, truncate = true)
-                }
-            }
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Messages come in the next update.", tone = TextTone.Secondary)
-            }
-        }
-    }
-}

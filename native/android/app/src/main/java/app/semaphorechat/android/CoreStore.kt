@@ -24,12 +24,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import uniffi.semaphore.Appearance
 import uniffi.semaphore.ChannelKind
 import uniffi.semaphore.ChannelPreset
 import uniffi.semaphore.ChannelRow
 import uniffi.semaphore.CommunityRow
 import uniffi.semaphore.ConnectionState
+import uniffi.semaphore.Conversation
 import uniffi.semaphore.CoreEvent
 import uniffi.semaphore.CoreListener
 import uniffi.semaphore.LoadState
@@ -56,6 +58,9 @@ class EventPipe : CoreListener {
     }
 }
 
+/** How many conversations' lists CoreStore keeps: core keeps 8 idle windows. */
+const val KEPT_CONVERSATIONS = 8
+
 /** Something to say once, from a core event: a community or a channel went away. */
 sealed interface CoreNotice {
     data class CommunityRemoved(val communityId: String, val message: String) : CoreNotice
@@ -81,6 +86,14 @@ class CoreStore(
     private val communityState = MutableStateFlow(readCommunities())
     private val channelStates = ConcurrentHashMap<String, MutableStateFlow<Load<CommunityChannels>>>()
     private val noticeFlow = MutableSharedFlow<CoreNotice>(extraBufferCapacity = 16)
+    /**
+     * The lists, the most recently opened last, at most [KEPT_CONVERSATIONS]: core forgets idle
+     * windows past 8 too, and a list opened again starts from core's reset. Guarded by itself.
+     */
+    private val conversations = object : LinkedHashMap<Conversation, ConversationStore>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Conversation, ConversationStore>) =
+            size > KEPT_CONVERSATIONS
+    }
 
     val session: StateFlow<SessionState> = sessionState
     val connection: StateFlow<ConnectionState> = connectionState
@@ -88,24 +101,44 @@ class CoreStore(
     val communities: StateFlow<Load<List<CommunitySummary>>> = communityState
     val notices: SharedFlow<CoreNotice> = noticeFlow
 
-    /** Core's events and the callers' requests, in one queue: one coroutine reads and writes. */
+    /** Core's events and the callers' requests: one coroutine reads and writes. */
     private sealed interface Input {
         data class Event(val event: CoreEvent) : Input
         data object Refresh : Input
         data object Retry : Input
+        /** Work that must see every event core sent before it was asked for (see [onCollector]). */
+        data class Run(val block: () -> Unit) : Input
     }
 
-    private val inbox = Channel<Input>(Channel.UNLIMITED)
+    private val requests = Channel<Input>(Channel.UNLIMITED)
 
     init {
-        scope.launch { for (event in events) inbox.send(Input.Event(event)) }
         scope.launch {
-            for (first in inbox) {
+            while (true) {
+                // Events first whenever both are waiting: a request made after core sent an event
+                // (a command that returned) then always runs after that event is applied.
+                val first = select<Input?> {
+                    events.onReceiveCatching { it.getOrNull()?.let(Input::Event) }
+                    requests.onReceive { it }
+                } ?: break
                 val burst = mutableListOf(first)
-                while (true) burst += inbox.tryReceive().getOrNull() ?: break
+                while (true) {
+                    burst += events.tryReceive().getOrNull()?.let(Input::Event)
+                        ?: requests.tryReceive().getOrNull()
+                        ?: break
+                }
                 apply(burst)
             }
         }
+    }
+
+    /**
+     * Runs [block] on the collector, after every event core has sent so far. A command's result
+     * is applied this way: core sends a command's list changes before the command returns, so the
+     * state built after it holds them (and core's flags, read then, agree with the rows).
+     */
+    private fun onCollector(block: () -> Unit) {
+        requests.trySend(Input.Run(block))
     }
 
     /** A community's channels, read now and kept current from here on. */
@@ -113,22 +146,39 @@ class CoreStore(
         channelStates.getOrPut(communityId) { MutableStateFlow(readChannels(communityId)) }
 
     /**
+     * A conversation's list, kept current by core's list changes from here on. Created before the
+     * conversation is opened, so the reset core sends on opening lands in it.
+     */
+    fun conversation(conversation: Conversation): ConversationStore = synchronized(conversations) {
+        conversations.getOrPut(conversation) { ConversationStore(conversation, core, scope, onCollector = ::onCollector) }
+    }
+
+    /** How many lists are kept now (for the tests). */
+    val keptConversations: Int get() = synchronized(conversations) { conversations.size }
+
+    /**
      * Re-reads everything: at start, on resume, and after a retry. Asks the collector to, so every
      * core read and every state write is on its one coroutine; returns at once.
      */
     fun refresh() {
-        inbox.trySend(Input.Refresh)
+        requests.trySend(Input.Refresh)
     }
 
     /** Fetches again whatever failed to load, then re-reads (on the collector, like [refresh]). */
     fun retry() {
-        inbox.trySend(Input.Retry)
+        requests.trySend(Input.Retry)
     }
 
     private fun apply(burst: List<Input>) {
         if (burst.any { it is Input.Retry }) core.retryFailed()
         val events = burst.filterIsInstance<Input.Event>().map { it.event }
-        events.forEach { event ->
+        // In order: events and the work queued behind them.
+        burst.forEach { input ->
+            if (input is Input.Run) {
+                input.block()
+                return@forEach
+            }
+            val event = (input as? Input.Event)?.event ?: return@forEach
             when (event) {
                 is CoreEvent.CommunityRemoved -> noticeFlow.tryEmit(
                     CoreNotice.CommunityRemoved(event.communityId, removalMessage(event.name, event.cause)),
@@ -136,18 +186,28 @@ class CoreStore(
                 is CoreEvent.ChannelRemoved -> noticeFlow.tryEmit(
                     CoreNotice.ChannelRemoved(event.communityId, event.channelId),
                 )
+                // In order, on this one coroutine: a reset and the inserts after it stay in order.
+                is CoreEvent.MessagesChanged ->
+                    synchronized(conversations) { conversations.entries.firstOrNull { it.key == event.conversation }?.value }
+                        ?.apply(event.ops)
                 else -> Unit
             }
         }
-        sessionState.value = core.session()
-        connectionState.value = core.connection()
+        val session = core.session()
+        // A new session starts with no lists: the old one's rows are another account's.
+        if (session !is SessionState.SignedIn) synchronized(conversations) { conversations.clear() }
+        sessionState.value = session
+        val connection = core.connection()
+        connectionState.value = connection
+        // The edges, the typing line and the connection line, which change without a list change.
+        synchronized(conversations) { conversations.values.toList() }.forEach { it.refresh(connection) }
         appearanceState.value = core.appearance().appearance
         communityState.value = readCommunities()
         // Only some communities' channels changed: re-read those; anything else, all of them.
         val only = events.map { event ->
             ((event as? CoreEvent.ViewChanged)?.view as? ViewKey.Channels)?.communityId
         }
-        val everything = events.size < burst.size || only.any { it == null }
+        val everything = burst.any { it is Input.Refresh || it is Input.Retry } || only.any { it == null }
         val ids = if (everything) channelStates.keys.toSet() else only.filterNotNull().toSet()
         ids.forEach { id -> channelStates[id]?.let { it.value = readChannels(id) } }
     }

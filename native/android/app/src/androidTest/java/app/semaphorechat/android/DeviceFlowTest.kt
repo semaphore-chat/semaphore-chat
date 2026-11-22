@@ -8,6 +8,8 @@
 package app.semaphorechat.android
 
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
@@ -28,6 +30,7 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
@@ -39,7 +42,7 @@ import org.junit.runner.RunWith
  * native/scripts/android-device-test.sh runs: connect (a plain-http server, so the warning and
  * Continue), sign in, the first community, another from the dock, a channel and Back, the sheet
  * and Back; then the core shut down as the process ending would, and a new start that restores
- * the session into the community opened last.
+ * the session into the community opened last, where the channel opened before is read.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -48,6 +51,11 @@ class DeviceFlowTest {
     val compose = createEmptyComposeRule()
 
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
+
+    /** A list row the kit marks unread (its spoken state, as the web's name carries ", unread"). */
+    private val unread = SemanticsMatcher("is unread") {
+        it.config.getOrNull(SemanticsProperties.StateDescription)?.split(", ")?.contains("unread") == true
+    }
 
     private fun waitFor(matcher: SemanticsMatcher, timeoutMs: Long = 30_000) {
         compose.waitUntilAtLeastOneExists(matcher, timeoutMs)
@@ -109,6 +117,8 @@ class DeviceFlowTest {
 
         compose.onNode(hasText("design") and hasClickAction()).performClick()
         waitFor(hasContentDescription(LoungeText.BACK))
+        // Its messages on screen, the newest at the bottom: that is what marks it read.
+        waitFor(hasText("Palette exploration", substring = true))
         back(scenario)
         waitFor(hasText("design") and hasClickAction())
 
@@ -122,8 +132,16 @@ class DeviceFlowTest {
         closeAndAwaitDetach(scenario)
         runBlocking { SemaphoreHost.shutdownForTest() }
         scenario = ActivityScenario.launch(MainActivity::class.java)
-        waitFor(hasText("design") and hasContentDescription("1 mention", substring = true))
+        waitFor(hasText("design") and hasClickAction())
         waitFor(hasText("Lumen Studio"))
+        // The counts have loaded: #general, never opened here, is still unread.
+        waitFor(hasText("general") and unread)
+        // Opening #design showed its newest message, which marked it read: its mention is gone.
+        assertTrue(
+            "#design still shows its mention after it was read",
+            compose.onAllNodes(hasText("design") and hasContentDescription("1 mention", substring = true)).fetchSemanticsNodes().isEmpty(),
+        )
+        assertTrue(compose.onAllNodes(hasText("design") and unread).fetchSemanticsNodes().isEmpty())
         closeAndAwaitDetach(scenario)
         runBlocking { SemaphoreHost.shutdownForTest() }
     }
