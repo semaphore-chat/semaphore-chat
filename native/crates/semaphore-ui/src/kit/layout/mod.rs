@@ -13,8 +13,9 @@
 //! - **Focus follows the shown pane** ([`focus`]), as `useFollowFocus`.
 //! - **Toasts.** A template places the window's [`super::ToastRegion`] in its main pane, above
 //!   anything pinned to that pane's bottom; [`AppFrame`] draws it at its own foot only when no
-//!   template did in the same frame. That replaces the web's `data-kit-toast-anchor` and
-//!   `useToastClearance`.
+//!   template did in the same frame. That replaces the web's `data-kit-toast-anchor`. A screen
+//!   that pins something to the bottom of a three-islands main pane (a composer, call controls)
+//!   puts a [`ToastAnchor`] above it instead, the web's `useToastClearance`.
 //!
 //! Left out, because only a browser has them: the on-screen keyboard (`useKeyboardInset`, the
 //! dock bar and the call surface giving way to it, the frame ending at it) and the safe-area
@@ -30,7 +31,7 @@ mod three_islands;
 mod width;
 
 pub use call_stack::{CallSlot, CallStack, PANE_MIN};
-pub use frame::AppFrame;
+pub use frame::{AppFrame, ToastAnchor};
 pub use settings::{SettingsLayout, SettingsPane};
 pub use stage::StageLayout;
 pub use three_islands::{PhonePane, ThreeIslands};

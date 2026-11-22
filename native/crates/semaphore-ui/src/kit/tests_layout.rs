@@ -5,7 +5,7 @@
 use super::layout::focus::{FocusMove, decide};
 use super::{
     AppFrame, BehaviourRoot, CallStack, PANE_MIN, PhonePane, SettingsLayout, SettingsPane,
-    StageLayout, ThreeIslands, ToastRequest, Toasts, WidthRange,
+    StageLayout, ThreeIslands, ToastAnchor, ToastRequest, Toasts, WidthRange,
 };
 use crate::dms::rig::{Rig, rig_sized};
 use core::prelude::v1::test;
@@ -37,6 +37,8 @@ struct Cfg {
     banners: usize,
     strip: bool,
     side_open: bool,
+    /// The centre pins a 60 px footer and puts two ToastAnchors above it; Plain gets one too.
+    anchor: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -70,6 +72,7 @@ impl Default for Cfg {
             banners: 0,
             strip: true,
             side_open: false,
+            anchor: false,
         }
     }
 }
@@ -170,6 +173,26 @@ impl Host {
                 made: probes.made.clone(),
             })
             .child(block("centre-body", 100.));
+        let centre = if cfg.anchor {
+            div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .id("anchored")
+                        .test_support()
+                        .relative()
+                        .flex_1()
+                        .min_h_0()
+                        .child(centre)
+                        .child(ToastAnchor::new())
+                        .child(ToastAnchor::new()),
+                )
+                .child(block("pinned", 60.))
+        } else {
+            centre
+        };
         let log = self.log.clone();
         let mut chat = ThreeIslands::new(left, "Channels", centre, "general")
             .phone_pane(cfg.pane)
@@ -251,6 +274,13 @@ impl Render for Host {
             Template::Chat => self.chat(&cfg, cx),
             Template::Settings => self.settings(&cfg, cx),
             Template::Stage => self.stage(&cfg),
+            Template::Plain if cfg.anchor => div()
+                .id("plain")
+                .test_support()
+                .relative()
+                .h(px(100.))
+                .child(ToastAnchor::new())
+                .into_any_element(),
             Template::Plain => block("plain", 100.),
         };
         let mut frame = AppFrame::new(template);
@@ -1106,6 +1136,64 @@ fn toasts_sit_in_the_main_pane_never_over_the_left_column(cx: &mut TestAppContex
     let left = t.bounds(cx, "three-islands-left");
     assert!(left.contains(&toast.origin) && toast.bottom() <= left.bottom());
     assert!(toast.bottom() <= t.bounds(cx, "kit-call-bar").origin.y);
+}
+
+#[gpui_kit::test]
+fn a_toast_anchor_lifts_the_toasts_above_what_the_screen_pins(cx: &mut TestAppContext) {
+    let t = open(
+        cx,
+        1280.,
+        800.,
+        Cfg {
+            anchor: true,
+            call: Call::Bar,
+            ..Cfg::default()
+        },
+    );
+    // Wide: at the anchored box's foot, above the pinned footer, still in the centre. Two
+    // anchors, one region (`show_toast` checks there is exactly one).
+    let toast = show_toast(&t, cx);
+    let anchored = t.bounds(cx, "anchored");
+    assert!(anchored.contains(&toast.origin) && toast.bottom() <= anchored.bottom());
+    assert!(toast.bottom() <= t.bounds(cx, "pinned").origin.y);
+    // A phone showing the centre: the same.
+    t.resize(cx, 390., 844.);
+    let toast = show_toast(&t, cx);
+    assert!(toast.bottom() <= t.bounds(cx, "pinned").origin.y);
+    // A phone showing the left pane: the centre's anchors are laid out but not shown, so they
+    // draw nothing and the toast sits in the left pane.
+    t.set(cx, |cfg| cfg.pane = PhonePane::Left);
+    let toast = show_toast(&t, cx);
+    let left = t.bounds(cx, "three-islands-left");
+    assert!(left.contains(&toast.origin) && toast.bottom() <= left.bottom());
+    // Back to the centre, then no anchor: the template's region at the pane's foot again.
+    t.set(cx, |cfg| cfg.pane = PhonePane::Centre);
+    t.resize(cx, 1280., 800.);
+    show_toast(&t, cx);
+    t.set(cx, |cfg| cfg.anchor = false);
+    let toast = show_toast(&t, cx);
+    let centre = t.bounds(cx, "three-islands-centre");
+    assert!(centre.contains(&toast.origin) && toast.bottom() <= centre.bottom());
+    assert!(!t.has(cx, "pinned"));
+}
+
+#[gpui_kit::test]
+fn a_toast_anchor_outside_a_template_leaves_the_toasts_to_the_frame(cx: &mut TestAppContext) {
+    let t = open(
+        cx,
+        1280.,
+        800.,
+        Cfg {
+            template: Template::Plain,
+            anchor: true,
+            ..Cfg::default()
+        },
+    );
+    // The frame's own region (`show_toast` checks there is exactly one), at its foot.
+    let toast = show_toast(&t, cx);
+    let frame = t.bounds(cx, "app-frame");
+    assert!(frame.contains(&toast.origin));
+    assert!(!t.bounds(cx, "plain").contains(&toast.origin));
 }
 
 #[gpui_kit::test]

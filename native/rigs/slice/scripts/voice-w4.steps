@@ -218,10 +218,7 @@ wait core requests LivekitController_captureReplay >= 1
 wait core dialog capture closed
 wait core label "Recording saved"
 save-as replay.mp4
-# The frame's toasts sit at the foot of the centre island, over the right end of the stage's bar
-# (Capture) while they show: wait for it to go by itself (B11 gives toasts room above the bar).
-tick 5000
-wait core no-element replay-toast
+# The toast sits above the stage's bar (the stage's ToastAnchor), so Capture is pressable at once.
 click voice-capture
 wait core dialog capture open
 click capture-target-download
@@ -230,9 +227,6 @@ wait core requests LivekitController_streamReplay >= 1
 wait core saved replay.mp4
 wait core dialog capture closed
 wait core label "Replay clip downloaded successfully!"
-# The toast sits over the bar's middle until it goes by itself.
-tick 5000
-wait core no-element replay-toast
 
 # W14: the trim's preview plays the buffer (the fake server's six 10 s segments) with its sound:
 # this build has the player, and with it AAC-LC. It opens paused at the selection's start (0:00 of

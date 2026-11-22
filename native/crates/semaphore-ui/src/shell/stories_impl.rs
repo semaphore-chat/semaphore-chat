@@ -326,6 +326,32 @@ pub(crate) fn shell_view(
     .into()
 }
 
+/// `view` with a toast showing from its first frame, as the app shows one through the queue.
+fn with_toast(view: AnyView, cx: &mut App) -> AnyView {
+    cx.new(|_| WithToast { view, shown: false }).into()
+}
+
+struct WithToast {
+    view: AnyView,
+    shown: bool,
+}
+
+impl Render for WithToast {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !std::mem::replace(&mut self.shown, true) {
+            let toasts = crate::kit::Toasts::for_window(window.window_handle());
+            // After this frame: never show a toast while rendering.
+            window.defer(cx, move |_, cx| {
+                toasts.show(
+                    crate::kit::ToastRequest::new("Clip saved to your library").id("story-toast"),
+                    cx,
+                );
+            });
+        }
+        div().size_full().child(self.view.clone())
+    }
+}
+
 /// Stands in for the pins, search or thread panel, which draw their own stories.
 struct PlaceholderPanel;
 
@@ -617,6 +643,52 @@ pub fn stories() -> Vec<Story> {
         shell_story!("shell-channel-pane", phone_content: true),
         shell_story!("shell-side-panel", side_panel: true, phone_content: true),
         // A real thread in the side panel: the right island at wide, a drawer below.
+        // B11: a toast over a screen that pins something to the centre's foot sits above it.
+        Story::new("shell-toast-over-stage", |env, window, cx| {
+            let stage = crate::voice::recording_stage(window, cx);
+            let content: ContentSlot = Rc::new(move |_, _, _| stage.clone().into_any_element());
+            let shell = shell_view(
+                env,
+                Options {
+                    content: Some(content),
+                    phone_content: true,
+                    ..Options::default()
+                },
+                window,
+                cx,
+            );
+            with_toast(shell, cx)
+        }),
+        Story::new("shell-toast-over-composer", |env, window, cx| {
+            let composer = crate::composer::story_composer(window, cx);
+            let content: ContentSlot = Rc::new(move |props, window, cx| {
+                div()
+                    .size_full()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .relative()
+                            .flex_1()
+                            .min_h_0()
+                            .child(stub_rows(props, window, cx))
+                            .child(crate::kit::ToastAnchor::new()),
+                    )
+                    .child(div().flex_shrink_0().child(composer.clone()))
+                    .into_any_element()
+            });
+            let shell = shell_view(
+                env,
+                Options {
+                    content: Some(content),
+                    phone_content: true,
+                    ..Options::default()
+                },
+                window,
+                cx,
+            );
+            with_toast(shell, cx)
+        }),
         Story::new("shell-side-panel-thread", |env, window, cx| {
             let panel = Some(crate::thread::stories::in_shell(window, cx));
             shell_view(

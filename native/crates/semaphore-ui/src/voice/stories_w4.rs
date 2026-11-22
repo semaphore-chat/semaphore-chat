@@ -454,6 +454,12 @@ fn server_muted_others(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyVi
 // at phone width).
 
 fn bar_recording(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
+    recording_stage(window, cx)
+}
+
+/// The stage of a call whose share's replay records (the bar shows Capture), for the shell's
+/// story of a toast over the stage.
+pub(crate) fn recording_stage(window: &mut Window, cx: &mut App) -> AnyView {
     let mut model = model(people());
     model.voice.local.screen = semaphore_core::model::LocalShare::On;
     model.voice.local.may_share = true;
