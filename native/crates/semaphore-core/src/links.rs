@@ -349,6 +349,18 @@ mod tests {
     }
 }
 
+/// Why a server address cannot be used, or `None` when it can. An address with a user name or
+/// password (`https://user:pass@chat.example`) is refused: every link the app builds from it (sign
+/// in with browser, invites, password resets) would carry the credentials, and no link with user
+/// info is ever opened ([`is_web_url`]).
+pub fn server_url_error(url: &str) -> Option<&'static str> {
+    let rest = url.trim().split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    authority
+        .contains('@')
+        .then_some("A server address can't include a user name or password.")
+}
+
 /// A web link a message may show and open: the address to follow and the label to draw.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckedLink {
@@ -399,9 +411,12 @@ pub fn check_link(href: &str) -> Option<CheckedLink> {
         .map(|f| format!("#{f}"))
         .unwrap_or_default();
     let label = format!("{scheme}://{host}{port}{}{query}{fragment}", url.path());
+    // The parser keeps a `\` in the query and the fragment; the OS's opener reads it as `/`, so
+    // it is written `%5C`, in what is opened and what is shown alike.
+    let escape = |text: &str| text.replace('\\', "%5C");
     Some(CheckedLink {
-        href: url.as_str().to_owned(),
-        label: strip_bidi(&label),
+        href: escape(url.as_str()),
+        label: escape(&strip_bidi(&label)),
     })
 }
 
@@ -498,22 +513,102 @@ mod check_link_tests {
         }
     }
 
+    /// Hostile and odd inputs: for every one `check_link` accepts, what it opens is a link the
+    /// OS may be handed, and what it shows is that same address.
+    const HOSTILE: &[&str] = &[
+        "https://docs.semaphorechat.app",
+        "https://\u{0430}pple.com/login",
+        "https://example.com/\u{202E}gnp.exe",
+        "https://example.com/a b",
+        "https://exa\tmple.com",
+        "https://exa\nmple.com/x",
+        "http://example.com:8080/x?y#z",
+        "https://example.com/?a=\\b",
+        "https://example.com/#a\\b",
+        "https://example.com/a\\b",
+        "https:\\\\example.com/x",
+        "https:example.com/x",
+        "http:/example.com",
+        " https://example.com",
+        "\u{0}https://example.com",
+        "https://example.com/\u{0}x",
+        "https://user@evil.example/",
+        "https://bank.example%40evil.example/",
+        "https://bank.example\u{FF20}evil.example/",
+        "https://exam\u{AD}ple.com/",
+        "https://exam\u{200B}ple.com/",
+        "https://example\u{3002}com/",
+        "https://0x7f.1/",
+        "https://2130706433/",
+        "https://[::1]/x",
+        "https://example.com/\u{2066}x?\u{202D}#\u{200F}",
+        "https://example.com/%5C?%5C#%5C",
+        "https://example.com/?q=\"<>`'",
+        "https://example.com/#\"<>` x",
+        "javascript:alert(1)",
+        "data:text/html,x",
+        "file:///etc/passwd",
+        "ftp://example.com",
+        "",
+    ];
+
     #[test]
     fn every_checked_link_is_one_the_os_may_open() {
-        for href in [
-            "https://docs.semaphorechat.app",
-            "https://\u{0430}pple.com/login",
-            "https://example.com/\u{202E}gnp.exe",
-            "https://example.com/a b",
-            "https://exa\tmple.com",
-            "http://example.com:8080/x?y#z",
-        ] {
-            let link = check_link(href).unwrap();
+        let mut accepted = 0;
+        for href in HOSTILE {
+            let Some(link) = check_link(href) else {
+                continue;
+            };
+            accepted += 1;
             assert!(
                 is_web_url(&link.href),
                 "{href:?} -> {:?} cannot be opened",
                 link.href
             );
+            assert!(
+                !link.href.contains('\\') && !link.label.contains('\\'),
+                "{href:?}: {link:?}"
+            );
+            assert!(link.label.is_ascii(), "{href:?}: {:?}", link.label);
+            // The label is the address opened, but for an empty `?` or `#` it leaves out.
+            let shown = link.href.trim_end_matches(['?', '#']);
+            assert!(
+                shown.starts_with(link.label.trim_end_matches('/')),
+                "{href:?}: {link:?}"
+            );
+        }
+        assert!(accepted >= 20, "only {accepted} accepted");
+    }
+
+    #[test]
+    fn a_backslash_in_the_query_or_fragment_is_written_percent_5c() {
+        let query = check_link("https://example.com/?a=\\b").unwrap();
+        assert_eq!(query.href, "https://example.com/?a=%5Cb");
+        assert_eq!(query.label, "https://example.com/?a=%5Cb");
+        let fragment = check_link("https://example.com/#a\\b").unwrap();
+        assert_eq!(fragment.href, "https://example.com/#a%5Cb");
+        assert_eq!(fragment.label, "https://example.com/#a%5Cb");
+    }
+
+    #[test]
+    fn a_server_address_with_user_info_is_refused() {
+        use super::server_url_error;
+        for url in [
+            "https://user:pass@chat.example",
+            "https://user@chat.example/",
+            " http://:pw@chat.example",
+            "chat.example@evil.example",
+        ] {
+            assert!(server_url_error(url).is_some(), "{url:?} accepted");
+        }
+        for url in [
+            "https://chat.example",
+            "https://chat.example:8443/chat/",
+            "http://[::1]:3000",
+            "https://chat.example/?invite=a@b",
+            "https://chat.example/#/x@y",
+        ] {
+            assert_eq!(server_url_error(url), None, "{url:?} refused");
         }
     }
 }

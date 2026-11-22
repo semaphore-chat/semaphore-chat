@@ -156,6 +156,11 @@ fn row(
         .into_any_element()
 }
 
+/// What a story does with a pressed link: logs it. A story never opens anything.
+fn log_link(href: &str, _: &mut Window, _: &mut App) {
+    eprintln!("story: link pressed: {href}");
+}
+
 fn words(id: &'static str, text: &'static str) -> AnyElement {
     MessageText::new(id, vec![S::text(text)]).into_any_element()
 }
@@ -285,6 +290,7 @@ fn segments_body(_: &mut Window, _: &mut App) -> AnyElement {
         .zip(IDS)
         .map(|(segments, id)| {
             MessageText::new(id, segments)
+                .on_link(log_link)
                 .on_mention(|_, _, _| {})
                 .into_any_element()
         })
@@ -297,6 +303,7 @@ fn segments_body(_: &mut Window, _: &mut App) -> AnyElement {
                 S::link("https://example.com/a/very/long/path/that/goes/on/and/on/and/never/breaks/naturally/because/it/has/no/spaces/at/all?with=query&and=more&params=than&anyone=needs"),
             ],
         )
+        .on_link(log_link)
         .into_any_element(),
     );
     texts.push(
@@ -663,6 +670,7 @@ fn link_card_body(_: &mut Window, cx: &mut App) -> AnyElement {
                 vec![
                     words("l1b", "https://trailheads.example/routes/ridge-loop"),
                     LinkCard::new("ridge", "https://trailheads.example/routes/ridge-loop", "Trailheads · Aiko Tanaka")
+.on_link(log_link)
                         .title("The ridge loop, in late autumn")
                         .description("Eleven kilometres, one steep climb and the best view of the valley before the snow comes in.")
                         .image(picture(1200, 630, 0x6fb1f5))
@@ -680,10 +688,11 @@ fn link_card_body(_: &mut Window, cx: &mut App) -> AnyElement {
                     words("l2b", "no picture, no icon; a long title and summary cut at two lines"),
                     stack(vec![
                         LinkCard::new("news", "https://news.example.org/a", "news.example.org")
+.on_link(log_link)
                             .title("A very long title that keeps going well past the second line so it has to give way with an ellipsis at phone width")
                             .description("And a summary that is just as long, written to show that it also stops after two lines however much the page says about itself.")
                             .into_any_element(),
-                        LinkCard::new("bare", "https://example.com/", "example.com").into_any_element(),
+                        LinkCard::new("bare", "https://example.com/", "example.com").on_link(log_link).into_any_element(),
                     ]),
                 ],
                 cx,
@@ -697,15 +706,18 @@ fn link_card_body(_: &mut Window, cx: &mut App) -> AnyElement {
                     words("l3b", "a picture that is still loading, one that failed, and an address the kit will not open"),
                     stack(vec![
                         LinkCard::new("slow", "https://slow.example/", "slow.example")
+.on_link(log_link)
                             .title("Its picture arrives late")
                             .image(never_arrives())
                             .into_any_element(),
                         LinkCard::new("broken", "https://broken.example/", "broken.example")
+.on_link(log_link)
                             .title("Broken picture and icon")
                             .image(broken())
                             .icon(broken())
                             .into_any_element(),
                         LinkCard::new("refused", "https://bank.example@evil.example/", "bank.example")
+.on_link(log_link)
                             .title("Drawn, but not a link")
                             .into_any_element(),
                     ]),

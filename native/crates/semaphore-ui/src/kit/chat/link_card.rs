@@ -21,7 +21,7 @@ use semaphore_design::lounge::{
 pub const LINK_CARD_BANNER_RATIO: f32 = 1.91;
 
 /// A link's preview (MessageRow's `attachments`): the site, the page's title and summary, and its
-/// picture. The whole card is one link that opens in the browser. A picture given by address
+/// picture. With `on_link` the whole card is one link; the screen opens it. A picture given by address
 /// passes the same check as the link (http or https, no user name); one that fails to load is
 /// left out (the banner box stays empty, so the card keeps its height).
 #[derive(IntoElement)]
@@ -34,6 +34,7 @@ pub struct LinkCard {
     image: Option<ImageSource>,
     icon: Option<ImageSource>,
     on: Option<Surface>,
+    on_link: Option<super::text::LinkHandler>,
 }
 
 impl LinkCard {
@@ -52,6 +53,7 @@ impl LinkCard {
             image: None,
             icon: None,
             on: None,
+            on_link: None,
         }
     }
 
@@ -79,6 +81,13 @@ impl LinkCard {
         self
     }
 
+    /// The card was pressed, with the page's checked address: the screen opens it. Without it
+    /// the card is a plain group; the kit never opens anything itself.
+    pub fn on_link(mut self, handler: impl Fn(&str, &mut Window, &mut App) + 'static) -> Self {
+        self.on_link = Some(std::rc::Rc::new(handler));
+        self
+    }
+
     pub fn on_surface(mut self, on: Surface) -> Self {
         self.on = Some(on);
         self
@@ -94,11 +103,12 @@ pub(crate) fn allowed_picture(source: ImageSource) -> Option<ImageSource> {
     }
 }
 
-/// The card's name: "title, site, opens in your browser", or the plain card's "title" / "site".
+/// The card's name: "title, site" for the link (where it opens is the screen's), or the plain
+/// card's "title" / "site".
 pub(crate) fn card_name(title: Option<&str>, site: &str, link: bool) -> String {
     match (link, title) {
-        (true, Some(title)) => format!("{title}, {site}, opens in your browser"),
-        (true, None) => format!("{site}, opens in your browser"),
+        (true, Some(title)) => format!("{title}, {site}"),
+        (true, None) => site.to_owned(),
         (false, title) => title.unwrap_or(site).to_owned(),
     }
 }
@@ -108,7 +118,7 @@ impl RenderOnce for LinkCard {
         let sem = cx.sem().clone();
         let p = sem.roles;
         let on = Surface::or_current(self.on, cx);
-        let link = check_link(&self.href);
+        let link = check_link(&self.href).filter(|_| self.on_link.is_some());
         let name = card_name(self.title.as_deref(), &self.site, link.is_some());
         let secondary = sem.role.text_secondary;
         let site_icon = match self.icon.and_then(allowed_picture) {
@@ -200,6 +210,7 @@ impl RenderOnce for LinkCard {
                 let ring = shows_focus(&focus, window);
                 let hover = hsla_of(blend(p.text, tint_base_token(&p, on), STATE_HOVER));
                 let href = link.href;
+                let handler = self.on_link.expect("a link card has a handler");
                 // The card's look on a wrapper the button fills: a base button centres its content.
                 base::Button::new(self.id)
                     .track_focus(&focus)
@@ -210,7 +221,7 @@ impl RenderOnce for LinkCard {
                     .max_w(px(IMAGE_MAX.width))
                     .rounded(px(RADIUS_MD))
                     .cursor_pointer()
-                    .on_click(move |_, _, cx| cx.open_url(&href))
+                    .on_click(move |_, window, cx| handler(&href, window, cx))
                     .child(
                         look(div())
                             .hover(move |style| style.bg(hover))

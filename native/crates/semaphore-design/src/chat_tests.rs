@@ -47,6 +47,8 @@ fn a_mention_is_followed_only_to_an_app_internal_address() {
         "/c\u{7f}",
         "/.",
         "/..",
+        "/é/../x",
+        "#/éé/./x",
     ] {
         assert_eq!(internal_href(href), None, "{href:?} followed");
     }
@@ -60,6 +62,15 @@ fn a_mention_is_followed_only_to_an_app_internal_address() {
         "/a/.../b",
         "/a/.b",
         "/%2e%2e%2e",
+        // Non-ASCII segments: a multi-byte character where a `%2e` would be is not one.
+        "/c/señor",
+        "/éé",
+        "/abé",
+        "/a😀",
+        "#/c/éé",
+        "/c/café",
+        "/日本",
+        "/%2é",
     ] {
         assert_eq!(internal_href(href), Some(href), "{href:?} refused");
     }

@@ -61,6 +61,12 @@ fn note(log: &Log, line: &str) -> impl Fn(&mut Window, &mut App) + 'static {
     move |_, _| log.borrow_mut().push(line.clone())
 }
 
+/// An `on_link` that logs the address it is handed.
+fn link_log(log: &Log) -> impl Fn(&str, &mut Window, &mut App) + 'static {
+    let log = log.clone();
+    move |href, _, _| log.borrow_mut().push(format!("link {href}"))
+}
+
 fn logged(log: &Log) -> Vec<String> {
     log.borrow().clone()
 }
@@ -276,6 +282,7 @@ fn each_link_and_pressable_mention_is_its_own_named_node(cx: &mut TestAppContext
     let (rig, _) = host(cx, |log, _, _| {
         let log = log.clone();
         MessageText::new("words", every_kind())
+            .on_link(link_log(&log))
             .on_mention(move |mention, _, _| log.borrow_mut().push(mention.text.to_string()))
             .into_any_element()
     });
@@ -314,11 +321,12 @@ fn each_link_and_pressable_mention_is_its_own_named_node(cx: &mut TestAppContext
 
 #[gpui_kit::test]
 fn a_node_sits_over_its_words(cx: &mut TestAppContext) {
-    let (rig, _) = host(cx, |_, _, _| {
+    let (rig, _) = host(cx, |log, _, _| {
         MessageText::new(
             "words",
             vec![S::text("see "), S::link("https://example.com/")],
         )
+        .on_link(link_log(log))
         .into_any_element()
     });
     rig.with(cx, |_, window, _| {
@@ -334,28 +342,28 @@ fn a_node_sits_over_its_words(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn enter_on_a_link_opens_the_parsed_address(cx: &mut TestAppContext) {
-    let (rig, _) = host(cx, |_, _, _| {
+fn enter_on_a_link_hands_over_the_parsed_address(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, |log, _, _| {
         MessageText::new(
             "words",
             vec![S::text("go to "), S::link("https://\u{0430}pple.com/login")],
         )
+        .on_link(link_log(log))
         .into_any_element()
     });
     press_on(&rig, cx, "https://xn--pple-43d.com/login", "enter");
-    assert_eq!(
-        cx.opened_url().as_deref(),
-        Some("https://xn--pple-43d.com/login")
-    );
+    assert_eq!(logged(&log), ["link https://xn--pple-43d.com/login"]);
+    assert_eq!(cx.opened_url(), None, "the kit never opens anything itself");
 }
 
 #[gpui_kit::test]
-fn a_click_on_a_link_opens_it(cx: &mut TestAppContext) {
-    let (rig, _) = host(cx, |_, _, _| {
+fn a_click_on_a_link_hands_it_over(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, |log, _, _| {
         MessageText::new(
             "words",
             vec![S::text("go to "), S::link("https://example.com/a")],
         )
+        .on_link(link_log(log))
         .into_any_element()
     });
     rig.with(cx, |_, window, cx| {
@@ -364,12 +372,13 @@ fn a_click_on_a_link_opens_it(cx: &mut TestAppContext) {
         let offset = link.center() - words.origin;
         window.click_at("words", offset, cx);
     });
-    assert_eq!(cx.opened_url().as_deref(), Some("https://example.com/a"));
+    assert_eq!(logged(&log), ["link https://example.com/a"]);
+    assert_eq!(cx.opened_url(), None);
 }
 
 #[gpui_kit::test]
 fn a_click_beside_a_link_opens_nothing(cx: &mut TestAppContext) {
-    let (rig, _) = host(cx, |_, _, _| {
+    let (rig, log) = host(cx, |log, _, _| {
         MessageText::new(
             "words",
             vec![
@@ -377,12 +386,86 @@ fn a_click_beside_a_link_opens_nothing(cx: &mut TestAppContext) {
                 S::link("https://example.com/a"),
             ],
         )
+        .on_link(link_log(log))
         .into_any_element()
     });
     rig.with(cx, |_, window, cx| {
         window.click_at("words", point(px(4.), px(4.)), cx)
     });
+    assert!(logged(&log).is_empty());
+}
+
+#[gpui_kit::test]
+fn without_a_link_handler_a_link_is_drawn_but_not_pressable(cx: &mut TestAppContext) {
+    let (rig, _) = host(cx, |_, _, _| {
+        MessageText::new(
+            "words",
+            vec![S::text("go to "), S::link("https://example.com/a")],
+        )
+        .into_any_element()
+    });
+    rig.with(cx, |_, window, cx| {
+        assert!(window.try_find_by_label("https://example.com/a").is_none());
+        assert!(window.find_all_by_role(Role::Link).is_empty());
+        let words = window.find("words").bounds();
+        window.click_at("words", point(words.size.width - px(8.), px(8.)), cx);
+    });
     assert_eq!(cx.opened_url(), None);
+}
+
+#[gpui_kit::test]
+fn a_user_mention_with_an_outside_address_is_a_button_and_loses_the_address(
+    cx: &mut TestAppContext,
+) {
+    let (rig, log) = host(cx, |log, _, _| {
+        let log = log.clone();
+        MessageText::new(
+            "words",
+            vec![
+                S::text("hi "),
+                S::mention(
+                    MentionSegment::new(MentionKind::User, "@aiko")
+                        .id("u1")
+                        .href("//evil.example/u"),
+                ),
+                S::text(" and "),
+                S::mention(
+                    MentionSegment::new(MentionKind::User, "@gracie")
+                        .id("u2")
+                        .href("#/u/u2"),
+                ),
+            ],
+        )
+        .on_mention(move |mention, _, _| {
+            log.borrow_mut()
+                .push(format!("{} {:?}", mention.text, mention.href))
+        })
+        .into_any_element()
+    });
+    rig.with(cx, |_, window, _| {
+        assert_eq!(window.find_by_label("@aiko").role(), Some(Role::Button));
+        assert_eq!(window.find_by_label("@gracie").role(), Some(Role::Link));
+    });
+    press_on(&rig, cx, "@aiko", "enter");
+    press_on(&rig, cx, "@gracie", "enter");
+    assert_eq!(logged(&log), ["@aiko None", "@gracie Some(\"#/u/u2\")"]);
+}
+
+#[test]
+fn a_followed_mention_keeps_only_an_in_app_address() {
+    let mention =
+        |href: &str| MentionSegment::new(MentionKind::Channel, "#c").href(href.to_owned());
+    assert_eq!(
+        mention("#/c/clips").followed().href.as_deref(),
+        Some("#/c/clips")
+    );
+    assert_eq!(
+        mention("/c/señor").followed().href.as_deref(),
+        Some("/c/señor")
+    );
+    for outside in ["//evil.example", "https://evil.example", "/a/../b", "/\\x"] {
+        assert_eq!(mention(outside).followed().href, None, "{outside:?}");
+    }
 }
 
 #[gpui_kit::test]
@@ -390,6 +473,7 @@ fn pressing_a_mention_hands_it_back(cx: &mut TestAppContext) {
     let (rig, log) = host(cx, |log, _, _| {
         let log = log.clone();
         MessageText::new("words", every_kind())
+            .on_link(link_log(&log))
             .on_mention(move |mention, _, _| {
                 log.borrow_mut()
                     .push(format!("{} {:?}", mention.text, mention.id))
@@ -402,18 +486,14 @@ fn pressing_a_mention_hands_it_back(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn without_a_handler_no_mention_is_pressable(cx: &mut TestAppContext) {
+fn without_handlers_nothing_is_pressable(cx: &mut TestAppContext) {
     let (rig, _) = host(cx, |_, _, _| {
         MessageText::new("words", every_kind()).into_any_element()
     });
     rig.with(cx, |_, window, _| {
         assert!(window.try_find_by_label("@aiko").is_none());
         assert!(window.try_find_by_label("#clips").is_none());
-        assert_eq!(
-            window.find_all_by_role(Role::Link).len(),
-            1,
-            "the link only"
-        );
+        assert!(window.find_all_by_role(Role::Link).is_empty());
     });
 }
 
@@ -786,12 +866,9 @@ fn jump_floats_centred_above_the_bottom_of_its_region(cx: &mut TestAppContext) {
 fn link_card_names_and_pictures() {
     assert_eq!(
         card_name(Some("Ridge"), "Trailheads", true),
-        "Ridge, Trailheads, opens in your browser"
+        "Ridge, Trailheads"
     );
-    assert_eq!(
-        card_name(None, "example.com", true),
-        "example.com, opens in your browser"
-    );
+    assert_eq!(card_name(None, "example.com", true), "example.com");
     assert_eq!(card_name(Some("Ridge"), "Trailheads", false), "Ridge");
     assert_eq!(card_name(None, "example.com", false), "example.com");
 
@@ -822,7 +899,7 @@ fn link_card_names_and_pictures() {
 
 #[gpui_kit::test]
 fn a_link_card_opens_its_page_and_a_refused_one_is_plain(cx: &mut TestAppContext) {
-    let (rig, _) = host(cx, |_, _, _| {
+    let (rig, log) = host(cx, |log, _, _| {
         div()
             .w(px(390.))
             .flex()
@@ -830,7 +907,8 @@ fn a_link_card_opens_its_page_and_a_refused_one_is_plain(cx: &mut TestAppContext
             .child(
                 LinkCard::new("ridge", "https://trailheads.example/ridge", "Trailheads")
                     .title("The ridge loop")
-                    .description("Eleven kilometres."),
+                    .description("Eleven kilometres.")
+                    .on_link(link_log(log)),
             )
             .child(
                 LinkCard::new(
@@ -838,29 +916,30 @@ fn a_link_card_opens_its_page_and_a_refused_one_is_plain(cx: &mut TestAppContext
                     "https://bank.example@evil.example/",
                     "bank.example",
                 )
-                .title("Drawn, but not a link"),
+                .title("Drawn, but not a link")
+                .on_link(link_log(log)),
+            )
+            .child(
+                LinkCard::new("no-handler", "https://example.com/", "example.com")
+                    .title("No handler"),
             )
             .into_any_element()
     });
     rig.with(cx, |_, window, _| {
         let ridge = window.find("ridge");
         assert_eq!(ridge.role(), Some(Role::Link));
-        assert_eq!(
-            ridge.label(),
-            Some("The ridge loop, Trailheads, opens in your browser")
-        );
+        assert_eq!(ridge.label(), Some("The ridge loop, Trailheads"));
         assert!(ridge.bounds().size.width <= px(semaphore_design::chat::IMAGE_MAX.width));
         let refused = window.find("refused");
         assert_eq!(refused.role(), Some(Role::Group));
         assert_eq!(refused.label(), Some("Drawn, but not a link"));
+        assert_eq!(window.find("no-handler").role(), Some(Role::Group));
     });
     rig.click(cx, "refused");
-    assert_eq!(cx.opened_url(), None);
+    rig.click(cx, "no-handler");
     rig.click(cx, "ridge");
-    assert_eq!(
-        cx.opened_url().as_deref(),
-        Some("https://trailheads.example/ridge")
-    );
+    assert_eq!(logged(&log), ["link https://trailheads.example/ridge"]);
+    assert_eq!(cx.opened_url(), None, "the kit never opens anything itself");
 }
 
 #[gpui_kit::test]
@@ -1111,7 +1190,7 @@ fn the_player_takes_the_tiles_place_in_its_box(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_picture_that_cannot_be_drawn_shows_the_name_and_says_so_once(cx: &mut TestAppContext) {
+fn a_picture_that_cannot_be_drawn_says_so_once_and_keeps_its_box(cx: &mut TestAppContext) {
     let failures = Rc::new(Cell::new(0));
     let count = failures.clone();
     let (rig, _) = host(cx, move |_, _, _| {
@@ -1136,4 +1215,57 @@ fn a_picture_that_cannot_be_drawn_shows_the_name_and_says_so_once(cx: &mut TestA
         (320., 240.),
         "the box keeps its size"
     );
+}
+
+#[gpui_kit::test]
+fn the_name_of_a_picture_that_cannot_be_drawn_is_drawn_in_its_box(cx: &mut TestAppContext) {
+    let (rig, _) = host(cx, |_, _, _| {
+        AttachmentTile::new("broken", AttachmentKind::Image, "broken.webp")
+            .src(ImageSource::Image(std::sync::Arc::new(Image::from_bytes(
+                ImageFormat::Png,
+                b"broken".to_vec(),
+            ))))
+            .size(400., 300.)
+            .on_open(|_, _| {})
+            .into_any_element()
+    });
+    for _ in 0..4 {
+        rig.with(cx, |view, _, cx| view.update(cx, |_, cx| cx.notify()));
+    }
+    rig.with(cx, |_, window, _| {
+        let id = ElementId::NamedChild(std::sync::Arc::new("broken".into()), "failed-name".into());
+        let name = window.find(id);
+        assert_eq!(name.label(), Some("broken.webp"));
+        assert!(name.visible(), "the name is drawn");
+        let tile = window.find("broken").bounds();
+        assert!(tile.contains(&name.bounds().center()), "inside the box");
+    });
+}
+
+#[gpui_kit::test]
+fn a_video_whose_still_fails_is_not_a_load_error(cx: &mut TestAppContext) {
+    let failures = Rc::new(Cell::new(0));
+    let count = failures.clone();
+    let (rig, _) = host(cx, move |_, _, _| {
+        let count = count.clone();
+        AttachmentTile::new("clip", AttachmentKind::Video, "clip.mp4")
+            .poster(ImageSource::Image(std::sync::Arc::new(Image::from_bytes(
+                ImageFormat::Png,
+                b"broken".to_vec(),
+            ))))
+            .size(1280., 720.)
+            .on_open(|_, _| {})
+            .on_load_error(move |_, _| count.set(count.get() + 1))
+            .into_any_element()
+    });
+    for _ in 0..4 {
+        rig.with(cx, |view, _, cx| view.update(cx, |_, cx| cx.notify()));
+    }
+    assert_eq!(failures.get(), 0);
+    rig.with(cx, |_, window, _| {
+        assert!(
+            window.try_find_by_label("Play video clip.mp4").is_some(),
+            "still playable"
+        );
+    });
 }

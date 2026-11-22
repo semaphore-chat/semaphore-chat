@@ -33,8 +33,12 @@ fn is_dot_segment(segment: &str) -> bool {
     while !rest.is_empty() {
         if let Some(after) = rest.strip_prefix('.') {
             rest = after;
-        } else if rest.len() >= 3 && rest[..3].eq_ignore_ascii_case("%2e") {
-            rest = &rest[3..];
+        } else if let Some(after) = rest
+            .get(..3)
+            .filter(|head| head.eq_ignore_ascii_case("%2e"))
+            .and_then(|_| rest.get(3..))
+        {
+            rest = after;
         } else {
             return false;
         }

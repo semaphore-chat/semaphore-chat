@@ -130,6 +130,18 @@ impl MentionSegment {
                 || self.href.as_deref().and_then(internal_href).is_some())
     }
 
+    /// The mention as handed to `on_mention`: an address that does not stay in the app is
+    /// cleared, so the handler never sees it.
+    pub fn followed(&self) -> Self {
+        let mut mention = self.clone();
+        mention.href = self
+            .href
+            .as_deref()
+            .and_then(internal_href)
+            .map(|href| SharedString::from(href.to_owned()));
+        mention
+    }
+
     /// What a screen reader hears for it.
     pub fn spoken(&self) -> String {
         if self.unavailable {
@@ -328,6 +340,8 @@ pub(crate) fn spoken(segments: &[MessageSegment]) -> String {
 // The piece
 
 type MentionHandler = Rc<dyn Fn(&MentionSegment, &mut Window, &mut App)>;
+/// A link was pressed: its checked address (punycode host, nothing decoded).
+pub(crate) type LinkHandler = Rc<dyn Fn(&str, &mut Window, &mut App)>;
 
 /// A message's words: formatting, inline code and code blocks, links, mentions and custom emoji.
 /// It holds no parsing and no data.
@@ -336,6 +350,7 @@ pub struct MessageText {
     id: ElementId,
     segments: Vec<MessageSegment>,
     on_mention: Option<MentionHandler>,
+    on_link: Option<LinkHandler>,
     on: Option<Surface>,
 }
 
@@ -345,8 +360,17 @@ impl MessageText {
             id: id.into(),
             segments,
             on_mention: None,
+            on_link: None,
             on: None,
         }
+    }
+
+    /// A link was pressed, with its checked address: the screen decides where it goes (a message
+    /// on this server, or the browser). Without it a link is drawn but not pressable; the kit
+    /// never opens anything itself.
+    pub fn on_link(mut self, handler: impl Fn(&str, &mut Window, &mut App) + 'static) -> Self {
+        self.on_link = Some(Rc::new(handler));
+        self
     }
 
     /// A user mention, or a mention with an app-internal address, was pressed.
@@ -424,6 +448,7 @@ impl RenderOnce for MessageText {
                         pieces,
                         &self.segments,
                         self.on_mention.clone(),
+                        self.on_link.clone(),
                         on,
                         &code,
                         window,
@@ -446,6 +471,7 @@ fn inline_element(
     pieces: Vec<Piece>,
     segments: &[MessageSegment],
     on_mention: Option<MentionHandler>,
+    on_link: Option<LinkHandler>,
     on: Surface,
     code: &SharedString,
     window: &mut Window,
@@ -505,13 +531,19 @@ fn inline_element(
                     wavy: false,
                 });
                 styled(&mut run, *style);
-                let href = href.clone();
-                targets.push(TargetSpec {
-                    range: piece.range.clone(),
-                    role: Role::Link,
-                    label: text[piece.range.clone()].to_string().into(),
-                    activate: Rc::new(move |_, cx: &mut App| cx.open_url(&href)),
-                });
+                if let Some(handler) = on_link.clone() {
+                    let href = href.clone();
+                    targets.push(TargetSpec {
+                        range: piece.range.clone(),
+                        role: Role::Link,
+                        label: text
+                            .get(piece.range.clone())
+                            .unwrap_or_default()
+                            .to_owned()
+                            .into(),
+                        activate: Rc::new(move |window, cx| handler(&href, window, cx)),
+                    });
+                }
             }
             PieceKind::Mention(index) => {
                 let MessageSegment::Mention(mention) = &segments[*index] else {
@@ -532,9 +564,10 @@ fn inline_element(
                 };
                 let target = interactive.then(|| {
                     let handler = on_mention.clone().expect("interactive needs a handler");
-                    let mention = mention.clone();
+                    let mention = mention.followed();
                     targets.push(TargetSpec {
                         range: piece.range.clone(),
+                        // A link only when its address stays in the app; otherwise a button.
                         role: if mention.href.is_some() {
                             Role::Link
                         } else {

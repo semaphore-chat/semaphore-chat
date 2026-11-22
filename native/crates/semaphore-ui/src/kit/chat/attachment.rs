@@ -335,7 +335,9 @@ impl RenderOnce for AttachmentTile {
                     })
                     .read(cx)
                     .clone();
-                let on_load_error = self.on_load_error;
+                // An image's failure only: a video whose still fails still plays.
+                let on_load_error = self.on_load_error.filter(|_| !video);
+                let failed_id = child_id(&self.id, "failed-name");
                 let picture = if video { self.poster } else { self.src }.map(|source| {
                     img(source)
                         .size_full()
@@ -360,6 +362,9 @@ impl RenderOnce for AttachmentTile {
                                             TEXT_SMALL,
                                             failed_name.clone(),
                                         )
+                                        .id(failed_id.clone())
+                                        .test_support()
+                                        .aria_label(failed_name.clone())
                                         .min_w_0()
                                         .text_center(),
                                     )

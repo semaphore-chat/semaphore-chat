@@ -1288,7 +1288,10 @@ Stories: `kit-message-text--segments`, `kit-message-text--segments-light`,
 pressable mention is not an element: each gets a hidden focusable node over its
 first line, with the link's or the mention's name, so Tab and a screen reader
 reach it and Enter or Space follows it; its focus ring is drawn around its
-words on every line. A link opens in the browser. There is no text selection in
+words on every line. A link is pressable only with `on_link`, which gets the
+checked address: the screen decides where it goes (a message on this server, or
+the browser), and the kit never opens anything itself. A `\` in an address is
+written `%5C`. There is no text selection in
 the native MessageText yet: the old message list's selection stays until the
 chat screen is converted (B13). A channel mention with an internal `href` is
 pressable only with `on_mention`: the kit has no router. Inline code is drawn
@@ -1561,8 +1564,9 @@ picture.
 link with a picture.
 
 The whole card is one link that opens in a new tab ("The ridge loop, Trailheads,
-opens in a new tab"; natively it opens in the browser and says "opens in your
-browser"), with no opener and no Referer. Only an http or https
+opens in a new tab"; natively the card is a link only with `on_link`, which gets
+the checked address, and is named "The ridge loop, Trailheads", since the
+screen decides where it opens), with no opener and no Referer. Only an http or https
 address without a user name is a link (the same check as MessageText); anything
 else is drawn as a plain group. The picture sits in a box of fixed shape
 (1.91:1, the shape preview pictures are made for), so it never changes the
