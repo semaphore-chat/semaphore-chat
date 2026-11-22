@@ -182,7 +182,7 @@ fn compare_all(
                 loop {
                     let index = next.fetch_add(1, Ordering::Relaxed);
                     let Some(shot) = shots.get(index) else { break };
-                    let (line, status) = result_line(shot, composites, fuzz);
+                    let (line, status) = guarded_line(shot, composites, fuzz);
                     if sender.send((index, line, status)).is_err() {
                         break;
                     }
@@ -203,14 +203,43 @@ fn compare_all(
     })
 }
 
-fn result_line(shot: &Shot, composites: Option<&Path>, fuzz: f64) -> (String, Status) {
-    let outcome = judge(shot, composites, fuzz).unwrap_or_else(|error| Outcome {
+/// [`result_line`], with a panic in one job reported as that shot `failed` instead of taking the
+/// whole run (and every result after it) down.
+fn guarded_line(shot: &Shot, composites: Option<&Path>, fuzz: f64) -> (String, Status) {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        result_line(shot, composites, fuzz)
+    }))
+    .unwrap_or_else(|payload| {
+        let message = payload
+            .downcast_ref::<&str>()
+            .map(|text| (*text).to_owned())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic".to_owned());
+        format_line(shot, &failed(format!("panicked: {message}")))
+    })
+}
+
+fn failed(note: String) -> Outcome {
+    Outcome {
         status: Status::Failed,
         pixels: 0,
         total: 0,
         composite: None,
-        note: one_line(&format!("{error:#}")),
-    });
+        note: one_line(&note),
+    }
+}
+
+fn result_line(shot: &Shot, composites: Option<&Path>, fuzz: f64) -> (String, Status) {
+    #[cfg(test)]
+    if shot.story == tests::PANICS {
+        panic!("a test job that panics");
+    }
+    let outcome =
+        judge(shot, composites, fuzz).unwrap_or_else(|error| failed(format!("{error:#}")));
+    format_line(shot, &outcome)
+}
+
+fn format_line(shot: &Shot, outcome: &Outcome) -> (String, Status) {
     let line = format!(
         "{}\t{}\t{}\t{}\t{}\t{:.4}\t{}\t{}",
         shot.story,
@@ -491,6 +520,50 @@ fn one_line(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A job with this story id panics inside [`result_line`].
+    pub(super) const PANICS: &str = "test-job-that-panics";
+
+    /// One job panicking is that shot `failed`; the jobs after it still print, in order.
+    #[test]
+    fn a_panicking_job_is_reported_failed_and_the_rest_still_run() {
+        let dir = std::env::temp_dir().join("rig-shot-compare-panic");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("one.png");
+        flat([1, 2, 3, 255], 2, 2).save(&path).unwrap();
+        let png = path.display().to_string();
+        let source = [
+            format!("first\tdesktop\t{png}\t{png}\tabsent"),
+            format!("{PANICS}\tdesktop\t{png}\t{png}\tabsent"),
+            format!("last\tdesktop\t{png}\t{png}\tabsent"),
+        ]
+        .join("\n");
+        let shots = parse(&source, Path::new("jobs.tsv")).unwrap();
+        for threads in [1, 3] {
+            let mut out = Vec::new();
+            compare_all(&shots, None, 0.0, threads, |line, status| {
+                out.push((line.to_owned(), status));
+                Ok(())
+            })
+            .unwrap();
+            let statuses: Vec<Status> = out.iter().map(|(_, status)| *status).collect();
+            assert_eq!(
+                statuses,
+                [Status::Unchanged, Status::Failed, Status::Unchanged]
+            );
+            assert!(
+                out[1]
+                    .0
+                    .starts_with(&format!("{PANICS}\tdesktop\tfailed\t"))
+            );
+            assert!(
+                out[1].0.ends_with("panicked: a test job that panics"),
+                "{}",
+                out[1].0
+            );
+            assert!(out[2].0.starts_with("last\t"));
+        }
+    }
 
     #[test]
     fn a_differing_pixel_is_counted_once() {
