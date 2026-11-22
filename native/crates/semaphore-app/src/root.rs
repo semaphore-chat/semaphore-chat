@@ -1296,6 +1296,13 @@ impl AppRoot {
         let shown = showing.clone();
         let content = Rc::new(
             move |props: &ContentProps, window: &mut Window, cx: &mut App| {
+                // A phone showing the left pane, or the shell's community home: no conversation is
+                // on screen, so none is marked read or counted as seen (B12).
+                if !props.shown {
+                    pane.update(cx, |pane, cx| pane.hide(cx));
+                    shown.set(false);
+                    return div().into_any_element();
+                }
                 let (element, stage_shown) =
                     content(&pane, &stage, &content_core, &root, props, window, cx);
                 shown.set(stage_shown);
@@ -1951,13 +1958,9 @@ fn content(
             "Your messages".into(),
             "Pick a conversation, or start a new one.",
         ),
-        (route, None) if route.community_id().is_some() => match &props.community {
-            Some(community) => placeholder(
-                format!("Welcome to {}", community.name),
-                "Select a channel from the sidebar to get started",
-            ),
-            None => placeholder("Loading".into(), ""),
-        },
+        // A community with no channel chosen is the shell's community home (B12); another
+        // community route waits here for its screen.
+        (route, None) if route.community_id().is_some() => placeholder("Loading".into(), ""),
         _ => placeholder("Home".into(), "Pick a community from the dock."),
     };
     (element, stage_shown)

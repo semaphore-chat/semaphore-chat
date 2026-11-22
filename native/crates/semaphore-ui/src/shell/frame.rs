@@ -6,9 +6,10 @@
 
 use super::lounge::lines::{CallStatus, Mic, around_count, group_members, inbox_count};
 use super::lounge::{
-    AllCommunitiesSheet, ChannelItem, ChannelSection, CommunityHeader, CommunityLeft,
-    CommunityLeftAccess, DockCommunity, DockCurrent, DockStatus, Face, FootRow, MembersIsland,
-    Retry, RoomPerson, SheetCommunity, ShellDock, UserCard, VoiceRoomCard,
+    AllCommunitiesSheet, ChannelItem, ChannelSection, CommunityHeader, CommunityHome,
+    CommunityLeft, CommunityLeftAccess, DockCommunity, DockCurrent, DockStatus, Face, FootRow,
+    HomeState, MembersIsland, Retry, RoomPerson, SheetCommunity, ShellDock, UserCard,
+    VoiceRoomCard,
 };
 use super::{Load, RouteSidebarProps, Shell, ShellEvent};
 use crate::community_settings::rules::opens_settings;
@@ -96,7 +97,6 @@ impl Shell {
                 inbox
                     .update(cx, |shell, cx| {
                         shell.navigate(Route::DirectMessages, cx);
-                        shell.phone_pane = PhonePane::Left;
                     })
                     .ok();
             })
@@ -110,9 +110,9 @@ impl Shell {
             .on_community(move |id, _, cx| {
                 let community_id = id.to_owned();
                 open.update(cx, |shell, cx| {
+                    // A phone opens the community's home: its channels and rooms (`navigate`
+                    // takes the pane from the route asked for).
                     shell.navigate(Route::Community { community_id }, cx);
-                    // A phone opens the community's home: its channels and rooms.
-                    shell.phone_pane = PhonePane::Left;
                 })
                 .ok();
             })
@@ -171,7 +171,6 @@ impl Shell {
                 let community_id = id.to_owned();
                 open.update(cx, |shell, cx| {
                     shell.navigate(Route::Community { community_id }, cx);
-                    shell.phone_pane = PhonePane::Left;
                 })
                 .ok();
             })
@@ -407,6 +406,53 @@ impl Shell {
             })
     }
 
+    /// The community home's centre (B12), for a community with no channel chosen.
+    pub(crate) fn community_home(
+        &self,
+        community_id: &str,
+        members_shown: bool,
+        cx: &mut Context<Self>,
+    ) -> CommunityHome {
+        let community = self.community();
+        let state = match (
+            self.source.communities(),
+            self.source.channels(community_id),
+        ) {
+            (Load::Loading, _) => HomeState::Loading,
+            (Load::Failed(error), _) => {
+                HomeState::CommunityError(error.message, Retry::new(self.retry(cx)))
+            }
+            (Load::Ready(_), _) if community.is_none() => HomeState::NotMember,
+            (Load::Ready(_), Load::Loading) => HomeState::Loading,
+            (Load::Ready(_), Load::Failed(error)) => {
+                HomeState::ChannelsError(error.message, Retry::new(self.retry(cx)))
+            }
+            (Load::Ready(_), Load::Ready(rows)) => HomeState::Ready {
+                text_channels: rows.iter().any(|row| row.kind == ChannelKind::Text),
+                rooms: rows.iter().any(|row| row.kind == ChannelKind::Voice),
+            },
+        };
+        let caps = self.source.community_caps(community_id);
+        let (members_view, create_view) = (cx.entity().downgrade(), cx.entity().downgrade());
+        let create_id = community_id.to_owned();
+        CommunityHome::new(community.map(|row| row.name), state)
+            .can_create_channel(caps.create_channel)
+            .members_shown(members_shown)
+            .on_show_members(move |_, cx| {
+                members_view
+                    .update(cx, |shell, cx| shell.show_members(cx))
+                    .ok();
+            })
+            .on_create_channel(move |_, cx| {
+                let community_id = create_id.clone();
+                create_view
+                    .update(cx, |_, cx| {
+                        cx.emit(ShellEvent::CreateChannel { community_id })
+                    })
+                    .ok();
+            })
+    }
+
     fn members_island(&self, community_id: &str, cx: &mut Context<Self>) -> MembersIsland {
         let channels = match self.source.channels(community_id) {
             Load::Ready(rows) => rows,
@@ -619,7 +665,7 @@ impl Render for Shell {
         // The composer takes focus only when the centre is drawn: a phone showing the left pane
         // keeps the request for when it shows the centre.
         let centre_drawn = !phone || self.phone_pane == PhonePane::Centre;
-        let content = self.content_element(centre_drawn, window, cx);
+        let content = self.content_element(centre_drawn, members_shown, window, cx);
         let centre = div()
             .id("shell-centre")
             .size_full()
@@ -630,10 +676,15 @@ impl Render for Shell {
                 centre.child(div().flex_none().p(px(4.)).child(self.phone_back(cx)))
             })
             .child(div().flex_1().min_h_0().child(content));
-        let centre_label = self
-            .channel()
-            .map(|channel| channel.name)
-            .unwrap_or_else(|| "Conversation".into());
+        let centre_label = match (self.channel(), &community_id) {
+            (Some(channel), _) => channel.name,
+            // The community home: the community's name, as its heading.
+            (None, Some(_)) => self
+                .community()
+                .map(|row| row.name)
+                .unwrap_or_else(|| "Community".into()),
+            (None, None) => "Conversation".into(),
+        };
 
         let mut islands = ThreeIslands::new(left, left_label, centre, centre_label)
             .dock(self.dock(cx))
