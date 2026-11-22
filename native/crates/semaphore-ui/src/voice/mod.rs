@@ -2,8 +2,6 @@
 
 mod bar;
 mod debug;
-pub mod dock;
-mod float;
 pub(crate) mod frames;
 mod icons;
 mod incoming;
@@ -27,8 +25,6 @@ pub(crate) use stories_w4::recording_stage;
 mod theme;
 
 pub use debug::{DebugActions, voice_debug_panel};
-pub use dock::{PipAnchor, PipPlacement, dock_zones};
-pub use float::{FloatCard, FloatEvent};
 pub(crate) use frames::Fit;
 pub use frames::VideoFrames;
 
@@ -39,7 +35,8 @@ pub use incoming::{
 pub use menu::{ParticipantMenu, ParticipantMenuEvent, ParticipantMenuModel, toggled_volume};
 pub use model::{
     NoController, PttState, QualityLevel, ShareLook, TileDemand, VoiceController, VoiceStageModel,
-    bar_subtitle, build_tiles, camera_label, grid_columns, mic_blocked_reason, screen_label,
+    bar_subtitle, build_tiles, camera_label, display_name, grid_columns, mic_blocked_reason,
+    screen_label,
 };
 pub use picker::{
     PickerActions, PickerModel, PickerSource, PickerState, THUMBNAIL_PX, source_picker,
@@ -48,32 +45,6 @@ pub use picker::{
 pub use ptt::{PttAction, PttContext, PttInput, decide as ptt_decide};
 pub use soundboard::{SoundboardActions, SoundboardBar, soundboard_popover};
 pub use stage::{VoiceBadge, VoiceBadgeKind, VoiceStage, voice_badges};
-
-/// The call's bar on its own, for the shell to show under the columns away from the call.
-pub fn voice_bar_element(
-    model: &VoiceStageModel,
-    narrow: bool,
-    controller: std::sync::Arc<dyn VoiceController>,
-) -> gpui_kit::AnyElement {
-    voice_bar_element_with(model, &SoundboardBar::default(), narrow, controller)
-}
-
-/// W4: the bar with the soundboard's button (channel calls) and its popover.
-pub fn voice_bar_element_with(
-    model: &VoiceStageModel,
-    soundboard: &SoundboardBar,
-    narrow: bool,
-    controller: std::sync::Arc<dyn VoiceController>,
-) -> gpui_kit::AnyElement {
-    use gpui_kit::IntoElement as _;
-    bar::VoiceBar {
-        model: model.clone(),
-        soundboard: soundboard.clone(),
-        narrow,
-        controller,
-    }
-    .into_any_element()
-}
 
 use gpui_kit::{Window, WindowOptions};
 

@@ -99,6 +99,12 @@ impl VoiceStage {
         }
     }
 
+    /// Something else (the call surface) asked core for other pictures: ask again for the stage's
+    /// the next time it draws, even if they're the same as before.
+    pub fn forget_demands(&mut self) {
+        *self.last_demands.borrow_mut() = None;
+    }
+
     pub fn frames(&self) -> &Arc<VideoFrames> {
         &self.frames
     }

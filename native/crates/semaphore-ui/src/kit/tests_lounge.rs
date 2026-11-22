@@ -829,6 +829,31 @@ fn a_lounge_glyph_takes_the_icons_place_and_current_is_not_selected() {
 }
 
 #[gpui_kit::test]
+fn an_unavailable_icon_button_says_why_instead_of_running_its_action(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, |log| {
+        let (why_off, act_off) = (log.clone(), log.clone());
+        let (why_on, act_on) = (log.clone(), log.clone());
+        div()
+            .child(
+                IconButton::new("unavailable", I::Mic, "Mute")
+                    .unavailable(true)
+                    .on_unavailable_press(move |_, _, _| why_off.borrow_mut().push("why".into()))
+                    .on_click(move |_, _, _| act_off.borrow_mut().push("act".into())),
+            )
+            .child(
+                IconButton::new("ready", I::Mic, "Mute")
+                    .on_unavailable_press(move |_, _, _| why_on.borrow_mut().push("why".into()))
+                    .on_click(move |_, _, _| act_on.borrow_mut().push("act".into())),
+            )
+            .into_any_element()
+    });
+    rig.click(cx, "unavailable");
+    assert_eq!(*log.borrow(), ["why"], "the action never runs");
+    rig.click(cx, "ready");
+    assert_eq!(*log.borrow(), ["why", "act"], "a ready button acts");
+}
+
+#[gpui_kit::test]
 fn the_dock_tab_stop_rests_on_a_current_button(cx: &mut TestAppContext) {
     let (rig, log) = host(cx, |log| {
         let (inbox, before) = (log.clone(), log.clone());

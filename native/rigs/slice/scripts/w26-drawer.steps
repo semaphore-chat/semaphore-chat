@@ -64,10 +64,16 @@ navigate /community/$ID(c-couch)/channel/$ID(cc-general)
 wait core channel $ID(cc-general)
 wait idle
 
-# 4. The card's Join fails (no LiveKit here): the short toast, and still on #general.
+# 4. The card's Join fails (no LiveKit here): the voice notice in the call slot (B11), with Retry,
+# and still on #general.
 click room-join-$ID(vc-squad)
 wait core w9v join-failed shown
-wait core label "Couldn't join the room. Check your connection and try again."
+wait core element voice-notice
+wait core element voice-notice-action
 wait core channel $ID(cc-general)
 wait idle
-shot 03-join-failed-toast
+shot 03-join-failed-notice
+# Dismiss takes it away.
+click voice-notice-dismiss
+wait core w9v join-failed gone
+wait core no-element voice-notice

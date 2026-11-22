@@ -5,7 +5,7 @@ mod common;
 use common::*;
 use semaphore_core::model::{
     ConnectionQuality, LocalMediaView, LocalShare, ParticipantView, UserView, VideoDemand,
-    VideoTrackView, VoiceStatus, VoiceView,
+    VideoTrackView, VoiceJoinOptions, VoiceRoom, VoiceStatus, VoiceView,
 };
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
@@ -255,6 +255,111 @@ async fn the_engine_ending_a_call_ends_it_here_and_on_the_server() {
     assert_eq!(voice.channel_id, None);
     assert_eq!(voice.error.as_deref(), Some("removed from the room"));
     assert_eq!(voice_calls(&rig), ["join", "leave"]);
+    // B11: how it ended, with the room it was in (the view's `room` is gone).
+    let ended = voice.ended.expect("ended");
+    assert!(matches!(ended.room, VoiceRoom::Channel { .. }));
+    assert!(!ended.while_reconnecting);
+    assert_eq!(ended.error.as_deref(), Some("removed from the room"));
+}
+
+#[tokio::test]
+async fn a_rejoin_that_gives_up_ends_the_call_while_reconnecting() {
+    let rig = in_call(&["me"]).await;
+    rig.core
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me")]));
+    rig.core
+        .ingest_media(CALL, report(VoiceStatus::Reconnecting, Vec::new()));
+    rig.core.ingest_media(
+        CALL,
+        VoiceView {
+            status: VoiceStatus::Disconnected,
+            error: Some("no route".into()),
+            ..VoiceView::default()
+        },
+    );
+    let ended = rig.core.voice().ended.expect("ended");
+    assert!(ended.while_reconnecting);
+    assert_eq!(ended.error.as_deref(), Some("no route"));
+}
+
+#[tokio::test]
+async fn leaving_says_nothing_ended() {
+    let rig = in_call(&["me"]).await;
+    rig.core.leave_voice().await.unwrap();
+    assert_eq!(rig.core.voice().ended, None);
+}
+
+fn an_ending() -> VoiceView {
+    VoiceView {
+        status: VoiceStatus::Disconnected,
+        error: Some("removed from the room".into()),
+        ..VoiceView::default()
+    }
+}
+
+#[tokio::test]
+async fn a_join_after_an_ending_clears_it() {
+    let mut rig = in_call(&["me"]).await;
+    rig.core
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me")]));
+    rig.core.ingest_media(CALL, an_ending());
+    rig.settle().await;
+    assert!(rig.core.voice().ended.is_some(), "the call ended");
+
+    rig.core.join_voice(ROOM.into()).await.unwrap();
+    assert_eq!(
+        rig.core.voice().ended,
+        None,
+        "the next call must not read as the last one ending"
+    );
+}
+
+#[tokio::test]
+async fn a_leave_after_an_ending_clears_it() {
+    let mut rig = in_call(&["me"]).await;
+    rig.core
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me")]));
+    rig.core.ingest_media(CALL, an_ending());
+    rig.settle().await;
+    assert!(rig.core.voice().ended.is_some(), "the call ended");
+
+    rig.core.leave_voice().await.unwrap();
+    assert_eq!(rig.core.voice().ended, None);
+}
+
+#[tokio::test]
+async fn an_ending_carries_the_mute_it_ended_with() {
+    let rig = in_call(&["me"]).await;
+    rig.core.set_muted(true).await.unwrap();
+    rig.core
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me")]));
+    rig.core.ingest_media(CALL, an_ending());
+    let ended = rig.core.voice().ended.expect("ended");
+    assert_eq!(
+        ended.options,
+        VoiceJoinOptions {
+            muted: true,
+            deafened: false,
+        },
+        "Retry rejoins with a mic the user had turned off"
+    );
+}
+
+#[tokio::test]
+async fn a_failed_join_to_another_room_takes_the_engine_out_of_the_call_it_was_in() {
+    let mut rig = in_call(&["me"]).await;
+    rig.media.calls.lock().unwrap().clear();
+    // Fails before `media.connect`: the engine would stay in the first room while core forgets
+    // the call, leaving the user in a call with no bar and no way out.
+    *rig.backend.connection_info_error.lock().unwrap() = Some(refusal(500, "INTERNAL"));
+    assert!(rig.core.join_voice("another".into()).await.is_err());
+    rig.settle().await;
+    assert_eq!(rig.core.voice(), VoiceView::default());
+    assert_eq!(
+        media_calls(&rig).last().map(String::as_str),
+        Some("disconnect"),
+        "the engine heard to leave the call it was in"
+    );
 }
 
 #[tokio::test]

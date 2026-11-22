@@ -21,6 +21,8 @@ pub struct VideoFrames {
     uploader: Option<Arc<dyn VideoUploader>>,
     slots: RwLock<HashMap<String, Slot>>,
     dirty: AtomicBool,
+    /// Counts frames in (and tracks ended), for a second watcher that must not take `dirty`.
+    generation: std::sync::atomic::AtomicU64,
 }
 
 impl VideoFrames {
@@ -40,6 +42,7 @@ impl VideoFrames {
             uploader,
             slots: RwLock::default(),
             dirty: AtomicBool::new(false),
+            generation: std::sync::atomic::AtomicU64::new(0),
         })
     }
 
@@ -71,6 +74,7 @@ impl VideoFrames {
             }
         }
         self.dirty.store(true, Ordering::Release);
+        self.generation.fetch_add(1, Ordering::AcqRel);
     }
 
     fn ensure_slot(&self, track_sid: &str, frame: &Nv12Frame<'_>) -> VideoSurfaceId {
@@ -105,6 +109,7 @@ impl VideoFrames {
             uploader.remove(slot.surface);
         }
         self.dirty.store(true, Ordering::Release);
+        self.generation.fetch_add(1, Ordering::AcqRel);
     }
 
     pub fn has_frame(&self, track_sid: &str) -> bool {
@@ -112,6 +117,12 @@ impl VideoFrames {
             .read()
             .unwrap_or_else(|p| p.into_inner())
             .contains_key(track_sid)
+    }
+
+    /// How many frames (and ends) have come in: a watcher that keeps the last value it saw draws
+    /// again when it changes, without taking `take_dirty` from the stage.
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Acquire)
     }
 
     /// Whether anything changed since the last call, which is the view's cue to redraw.
