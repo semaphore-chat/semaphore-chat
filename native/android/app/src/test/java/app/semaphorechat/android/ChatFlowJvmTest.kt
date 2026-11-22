@@ -140,16 +140,19 @@ class ChatFlowJvmTest {
             assertFalse("a page of 25 stops short of the start", first.atStart)
             assertNull(first.jump)
 
-            // Paging back: each older page lands above, keeping every row already there.
+            // Paging back: each older page lands above, keeping every row already there. A page's
+            // "loaded" is published after its rows (ConversationStore runs it behind core's events).
             var pages = 0
             while (!chat.state.value.atStart) {
                 val before = chat.state.value.messages.map { it.key }
                 chat.loadOlder()
-                until("an older page") { !chat.state.value.loadingOlder && chat.state.value.messages.size > before.size || chat.state.value.atStart }
+                until("an older page") { !chat.state.value.loadingOlder }
                 val after = chat.state.value.messages.map { it.key }
                 assertEquals("the rows read stay, in order", before, after.takeLast(before.size))
                 assertTrue(++pages < 10)
             }
+            // The 14 messages the scenario has and the 40 posted (more, if other tests posted here).
+            until("every row back to the start") { chat.state.value.atStart && chat.state.value.messages.size >= 54 }
             val all = chat.state.value.messages
             assertTrue("every row: ${all.size}", all.size >= 54)
             assertEquals(all.map { it.key }.sorted(), all.map { it.key })

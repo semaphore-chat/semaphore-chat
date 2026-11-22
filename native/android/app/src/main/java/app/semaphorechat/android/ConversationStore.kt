@@ -199,6 +199,12 @@ class ConversationStore(
     private val core: SemaphoreCore,
     private val scope: CoroutineScope,
     private val rules: ChatRules = ChatRules.Native,
+    /**
+     * Runs a command's result after the list changes core sent before the command returned
+     * (CoreStore's collector): otherwise "loaded", and core's flags read with it, could be
+     * published before the rows they belong to. Inline for a store with no CoreStore.
+     */
+    private val onCollector: (() -> Unit) -> Unit = { it() },
 ) {
     /** The list's scroll position, kept here rather than in the composition. */
     val listState = LazyListState()
@@ -258,13 +264,15 @@ class ConversationStore(
             } catch (error: CoreException) {
                 errorText("", error.message.orEmpty())
             }
-            synchronized(lock) {
-                opening = false
-                face = when {
-                    failure == null || rows.isNotEmpty() -> ChatFace.Ready
-                    else -> ChatFace.Failed(failure)
+            onCollector {
+                synchronized(lock) {
+                    opening = false
+                    face = when {
+                        failure == null || rows.isNotEmpty() -> ChatFace.Ready
+                        else -> ChatFace.Failed(failure)
+                    }
+                    publish()
                 }
-                publish()
             }
         }
     }
@@ -284,10 +292,12 @@ class ConversationStore(
             } catch (error: CoreException) {
                 errorText("", error.message.orEmpty())
             }
-            synchronized(lock) {
-                loadingOlder = false
-                olderFailed = failure
-                publish()
+            onCollector {
+                synchronized(lock) {
+                    loadingOlder = false
+                    olderFailed = failure
+                    publish()
+                }
             }
         }
     }
