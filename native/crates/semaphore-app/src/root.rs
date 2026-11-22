@@ -1300,6 +1300,13 @@ impl AppRoot {
         let shown = showing.clone();
         let content = Rc::new(
             move |props: &ContentProps, window: &mut Window, cx: &mut App| {
+                // A phone showing the left pane, or the shell's community home: no conversation is
+                // on screen, so none is marked read or counted as seen (B12).
+                if !props.shown {
+                    pane.update(cx, |pane, cx| pane.hide(cx));
+                    shown.set(false);
+                    return div().into_any_element();
+                }
                 let (element, stage_shown) =
                     content(&pane, &stage, &content_core, &root, props, window, cx);
                 shown.set(stage_shown);

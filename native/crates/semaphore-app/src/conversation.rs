@@ -137,6 +137,8 @@ pub struct ConversationPane {
     last_typing: Option<Instant>,
     marked_read: Option<String>,
     focused: bool,
+    /// [`Self::hide`]: the shell isn't drawing the pane.
+    hidden: bool,
     media: Rc<AppMedia>,
     /// Inline audio and video players for every list, or `None` (the app built without them).
     players: Option<semaphore_ui::player::Players>,
@@ -213,6 +215,7 @@ impl ConversationPane {
             last_typing: None,
             marked_read: None,
             focused: window.is_window_active(),
+            hidden: false,
             media,
             players,
             open_attachment,
@@ -268,6 +271,17 @@ impl ConversationPane {
         }
     }
 
+    /// The shell isn't drawing the pane (a phone showing the left pane, or the community home in
+    /// its place): core has no conversation on screen, and nothing is marked read until
+    /// [`Self::show`] again.
+    pub fn hide(&mut self, _: &mut Context<Self>) {
+        if self.hidden || self.conversation.is_none() {
+            return;
+        }
+        self.hidden = true;
+        self.core.close_main_conversation();
+    }
+
     /// Shows `conversation`, or keeps showing it with this channel row's permissions.
     pub fn show(
         &mut self,
@@ -278,6 +292,7 @@ impl ConversationPane {
         cx: &mut Context<Self>,
     ) {
         let changed = self.conversation.as_ref() != Some(&conversation);
+        let unhidden = std::mem::replace(&mut self.hidden, false);
         let permissions_changed = self.channel.as_ref().map(|row| &row.permissions)
             != channel.as_ref().map(|row| &row.permissions)
             || self.channel.as_ref().map(|row| row.slowmode_seconds)
@@ -288,9 +303,22 @@ impl ConversationPane {
         self.community_id = community_id;
         if changed {
             self.open(conversation, window, cx);
-        } else if permissions_changed {
-            self.apply_availability(window, cx);
-            self.apply_permissions(cx);
+        } else {
+            if unhidden {
+                // On screen again: core's conversation, and what's newest is read now.
+                let core = self.core.clone();
+                let opening = conversation.clone();
+                self.exec.fire(async move {
+                    if let Err(error) = core.open_conversation(opening).await {
+                        log::debug!("showing the conversation again: {error}");
+                    }
+                });
+                self.mark_read(cx);
+            }
+            if permissions_changed {
+                self.apply_availability(window, cx);
+                self.apply_permissions(cx);
+            }
         }
         // The composer outlives the conversation: it takes this one's name ("Message #random").
         let placeholder = self.placeholder();
@@ -761,7 +789,7 @@ impl ConversationPane {
         let Some(conversation) = self.conversation.clone() else {
             return;
         };
-        if !self.focused || !self.core.at_live_edge(conversation.clone()) {
+        if self.hidden || !self.focused || !self.core.at_live_edge(conversation.clone()) {
             return;
         }
         let Some(newest) = self.rows.iter().rev().find_map(|row| row.id.clone()) else {

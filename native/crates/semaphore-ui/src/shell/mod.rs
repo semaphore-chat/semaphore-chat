@@ -74,6 +74,10 @@ pub struct ContentProps {
     /// after it, even when the conversation is the one already open: the shell's first render, and
     /// a click on a rail or channel row, took the focus.
     pub take_focus: bool,
+    /// What the owner draws is on screen. False while a phone shows the left pane, and while the
+    /// shell draws the community home in its place: the owner draws nothing then, and shows no
+    /// conversation, so nothing is marked read or counted as seen.
+    pub shown: bool,
 }
 
 /// What the owner acts on. Core's commands are the owner's to call, so stories need no core.
@@ -127,6 +131,8 @@ pub struct Shell {
     pub(crate) right_open: Option<bool>,
     /// Which pane a phone shows.
     pub(crate) phone_pane: PhonePane,
+    /// The pane each Back entry was left on, in step with the history (`NavModel::depth`).
+    pub(crate) pane_back: Vec<PhonePane>,
     /// The "All communities" sheet is open.
     pub(crate) sheet_open: bool,
     /// The community header's menu is open.
@@ -181,6 +187,7 @@ impl Shell {
             connection,
             right_open: None,
             phone_pane,
+            pane_back: Vec::new(),
             sheet_open: false,
             menu_open: false,
             filter,
@@ -249,10 +256,12 @@ impl Shell {
     }
 
     pub fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {
+        let (depth, leaving) = (self.nav.depth(), self.phone_pane);
         // The pane is the asked-for route's: a phone opening a community shows its home (the left
         // pane) even though the route settles on a channel, as the web's phone home does.
         self.phone_pane = pane_for(&route);
         self.nav.navigate(route);
+        self.keep_pane(depth, leaving);
         self.settle_route();
         self.sheet_open = false;
         self.menu_open = false;
@@ -270,10 +279,16 @@ impl Shell {
 
     /// Back to where the user was before, as a page's Back or Close does; Home if nowhere.
     pub fn go_back(&mut self, cx: &mut Context<Self>) {
-        if !self.nav.go_back() {
+        let (depth, leaving) = (self.nav.depth(), self.phone_pane);
+        let back = self.nav.go_back();
+        if !back {
             self.nav.navigate(Route::Home);
         }
         self.phone_pane = pane_for(self.nav.current());
+        // Back restores the pane the user left that entry on: the community's home, or its chat.
+        if let Some(pane) = self.keep_pane(depth, leaving) {
+            self.phone_pane = pane;
+        }
         self.settle_route();
         self.focus_content.set(true);
         cx.emit(ShellEvent::Navigated(self.nav.current().clone()));
@@ -282,15 +297,34 @@ impl Shell {
 
     /// `semaphore://` handed to us by the OS. A bad link does nothing, and returns false.
     pub fn open_deep_link(&mut self, raw: &str, cx: &mut Context<Self>) -> bool {
+        let (depth, leaving) = (self.nav.depth(), self.phone_pane);
         let handled = self.nav.open_deep_link(raw);
         if handled {
             self.phone_pane = pane_for(self.nav.current());
+            self.keep_pane(depth, leaving);
             self.settle_route();
             self.focus_content.set(true);
             cx.emit(ShellEvent::Navigated(self.nav.current().clone()));
             cx.notify();
         }
         handled
+    }
+
+    /// Keeps [`Self::pane_back`] in step with the history after a move from `depth` entries: the
+    /// pane the user `left` goes with a new entry, and a step back returns the one it was left on.
+    fn keep_pane(&mut self, depth: usize, left: PhonePane) -> Option<PhonePane> {
+        let now = self.nav.depth();
+        let restored = if now > depth {
+            self.pane_back.push(left);
+            None
+        } else if now < depth {
+            self.pane_back.pop()
+        } else {
+            None
+        };
+        // Signing out clears the history; nothing else does without the shell.
+        self.pane_back.truncate(now);
+        restored
     }
 
     /// `CommunityPage`: a community with no channel selected goes to the last-viewed text channel,
@@ -322,6 +356,14 @@ impl Shell {
                 community_id,
                 channel_id,
             } => {
+                // A channel that isn't in the loaded list (deleted, or not the user's to see): a
+                // phone shows the community's list, not a centre that points at it.
+                if let Load::Ready(channels) = self.source.channels(&community_id)
+                    && !channels.iter().any(|channel| channel.id == channel_id)
+                {
+                    self.phone_pane = PhonePane::Left;
+                    return;
+                }
                 self.last_channel.insert(community_id, channel_id);
             }
             _ => {}
@@ -398,29 +440,36 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if let Some(community_id) = self.nav.current().community_id().map(str::to_owned) {
-            let home = !matches!(self.source.communities(), Load::Ready(_))
+        let home = self.nav.current().community_id().is_some()
+            && (!matches!(self.source.communities(), Load::Ready(_))
                 || match self.nav.current() {
                     Route::Community { .. } => true,
                     Route::Channel { .. } => self.channel().is_none(),
                     _ => false,
-                };
-            if home {
-                return self
-                    .community_home(&community_id, members_shown, cx)
-                    .into_any_element();
-            }
-        }
+                });
         let channel = self.channel();
+        let shown = centre_drawn && !home;
         // Kept until a channel is drawn: a route still loading has nothing to focus yet.
-        let take_focus = channel.is_some() && centre_drawn && self.focus_content.take();
+        let take_focus = channel.is_some() && shown && self.focus_content.take();
         let props = ContentProps {
             route: self.nav.current().clone(),
             channel,
             community: self.community(),
             take_focus,
+            shown,
         };
-        (self.content)(&props, window, cx)
+        // The owner is told even when what it draws isn't on screen, so it can stop showing a
+        // conversation.
+        let content = (self.content)(&props, window, cx);
+        match (home, self.nav.current().community_id()) {
+            (true, Some(community_id)) if centre_drawn => {
+                let community_id = community_id.to_owned();
+                self.community_home(&community_id, members_shown, cx)
+                    .into_any_element()
+            }
+            _ if !shown => div().into_any_element(),
+            _ => content,
+        }
     }
 
     /// The channel header, or `None` when the route has no channel.

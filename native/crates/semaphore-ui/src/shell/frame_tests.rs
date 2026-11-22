@@ -131,7 +131,10 @@ fn shell_on(
     let asked: Asked = Rc::default();
     let seen = asked.clone();
     let content: ContentSlot = Rc::new(move |props, _, _| {
-        seen.borrow_mut().push(props.take_focus);
+        // Only what's on screen: the owner is also told when its content isn't.
+        if props.shown {
+            seen.borrow_mut().push(props.take_focus);
+        }
         div().size_full().into_any_element()
     });
     // Under gpui-kit's window root, as `gpui_kit::open_window` puts every app view: it moves
@@ -682,6 +685,30 @@ impl ShellSource for RoomsOnly {
     }
 }
 
+/// Couch Co-op's channels loaded while the communities are still on their way.
+struct CommunitiesLoading;
+
+impl ShellSource for CommunitiesLoading {
+    fn session(&self) -> SessionState {
+        Couch.session()
+    }
+    fn communities(&self) -> Load<Vec<CommunityRow>> {
+        Load::Loading
+    }
+    fn channels(&self, id: &str) -> Load<Vec<ChannelRow>> {
+        Couch.channels(id)
+    }
+    fn members(&self, id: &str) -> Load<Vec<MemberRow>> {
+        Couch.members(id)
+    }
+    fn rail_counts(&self) -> RailCounts {
+        RailCounts::default()
+    }
+    fn voice(&self) -> VoiceView {
+        VoiceView::default()
+    }
+}
+
 fn couch() -> Route {
     Route::Community {
         community_id: "c1".into(),
@@ -713,9 +740,7 @@ fn a_phone_opening_a_community_shows_its_home_though_the_route_settles(cx: &mut 
 }
 
 #[gpui_kit::test]
-fn a_phone_deep_link_to_a_community_shows_its_home_and_to_a_channel_the_chat(
-    cx: &mut TestAppContext,
-) {
+fn a_phone_deep_link_to_a_community_shows_its_home(cx: &mut TestAppContext) {
     let (view, cx, _, _) = shell(cx, 390., Route::DirectMessages);
     let opened = view.update(cx, |shell, cx| {
         shell.open_deep_link(
@@ -726,9 +751,70 @@ fn a_phone_deep_link_to_a_community_shows_its_home_and_to_a_channel_the_chat(
     draw(cx);
     assert!(opened);
     assert_eq!(pane(&view, cx), PhonePane::Left);
-    view.update(cx, |shell, cx| shell.navigate(general(), cx));
+}
+
+#[gpui_kit::test]
+fn a_phone_home_shows_the_owner_nothing(cx: &mut TestAppContext) {
+    // The home settles on #general, but its chat isn't on screen: the owner is never asked to
+    // show it, so it marks nothing read (only `shown` calls are recorded).
+    let (view, cx, _, asked) = shell(cx, 390., Route::DirectMessages);
+    asked.borrow_mut().clear();
+    view.update(cx, |shell, cx| shell.navigate(couch(), cx));
     draw(cx);
+    assert_eq!(pane(&view, cx), PhonePane::Left);
+    assert!(asked.borrow().is_empty(), "{:?}", asked.borrow());
+    // The chat is.
+    click(cx, "channel-general");
+    assert!(!asked.borrow().is_empty());
+}
+
+#[gpui_kit::test]
+fn back_returns_to_the_pane_each_entry_was_left_on(cx: &mut TestAppContext) {
+    let (view, cx, _, _) = shell(cx, 390., Route::DirectMessages);
+    let settings = || Route::Settings {
+        tab: Default::default(),
+    };
+    // Left from the home: Back is the home, though its route is the channel's.
+    view.update(cx, |shell, cx| shell.navigate(couch(), cx));
+    view.update(cx, |shell, cx| shell.navigate(settings(), cx));
     assert_eq!(pane(&view, cx), PhonePane::Centre);
+    view.update(cx, |shell, cx| shell.go_back(cx));
+    assert_eq!(
+        view.read_with(cx, |shell, _| shell.nav().current().clone()),
+        general()
+    );
+    assert_eq!(pane(&view, cx), PhonePane::Left);
+    // Left from the chat: Back is the chat.
+    view.update(cx, |shell, cx| shell.navigate(general(), cx));
+    view.update(cx, |shell, cx| {
+        shell.phone_pane = PhonePane::Centre;
+        shell.navigate(settings(), cx)
+    });
+    view.update(cx, |shell, cx| shell.go_back(cx));
+    assert_eq!(pane(&view, cx), PhonePane::Centre);
+    // And Back again, to the inbox's list.
+    view.update(cx, |shell, cx| shell.go_back(cx));
+    assert_eq!(
+        view.read_with(cx, |shell, _| shell.nav().current().clone()),
+        Route::DirectMessages
+    );
+    assert_eq!(pane(&view, cx), PhonePane::Left);
+}
+
+#[gpui_kit::test]
+fn a_phone_on_a_channel_that_isnt_in_the_list_shows_the_list(cx: &mut TestAppContext) {
+    let (view, cx, _, asked) = shell(cx, 390., Route::DirectMessages);
+    asked.borrow_mut().clear();
+    let gone = Route::Channel {
+        community_id: "c1".into(),
+        channel_id: "gone".into(),
+    };
+    view.update(cx, |shell, cx| shell.navigate(gone, cx));
+    draw(cx);
+    assert_eq!(pane(&view, cx), PhonePane::Left);
+    assert!(has(cx, "channel-general"));
+    assert!(!has(cx, "community-home"));
+    assert!(asked.borrow().is_empty());
 }
 
 #[gpui_kit::test]
@@ -785,16 +871,11 @@ fn the_home_has_the_load_faces_while_the_communities_load_or_fail(cx: &mut TestA
     );
     assert!(has(cx, "community-home-face"));
     assert!(!has(cx, "community-home-create"));
-    // A channel's route too: nothing of the community is drawn until the list is in.
-    let (_, cx, _, _) = shell_on(
-        cx,
-        1280.,
-        general(),
-        Rc::new(RoomsOnly {
-            lists: Some(Load::Loading),
-        }),
-    );
+    // A channel's route too, with the channel in a loaded list: nothing of the community is
+    // drawn until the communities are in, and the owner shows nothing.
+    let (_, cx, _, asked) = shell_on(cx, 1280., general(), Rc::new(CommunitiesLoading));
     assert!(has(cx, "community-home-face"));
+    assert!(asked.borrow().is_empty(), "{:?}", asked.borrow());
     let failed = Load::Failed(semaphore_core::model::ErrorView {
         code: "UNAVAILABLE".into(),
         message: "The server didn't answer.".into(),

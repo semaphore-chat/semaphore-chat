@@ -1,7 +1,9 @@
 # B12: the community home on a phone. Signing in lands on the first community, whose route settles
 # on its text channel, and a phone shows the community's home (its channels and rooms, the left
-# pane), as the web's phone home does, not the chat. A channel row opens the chat, Back is the home
-# again, and opening the community by its path (a deep link, the dock) shows the home too.
+# pane), as the web's phone home does, not the chat. The chat isn't on screen there, so nothing is
+# marked read: a message posted while the home shows leaves the channel unread. A channel row opens
+# the chat, Back is the home again, Settings' Close returns to the home it was opened from, and a
+# `semaphore://community/...` link shows the home too.
 app 390 844
 wait idle
 click auth-connect
@@ -13,32 +15,57 @@ click auth-password
 type "hunter2"
 click auth-login
 wait core session signed-in
-wait core channel $ID(cc-general)
+# The route settles on #general, though its chat isn't shown.
+wait core route channel/$ID(cc-general)
+wait core connection connected
+# In front, as a user's window is: a chat on screen would be marked read.
+window activate
 
-# 1. The landing: the home, with no composer drawn.
+# 1. The landing: the home, with no composer drawn, and nothing marked read.
 wait core element channel-$ID(cc-general)
 wait core no-element composer-actions
 wait idle
 shot 01-home
+wait core requests markAsRead == 0 within 2
 
-# 2. A channel row: the chat.
+# 2. A message while the home shows: #general turns unread, and still nothing is marked read.
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"posted while the home shows\"}"
+wait core w9 unread $ID(cc-general) 1 within 5
+wait core requests markAsRead == 0 within 2
+wait idle
+shot 02-home-unread
+
+# 3. A channel row: the chat, which is read now.
 click channel-$ID(cc-general)
+wait core channel $ID(cc-general)
 wait core element composer-actions
 wait core no-element channel-$ID(cc-general)
+wait core requests markAsRead >= 1 within 5
+wait core w9 unread $ID(cc-general) 0 within 5
 wait idle
-shot 02-chat
+shot 03-chat
 
-# 3. Back: the home again.
+# 4. Back: the home again.
 click phone-back
 wait core element channel-$ID(cc-general)
 wait core no-element composer-actions
 
-# 4. From the chat, the community's path: the home, though the route settles on the channel.
+# 5. Settings from the home, then Close: the home it was opened from, not the chat.
+click dock-all
+wait core element sheet-settings
+click sheet-settings
+wait core route settings
+click settings-close
+wait core route channel
+wait core element channel-$ID(cc-general)
+wait core no-element composer-actions
+
+# 6. From the chat, a link to the community: the home, though the route settles on the channel.
 click channel-$ID(cc-general)
 wait core element composer-actions
-navigate /community/$ID(c-couch)
-wait core channel $ID(cc-general)
+link "semaphore://community/$ID(c-couch)"
+wait core route channel/$ID(cc-general)
 wait core element channel-$ID(cc-general)
 wait core no-element composer-actions
 wait idle
-shot 03-home-from-path
+shot 04-home-from-link
