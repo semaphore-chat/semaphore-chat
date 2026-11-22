@@ -771,3 +771,87 @@ fn a_sheet_is_centred_when_wide_and_a_bottom_sheet_when_narrow(cx: &mut TestAppC
         assert_eq!(panel.left(), px(0.));
     });
 }
+
+// ---------------------------------------------------------------------------------------------
+// IconButton's Lounge additions: the badge, `current` and the Lounge glyph
+
+#[test]
+fn an_icon_buttons_name_puts_current_before_the_count() {
+    use super::icon_button_name;
+    assert_eq!(icon_button_name("Inbox", false, None), "Inbox");
+    assert_eq!(
+        icon_button_name("Inbox", false, Some("4 unread")),
+        "Inbox, 4 unread"
+    );
+    assert_eq!(
+        icon_button_name("Inbox", true, Some("9 unread")),
+        "Inbox, current, 9 unread"
+    );
+    assert_eq!(icon_button_name("Inbox", true, None), "Inbox, current");
+}
+
+#[gpui_kit::test]
+fn a_badge_names_its_count_and_a_zero_count_adds_nothing(cx: &mut TestAppContext) {
+    let (rig, _) = host(cx, |_| {
+        div()
+            .child(IconButton::new("counted", I::Notifications, "Inbox").badge(4, "4 unread"))
+            .child(IconButton::new("zero", I::Notifications, "Inbox").badge(0, "0 unread"))
+            .child(
+                IconButton::new("here", I::Notifications, "Inbox")
+                    .current(true)
+                    .badge(9, "9 unread"),
+            )
+            .into_any_element()
+    });
+    let label = |id: &'static str, cx: &mut TestAppContext| {
+        rig.with(cx, move |_, window, _| {
+            window.find(id).label().map(str::to_owned)
+        })
+    };
+    assert_eq!(label("counted", cx).as_deref(), Some("Inbox, 4 unread"));
+    assert_eq!(label("zero", cx).as_deref(), Some("Inbox"));
+    assert_eq!(
+        label("here", cx).as_deref(),
+        Some("Inbox, current, 9 unread")
+    );
+}
+
+#[test]
+fn a_lounge_glyph_takes_the_icons_place_and_current_is_not_selected() {
+    use semaphore_design::LoungeIcon;
+    let plain = IconButton::new("all", I::GridView, "All communities");
+    assert_eq!(plain.lounge_glyph(), None);
+    let lounge = IconButton::new("all", I::GridView, "All communities")
+        .lounge_icon(LoungeIcon::LayoutGrid)
+        .current(true);
+    assert_eq!(lounge.lounge_glyph(), Some(LoungeIcon::LayoutGrid));
+    assert!(lounge.is_current());
+}
+
+#[gpui_kit::test]
+fn the_dock_tab_stop_rests_on_a_current_button(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, |log| {
+        let (inbox, before) = (log.clone(), log.clone());
+        div()
+            .child(
+                Button::new("before", "Before")
+                    .on_click(move |_, _, _| before.borrow_mut().push("before".into())),
+            )
+            .child(
+                Dock::new("dock", "Communities")
+                    .start(DockEntry::button(
+                        "inbox",
+                        IconButton::new("inbox", I::Notifications, "Inbox")
+                            .current(true)
+                            .on_click(move |_, _, _| inbox.borrow_mut().push("inbox".into())),
+                    ))
+                    .item(DockItem::new("c1", "Couch Co-op"))
+                    .item(DockItem::new("c2", "Friday LAN")),
+            )
+            .into_any_element()
+    });
+    rig.click(cx, "before");
+    press(&rig, cx, "tab");
+    press(&rig, cx, "enter");
+    assert_eq!(*log.borrow(), ["before", "inbox"]);
+}

@@ -115,7 +115,7 @@ impl RenderOnce for ShellDock {
                 self.inbox_count,
                 count_words(self.inbox_count, CountMeaning::Unread),
             )
-            .selected(self.current == DockCurrent::Inbox)
+            .current(self.current == DockCurrent::Inbox)
             .on_click(move |_, window, cx| {
                 if let Some(open) = &on_inbox {
                     open(window, cx);

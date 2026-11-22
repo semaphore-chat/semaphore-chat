@@ -60,6 +60,8 @@ pub struct ThreeIslands {
     on_right_close: Option<Action>,
     call: Option<CallSlot>,
     phone_pane: PhonePane,
+    left_scroll: Option<ScrollHandle>,
+    right_scroll: Option<ScrollHandle>,
 }
 
 impl ThreeIslands {
@@ -84,6 +86,8 @@ impl ThreeIslands {
             on_right_close: None,
             call: None,
             phone_pane: PhonePane::Centre,
+            left_scroll: None,
+            right_scroll: None,
         }
     }
 
@@ -133,6 +137,18 @@ impl ThreeIslands {
         self
     }
 
+    /// Tracks the left island's scrolling part, so its content can bring a row into view.
+    pub fn left_scroll(mut self, handle: &ScrollHandle) -> Self {
+        self.left_scroll = Some(handle.clone());
+        self
+    }
+
+    /// Likewise the right content's, island or Sheet.
+    pub fn right_scroll(mut self, handle: &ScrollHandle) -> Self {
+        self.right_scroll = Some(handle.clone());
+        self
+    }
+
     pub fn phone_pane(mut self, pane: PhonePane) -> Self {
         self.phone_pane = pane;
         self
@@ -177,6 +193,9 @@ impl RenderOnce for ThreeIslands {
                     .nav(self.left_label.clone())
                     .padding(Padding::Md)
                     .scroll(true)
+                    .when_some(self.left_scroll.clone(), |island, handle| {
+                        island.track_scroll(&handle)
+                    })
                     .footer(self.left_footer)
                     .child(self.left),
             )
@@ -210,6 +229,9 @@ impl RenderOnce for ThreeIslands {
                             Island::new("three-islands-right-island")
                                 .aside(name.clone())
                                 .scroll(true)
+                                .when_some(self.right_scroll.clone(), |island, handle| {
+                                    island.track_scroll(&handle)
+                                })
                                 .child(right),
                         ),
                 );
@@ -218,6 +240,9 @@ impl RenderOnce for ThreeIslands {
                 sheet = Some(
                     Sheet::new("three-islands-right-sheet", name.clone())
                         .body(right)
+                        .when_some(self.right_scroll.clone(), |sheet, handle| {
+                            sheet.scroll_handle(&handle)
+                        })
                         .on_request_close(move |_, window, cx| {
                             if let Some(close) = &close {
                                 close(window, cx);

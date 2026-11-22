@@ -99,6 +99,7 @@ pub struct Island {
     /// `Some` splits the island into a body and a foot, even while the foot is `None`.
     footer: Option<Option<AnyElement>>,
     children: Vec<AnyElement>,
+    scroll_handle: Option<ScrollHandle>,
 }
 
 impl Island {
@@ -110,7 +111,15 @@ impl Island {
             scroll: false,
             footer: None,
             children: Vec::new(),
+            scroll_handle: None,
         }
+    }
+
+    /// With [`Island::scroll`]: tracks the scrolling part with `handle`, so the content can
+    /// bring a row into view.
+    pub fn track_scroll(mut self, handle: &ScrollHandle) -> Self {
+        self.scroll_handle = Some(handle.clone());
+        self
     }
 
     /// A navigation landmark, named `label`.
@@ -190,6 +199,10 @@ impl RenderOnce for Island {
                         .overflow_y_scroll()
                         .overflow_x_hidden()
                 })
+                .when_some(
+                    self.scroll_handle.clone().filter(|_| self.scroll),
+                    |root, handle| root.track_scroll(&handle),
+                )
                 .when(!self.scroll, |root| root.overflow_hidden())
                 .children(self.children),
             Some(footer) => root
@@ -206,6 +219,10 @@ impl RenderOnce for Island {
                         .when(self.scroll, |body| {
                             body.min_h_0().overflow_y_scroll().overflow_x_hidden()
                         })
+                        .when_some(
+                            self.scroll_handle.clone().filter(|_| self.scroll),
+                            |body, handle| body.track_scroll(&handle),
+                        )
                         .children(self.children),
                 )
                 .children(footer.map(|footer| {
@@ -702,7 +719,20 @@ impl DockEntry {
     }
 
     fn is_current(&self) -> bool {
-        matches!(self, DockEntry::Item(item) if item.current)
+        match self {
+            DockEntry::Item(item) => item.current,
+            DockEntry::Button(_, button) => button.is_current(),
+            _ => false,
+        }
+    }
+
+    /// What typeahead matches: an item's name, a button's label.
+    fn label(&self) -> String {
+        match self {
+            DockEntry::Item(item) => item.name.to_string(),
+            DockEntry::Button(_, button) => button.label().to_string(),
+            _ => String::new(),
+        }
     }
 
     fn render(self, focus: Option<(FocusHandle, bool)>) -> AnyElement {
@@ -789,11 +819,11 @@ const DOCK_PARAMS: list_focus::Params = list_focus::Params {
     typeahead_ms: semaphore_design::lounge::MOTION_TYPEAHEAD_MS,
 };
 
-/// The dock's keys: a horizontal list (Left and Right, Up and Down, Home and End), no typeahead,
-/// as the web's Dock on `useListFocus({ orientation: 'horizontal' })`.
+/// The dock's keys: a horizontal list (Left and Right, Up and Down, Home and End) with typeahead
+/// on the names, as the web's `ShellDock` on `useListFocus({ orientation: 'horizontal' })`.
 const DOCK_KEYS: ListKeys = ListKeys {
     orientation: ListOrientation::Horizontal,
-    typeahead: false,
+    typeahead: true,
     allow_shift: false,
 };
 
@@ -887,7 +917,7 @@ impl RenderOnce for Dock {
             .filter_map(|entry| {
                 entry.key().map(|key| list_focus::Row {
                     id: key.to_string(),
-                    label: String::new(),
+                    label: entry.label(),
                     disabled: entry.is_disabled(),
                 })
             })
@@ -905,8 +935,13 @@ impl RenderOnce for Dock {
         // What the web host feeds the reducer: the rows (with their disabled state), the
         // selection (the current item), and where focus is. Focus moves (a click, Tab, an arrow)
         // re-render the window, so the focused entry is read here.
+        // The selection is the current entry wherever it is: an item, or a fixed button (the Inbox
+        // on its own route).
+        let selected_key = entries()
+            .find(|entry| entry.is_current())
+            .and_then(|entry| entry.key().map(ToString::to_string));
         let (handles, scroll, entered, stop) = state.update(cx, |state, cx| {
-            let selected = current.as_ref().map(|(_, key)| key.clone());
+            let selected = selected_key.clone();
             let synced = state.focus.sync(rows.clone(), Some(selected), window, cx);
             (
                 synced.handles,

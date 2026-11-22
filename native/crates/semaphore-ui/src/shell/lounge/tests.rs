@@ -5,7 +5,7 @@ use super::dock::dock_item_id;
 use super::lines::*;
 use super::*;
 use crate::dms::rig::{Rig, rig};
-use crate::kit::text_state;
+use crate::kit::{Button, text_state};
 use crate::shell::MemberRow;
 use core::prelude::v1::test;
 use gpui_kit::component::input::InputState;
@@ -84,7 +84,7 @@ fn the_inbox_counts_dm_unread_and_every_communitys_mentions_once() {
 }
 
 #[test]
-fn around_and_the_members_button_say_a_number_only_when_known() {
+fn around_and_the_members_button_words_say_a_number_only_when_known() {
     assert_eq!(around_line(Some(9)).as_deref(), Some("9 around"));
     assert_eq!(around_line(None), None);
     assert_eq!(
@@ -622,29 +622,57 @@ fn a_not_member_island_offers_only_the_way_out(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn the_channel_list_is_one_tab_stop_moved_with_the_arrows(cx: &mut TestAppContext) {
     let (rig, log) = host(cx, 1280., |log, _, _, _| {
-        let on_channel = log.clone();
-        ChannelSection::new(items(), Face::Ready)
-            .selected(Some("ch-general".into()))
-            .on_channel(move |id, _, _| on_channel.borrow_mut().push(id.to_owned()))
+        let (on_channel, before, after) = (log.clone(), logs(log, "before"), logs(log, "after"));
+        div()
+            .child(
+                Button::new("before", "Before").on_click(move |_, window, cx| before(window, cx)),
+            )
+            .child(
+                ChannelSection::new(items(), Face::Ready)
+                    .selected(Some("ch-clips".into()))
+                    .on_channel(move |id, _, _| on_channel.borrow_mut().push(id.to_owned())),
+            )
+            .child(Button::new("after", "After").on_click(move |_, window, cx| after(window, cx)))
             .into_any_element()
     });
-    rig.click(cx, "channel-ch-general");
+    rig.click(cx, "before");
     rig.with(cx, |_, window, _| window.activate_window());
-    for key in ["down", "enter", "end", "enter", "home", "enter"] {
-        rig.with(cx, |_, window, cx| window.press(key, cx));
+    // Tab enters on the selected row, the list's one stop; Tab again leaves the list, so no
+    // other row is a stop.
+    for key in [
+        "tab", "enter", "down", "enter", "home", "enter", "end", "enter", "tab", "enter",
+    ] {
+        rig.with(cx, move |_, window, cx| window.press(key, cx));
     }
     assert_eq!(
         entries(&log),
-        ["ch-general", "ch-clips", "ch-lfg", "ch-general"]
+        [
+            "before",
+            "ch-clips",
+            "ch-lfg",
+            "ch-general",
+            "ch-lfg",
+            "after"
+        ]
     );
 }
 
 #[gpui_kit::test]
 fn a_failed_channel_load_offers_try_again(cx: &mut TestAppContext) {
-    let (rig, _) = host(cx, 1280., |_, _, _, _| {
-        ChannelSection::new(items(), Face::Error("down".into())).into_any_element()
+    let (rig, log) = host(cx, 1280., |log, _, _, _| {
+        let retry = logs(log, "retry");
+        ChannelSection::new(
+            items(),
+            Face::Error(
+                "down".into(),
+                Retry::new(move |window, cx| retry(window, cx)),
+            ),
+        )
+        .into_any_element()
     });
     assert!(!rig.has(cx, "channel-ch-general"));
+    rig.click(cx, "channels-load-error-action");
+    assert_eq!(entries(&log), ["retry"]);
 }
 
 fn summary(id: &str, online: bool, role: Option<&str>) -> MemberSummary {
@@ -695,4 +723,186 @@ fn the_user_cards_button_opens_the_account_menu(cx: &mut TestAppContext) {
     });
     rig.click(cx, "user-card-menu");
     assert_eq!(entries(&log), ["account"]);
+}
+
+fn label_of(rig: &Rig<Host, ()>, cx: &mut TestAppContext, id: &str) -> Option<String> {
+    let id = id.to_owned();
+    rig.with(cx, move |_, window, _| {
+        window
+            .try_find(id)
+            .and_then(|found| found.label().map(str::to_owned))
+    })
+}
+
+fn bounds_of(rig: &Rig<Host, ()>, cx: &mut TestAppContext, id: &str) -> Bounds<Pixels> {
+    let id = id.to_owned();
+    rig.with(cx, move |_, window, _| window.find(id).bounds())
+}
+
+fn inside(row: Bounds<Pixels>, view: Bounds<Pixels>) -> bool {
+    row.top() >= view.top() && row.bottom() <= view.bottom()
+}
+
+#[gpui_kit::test]
+fn the_members_button_is_named_as_an_action(cx: &mut TestAppContext) {
+    let (rig, _) = host(cx, 1280., |_, _, _, _| {
+        CommunityHeader::new(Some("Couch Co-op"))
+            .around(Some(12))
+            .on_show_members(|_, _| {})
+            .into_any_element()
+    });
+    assert_eq!(
+        label_of(&rig, cx, "community-members").as_deref(),
+        Some("12 around, show members")
+    );
+}
+
+#[gpui_kit::test]
+fn join_and_leave_name_their_room(cx: &mut TestAppContext) {
+    let (rig, _) = host(cx, 1280., |log, _, _, _| {
+        left_island(log).into_any_element()
+    });
+    assert_eq!(
+        label_of(&rig, cx, "room-join-vc-squad").as_deref(),
+        Some("Join Squad Up")
+    );
+    assert_eq!(
+        label_of(&rig, cx, "room-leave-vc-afk").as_deref(),
+        Some("Leave AFK")
+    );
+}
+
+#[gpui_kit::test]
+fn a_press_on_the_community_menu_reaches_nothing_beneath(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, 390., |log, _, _, _| {
+        let (show, settings) = (logs(log, "show"), logs(log, "settings"));
+        CommunityHeader::new(Some("Couch Co-op"))
+            .around(Some(9))
+            .can_settings(true)
+            .menu_open(true)
+            .on_show_members(move |window, cx| show(window, cx))
+            .on_settings(move |window, cx| settings(window, cx))
+            .into_any_element()
+    });
+    // Its top edge, where it could lie over the header's members button.
+    rig.with(cx, |_, window, cx| {
+        window.click_at("community-settings", point(px(8.), px(1.)), cx)
+    });
+    assert_eq!(entries(&log), ["settings"]);
+}
+
+#[gpui_kit::test]
+fn end_brings_the_last_of_many_channels_into_view(cx: &mut TestAppContext) {
+    let channels: Vec<ChannelItem> = (1..=200)
+        .map(|n| ChannelItem {
+            id: format!("ch-{n}"),
+            name: format!("channel-{n}"),
+            unread: false,
+            mentions: 0,
+            private: false,
+            announcement: false,
+        })
+        .collect();
+    let scroll = ScrollHandle::new();
+    let (rig, _) = host(cx, 1280., move |_, _, _, _| {
+        div()
+            .h(px(400.))
+            .flex()
+            .child(
+                crate::kit::Island::new("test-island")
+                    .scroll(true)
+                    .track_scroll(&scroll)
+                    .child(
+                        ChannelSection::new(channels.clone(), Face::Ready)
+                            .selected(Some("ch-1".into()))
+                            .scroll(&scroll),
+                    ),
+            )
+            .into_any_element()
+    });
+    let island = bounds_of(&rig, cx, "test-island");
+    assert!(
+        !inside(bounds_of(&rig, cx, "channel-ch-200"), island),
+        "off screen at first"
+    );
+    rig.click(cx, "channel-ch-1");
+    rig.with(cx, |_, window, _| window.activate_window());
+    rig.with(cx, |_, window, cx| window.press("end", cx));
+    rig.with(cx, |_, _, _| {});
+    assert!(inside(bounds_of(&rig, cx, "channel-ch-200"), island));
+    rig.with(cx, |_, window, cx| window.press("home", cx));
+    rig.with(cx, |_, _, _| {});
+    assert!(inside(bounds_of(&rig, cx, "channel-ch-1"), island));
+}
+
+#[gpui_kit::test]
+fn the_sheet_opens_with_the_current_community_in_view(cx: &mut TestAppContext) {
+    let (rig, _) = host(cx, 1280., |_, filter, _, _| {
+        AllCommunitiesSheet::new("moss.social", sheet_communities(60), Face::Ready)
+            .current(Some("c55".into()))
+            .filter(filter)
+            .into_any_element()
+    });
+    rig.with(cx, |_, _, _| {});
+    let body = bounds_of(&rig, cx, "sheet-body");
+    assert!(inside(bounds_of(&rig, cx, &sheet_row_id("c55")), body));
+    assert!(!inside(bounds_of(&rig, cx, &sheet_row_id("c1")), body));
+}
+
+#[gpui_kit::test]
+fn a_sheet_row_says_its_mentions_once(cx: &mut TestAppContext) {
+    let (rig, _) = host(cx, 1280., |_, filter, _, _| {
+        let mut communities = sheet_communities(3);
+        communities[1].mentions = 2;
+        communities[2].mentions = 3;
+        communities[2].in_your_call = true;
+        AllCommunitiesSheet::new("moss.social", communities, Face::Ready)
+            .filter(filter)
+            .into_any_element()
+    });
+    let quiet = label_of(&rig, cx, &sheet_row_id("c2")).unwrap_or_default();
+    assert_eq!(quiet.matches("2 mentions").count(), 1, "{quiet}");
+    let in_call = label_of(&rig, cx, &sheet_row_id("c3")).unwrap_or_default();
+    assert!(in_call.contains("You're in a call here"), "{in_call}");
+    assert_eq!(in_call.matches("3 mentions").count(), 1, "{in_call}");
+}
+
+#[gpui_kit::test]
+fn the_inbox_on_its_route_is_current_and_says_so(cx: &mut TestAppContext) {
+    let (rig, _) = host(cx, 1280., |_, _, _, _| {
+        ShellDock::new(dock_communities(2), DockCurrent::Inbox, DockStatus::Ready)
+            .inbox_count(9)
+            .into_any_element()
+    });
+    assert_eq!(
+        label_of(&rig, cx, "dock-inbox").as_deref(),
+        Some("Inbox, current, 9 unread")
+    );
+}
+
+#[gpui_kit::test]
+fn typing_in_the_dock_jumps_to_a_community_by_name(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, 1280., |log, _, _, _| {
+        let on_community = log.clone();
+        let communities = ["Couch Co-op", "Friday LAN", "Lumen Studio"]
+            .iter()
+            .enumerate()
+            .map(|(n, name)| DockCommunity {
+                id: format!("c{}", n + 1),
+                name: (*name).into(),
+                file: None,
+                mentions: 0,
+                new_messages: false,
+            })
+            .collect();
+        ShellDock::new(communities, DockCurrent::None, DockStatus::Ready)
+            .on_community(move |id, _, _| on_community.borrow_mut().push(id.to_owned()))
+            .into_any_element()
+    });
+    rig.click(cx, "community-c1");
+    rig.with(cx, |_, window, _| window.activate_window());
+    for key in ["l", "enter"] {
+        rig.with(cx, move |_, window, cx| window.press(key, cx));
+    }
+    assert_eq!(entries(&log), ["c1", "c3"]);
 }

@@ -8,7 +8,7 @@
 //! as W5's members panel did. Row ids are `member-<id>`.
 
 use super::lines::{MemberGroups, around_line, member_line};
-use super::{Act, Face, IdAct, MemberSummary, Rows, column, focused, text_line};
+use super::{Face, IdAct, MemberSummary, Rows, column, focused, text_line};
 use crate::kit::{Avatar, ListRow, Pill, PillSize, Presence, RowSize};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
@@ -28,7 +28,7 @@ pub struct MembersIsland {
     face: Face,
     on_profile: Option<IdAct>,
     on_menu: Option<MenuAct>,
-    on_retry: Option<Act>,
+    scroll: Option<ScrollHandle>,
 }
 
 impl MembersIsland {
@@ -40,7 +40,7 @@ impl MembersIsland {
             face,
             on_profile: None,
             on_menu: None,
-            on_retry: None,
+            scroll: None,
         }
     }
 
@@ -70,8 +70,10 @@ impl MembersIsland {
         self
     }
 
-    pub fn on_retry(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_retry = Some(Rc::new(handler));
+    /// The handle of the island or sheet the list scrolls in: a row that takes focus is
+    /// brought into view.
+    pub fn scroll(mut self, handle: &ScrollHandle) -> Self {
+        self.scroll = Some(handle.clone());
         self
     }
 }
@@ -81,6 +83,7 @@ fn member_row(
     rows: &Rows,
     on_profile: Option<IdAct>,
     on_menu: Option<MenuAct>,
+    cx: &App,
 ) -> AnyElement {
     let away = !member.online;
     let mut row = ListRow::new(
@@ -115,7 +118,7 @@ fn member_row(
         let id = member.id.clone();
         row = row.on_click(move |window, cx| open(&id, window, cx));
     }
-    let row = focused(row, rows, &member.id);
+    let row = focused(row, rows, &member.id, cx);
     let id = member.id.clone();
     div()
         .id(SharedString::from(format!("member-{}", member.id)))
@@ -146,6 +149,7 @@ impl RenderOnce for MembersIsland {
                 .map(|member| (member.id.clone(), member.name.clone()))
                 .collect(),
             None,
+            self.scroll.clone(),
             window,
             cx,
         );
@@ -157,7 +161,13 @@ impl RenderOnce for MembersIsland {
                     .gap(px(SPACE_XS))
                     .child(text_line(t::TEXT_SECTION, *title).text_color(secondary))
                     .children(members.iter().map(|member| {
-                        member_row(member, &rows, self.on_profile.clone(), self.on_menu.clone())
+                        member_row(
+                            member,
+                            &rows,
+                            self.on_profile.clone(),
+                            self.on_menu.clone(),
+                            cx,
+                        )
                     }))
                     .into_any_element()
             })
@@ -185,7 +195,7 @@ impl RenderOnce for MembersIsland {
             )
             .child(
                 self.face
-                    .view("members-load", self.on_retry.clone())
+                    .view("members-load")
                     .lines(8)
                     .empty("No members yet. People show here once they join.")
                     .error_title("Couldn't load members")

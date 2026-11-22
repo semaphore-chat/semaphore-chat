@@ -16,7 +16,7 @@ use crate::theme::SemTheme;
 use gpui_kit::base;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_design::lounge::{self as t, SPACE_SM, SPACE_XS};
+use semaphore_design::lounge::{self as t, BORDER_FOCUS, RADIUS_SM, SPACE_SM, SPACE_XS};
 use semaphore_design::{LoungeIcon, person_colour};
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -126,6 +126,7 @@ impl RenderOnce for VoiceRoomCard {
                     SharedString::from(format!("room-leave-{}", self.id)),
                     "Leave",
                 )
+                .accessibility_label(format!("Leave {}", self.name))
                 .soft()
                 .size(size)
                 .on_click(move |_, window, cx| {
@@ -138,6 +139,7 @@ impl RenderOnce for VoiceRoomCard {
             let join = self.on_join.clone();
             Some(
                 Button::new(SharedString::from(format!("room-join-{}", self.id)), "Join")
+                    .accessibility_label(format!("Join {}", self.name))
                     .soft()
                     .size(size)
                     .loading(self.joining)
@@ -152,8 +154,14 @@ impl RenderOnce for VoiceRoomCard {
         };
         let open = self.on_open.clone();
         let hover = sem.role.accent;
+        let focus = sem.role.focus;
         let name = base::Button::new(SharedString::from(format!("channel-{}", self.id)))
             .accessibility_label(format!("{}, open the room", self.name))
+            // The kit's row ring: a constant-width border, the focus colour while focused.
+            .rounded(px(RADIUS_SM))
+            .border(px(BORDER_FOCUS))
+            .border_color(transparent_black())
+            .focus_visible(move |style| style.border_color(focus))
             .flex()
             .w_full()
             .min_w_0()

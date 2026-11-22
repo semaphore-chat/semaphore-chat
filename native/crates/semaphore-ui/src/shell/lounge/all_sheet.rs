@@ -10,7 +10,7 @@ use super::lines::{
     ALL_LABEL, CommunityState, FILTER_THRESHOLD, matches_filter, mention_text,
     notification_count_text, state_line,
 };
-use super::{Act, Face, IdAct, Rows, column, focused, text_line};
+use super::{Face, IdAct, Rows, column, focused, text_line};
 use crate::kit::{
     Avatar, AvatarShape, AvatarSize, Badge, BadgeTone, FieldShape, Icon, ListRow, RowSize, Sheet,
     SheetCloseReason, TextField,
@@ -113,7 +113,6 @@ pub struct AllCommunitiesSheet {
     on_close: Option<CloseAct>,
     on_community: Option<IdAct>,
     on_foot: Option<FootAct>,
-    on_retry: Option<Act>,
 }
 
 impl AllCommunitiesSheet {
@@ -136,7 +135,6 @@ impl AllCommunitiesSheet {
             on_close: None,
             on_community: None,
             on_foot: None,
-            on_retry: None,
         }
     }
 
@@ -191,12 +189,6 @@ impl AllCommunitiesSheet {
         self.on_foot = Some(Rc::new(handler));
         self
     }
-
-    /// Try again, on the error face.
-    pub fn on_retry(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_retry = Some(Rc::new(handler));
-        self
-    }
 }
 
 impl RenderOnce for AllCommunitiesSheet {
@@ -217,6 +209,12 @@ impl RenderOnce for AllCommunitiesSheet {
             Vec::new()
         };
         let foot = foot_rows(self.can_create, self.phone_foot);
+        // The body's scroll, kept while the sheet is open: rows that take focus are brought into
+        // view, and the current community is in the middle when the list first shows.
+        let scroll = window
+            .use_keyed_state("all-communities-scroll", cx, |_, _| ScrollHandle::new())
+            .read(cx)
+            .clone();
         let rows = Rows::new(
             "all-communities-list",
             shown
@@ -228,9 +226,15 @@ impl RenderOnce for AllCommunitiesSheet {
                 )
                 .collect(),
             self.current.clone(),
+            Some(scroll.clone()),
             window,
             cx,
         );
+        let current_shown = self
+            .current
+            .as_deref()
+            .filter(|id| shown.iter().any(|community| community.id == *id));
+        rows.centre_once(current_shown, window, cx);
 
         let community_rows: Vec<AnyElement> = shown
             .iter()
@@ -262,16 +266,18 @@ impl RenderOnce for AllCommunitiesSheet {
                     }
                 });
                 if community.mentions > 0 {
-                    row = row
-                        .trailing(
-                            Badge::new(mention_text(community.mentions))
-                                .count(community.mentions)
-                                .tone(BadgeTone::Danger)
-                                .decorative(true),
-                        )
-                        .trailing_label(mention_text(community.mentions));
+                    row = row.trailing(
+                        Badge::new(mention_text(community.mentions))
+                            .count(community.mentions)
+                            .tone(BadgeTone::Danger)
+                            .decorative(true),
+                    );
+                    // The state line says the mentions, unless the call takes it.
+                    if community.in_your_call {
+                        row = row.trailing_label(mention_text(community.mentions));
+                    }
                 }
-                focused(row, &rows, &community.id).into_any_element()
+                focused(row, &rows, &community.id, cx)
             })
             .collect();
         let no_match = (filtering && ready && shown.is_empty()).then(|| {
@@ -288,7 +294,7 @@ impl RenderOnce for AllCommunitiesSheet {
         };
         let list = self
             .face
-            .view("all-communities-load", self.on_retry.clone())
+            .view("all-communities-load")
             .lines(4)
             .empty(empty)
             .error_title("Couldn't load your communities")
@@ -320,7 +326,7 @@ impl RenderOnce for AllCommunitiesSheet {
                         )
                         .trailing_label(words);
                 }
-                focused(row, &rows, foot_row.id()).into_any_element()
+                focused(row, &rows, foot_row.id(), cx)
             })
             .collect();
 
@@ -348,6 +354,7 @@ impl RenderOnce for AllCommunitiesSheet {
         let body = rows.keys(column().gap(px(SPACE_XS)).child(list).children(foot_rows));
         let on_close = self.on_close.clone();
         Sheet::new("all-communities", ALL_LABEL)
+            .scroll_handle(&scroll)
             .top(top)
             .body(body)
             .on_request_close(move |reason, window, cx| {

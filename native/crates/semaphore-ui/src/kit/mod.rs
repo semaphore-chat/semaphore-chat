@@ -60,7 +60,7 @@ pub use behaviour::{
 pub use bus::{emit_core_event, on_core_event};
 pub use controls::{
     Button, ButtonSize, CheckState, Checkbox, IconButton, IconButtonVariant, KeyCap, Orientation,
-    Radio, RadioGroup, RadioOption, Slider, Switch,
+    Radio, RadioGroup, RadioOption, Slider, Switch, icon_button_name,
 };
 pub use display::{
     Alert, Avatar, AvatarImages, AvatarShape, AvatarSize, AvatarStack, Badge, BadgeTone, Chip,

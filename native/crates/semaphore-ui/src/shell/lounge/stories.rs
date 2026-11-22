@@ -8,7 +8,7 @@ use super::lines::{CallStatus, MemberGroups, Mic};
 use super::{
     AllCommunitiesSheet, ChannelItem, ChannelSection, CommunityHeader, CommunityLeft,
     CommunityLeftAccess, DockCommunity, DockCurrent, DockStatus, Face, MemberSummary,
-    MembersIsland, RoomPerson, SheetCommunity, ShellDock, UserCard, VoiceRoomCard, column,
+    MembersIsland, Retry, RoomPerson, SheetCommunity, ShellDock, UserCard, VoiceRoomCard, column,
     text_line,
 };
 use crate::kit::{AppFrame, Avatar, PhonePane, ThreeIslands, WidthRange, text_state};
@@ -464,6 +464,8 @@ struct Demo {
     sheet: bool,
     menu: bool,
     right_open: Option<bool>,
+    left_scroll: ScrollHandle,
+    right_scroll: ScrollHandle,
 }
 
 fn sample_centre(cx: &App) -> Div {
@@ -578,7 +580,8 @@ impl Render for Demo {
         let channels = ChannelSection::new(s.channels.clone(), s.channel_face.clone())
             .selected(s.selected.map(Into::into))
             .busy(s.busy.map(Into::into))
-            .has_rooms(!s.rooms.is_empty());
+            .has_rooms(!s.rooms.is_empty())
+            .scroll(&self.left_scroll);
         let rooms = s
             .rooms
             .iter()
@@ -611,6 +614,8 @@ impl Render for Demo {
         let mut islands = ThreeIslands::new(left, "Couch Co-op", sample_centre(cx), "general")
             .dock(dock)
             .phone_pane(s.pane)
+            .left_scroll(&self.left_scroll)
+            .right_scroll(&self.right_scroll)
             .right_open(self.right_open)
             .on_right_close(close_right);
         if let Some(members) = &s.members {
@@ -619,6 +624,7 @@ impl Render for Demo {
                     MembersIsland::new(members.groups.clone(), members.face.clone())
                         .around(members.around)
                         .truncated(members.truncated)
+                        .scroll(&self.right_scroll)
                         .on_profile(|_, _, _| {}),
                 )
                 .right_label("Members");
@@ -690,6 +696,8 @@ fn demo(scene: fn() -> Scene, window: &mut Window, cx: &mut App) -> AnyView {
             sheet: scene.sheet,
             menu: scene.menu,
             right_open: scene.right_open,
+            left_scroll: ScrollHandle::new(),
+            right_scroll: ScrollHandle::new(),
             scene,
             filter,
         }
@@ -788,7 +796,7 @@ pub fn stories() -> Vec<Story> {
             ..sheet()
         }),
         story!("all-communities-sheet-load-error", || Scene {
-            sheet_face: Face::Error("The server didn't answer.".into()),
+            sheet_face: Face::Error("The server didn't answer.".into(), Retry::new(|_, _| {})),
             ..sheet()
         }),
         story!("all-communities-sheet-long-names", || {
@@ -882,7 +890,7 @@ pub fn stories() -> Vec<Story> {
             ..left()
         }),
         story!("community-left-load-error", || Scene {
-            channel_face: Face::Error("The server didn't answer.".into()),
+            channel_face: Face::Error("The server didn't answer.".into(), Retry::new(|_, _| {})),
             rooms: Vec::new(),
             ..left()
         }),
@@ -976,7 +984,8 @@ pub fn stories() -> Vec<Story> {
         story!("members-island-load-error", || {
             let mut scene = members(MemberGroups::default(), None);
             if let Some(members) = &mut scene.members {
-                members.face = Face::Error("The server didn't answer.".into());
+                members.face =
+                    Face::Error("The server didn't answer.".into(), Retry::new(|_, _| {}));
             }
             scene
         }),

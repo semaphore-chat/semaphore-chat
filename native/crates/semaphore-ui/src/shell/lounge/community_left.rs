@@ -123,9 +123,10 @@ impl RenderOnce for CommunityHeader {
         };
         let line: AnyElement = match (&self.on_show_members, self.members_shown) {
             (Some(show), false) => {
-                let (words, _) = members_button_text(self.around);
+                let (words, name) = members_button_text(self.around);
                 let show = show.clone();
                 Button::new("community-members", words)
+                    .accessibility_label(name)
                     .text()
                     .size(ButtonSize::Sm)
                     .on_click(move |_, window, cx| show(window, cx))
@@ -186,11 +187,10 @@ impl RenderOnce for CommunityHeader {
                             anchored()
                                 .anchor(Anchor::TopRight)
                                 .snap_to_window_with_margin(px(LAYOUT_GUTTER))
-                                .child(
-                                    div()
-                                        .w(px(t::LAYOUT_LEFT_COLUMN - 2. * SPACE_LG))
-                                        .child(menu),
-                                ),
+                                // Its own width (the kit's minimum) under the chevron, as the
+                                // web's `placement="bottom-end"`; occluding, so a press on it
+                                // reaches nothing beneath.
+                                .child(div().occlude().child(menu)),
                         )
                         .with_priority(1),
                     )
@@ -255,7 +255,7 @@ pub struct ChannelSection {
     has_rooms: bool,
     busy: Option<String>,
     on_channel: Option<IdAct>,
-    on_retry: Option<Act>,
+    scroll: Option<ScrollHandle>,
 }
 
 impl ChannelSection {
@@ -267,7 +267,7 @@ impl ChannelSection {
             has_rooms: false,
             busy: None,
             on_channel: None,
-            on_retry: None,
+            scroll: None,
         }
     }
 
@@ -293,8 +293,10 @@ impl ChannelSection {
         self
     }
 
-    pub fn on_retry(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_retry = Some(Rc::new(handler));
+    /// The handle of the island the list scrolls in: a row that takes focus is brought into
+    /// view.
+    pub fn scroll(mut self, handle: &ScrollHandle) -> Self {
+        self.scroll = Some(handle.clone());
         self
     }
 }
@@ -309,6 +311,7 @@ impl RenderOnce for ChannelSection {
                 .map(|channel| (channel.id.clone(), channel.name.clone()))
                 .collect(),
             self.selected.clone(),
+            self.scroll.clone(),
             window,
             cx,
         );
@@ -352,7 +355,7 @@ impl RenderOnce for ChannelSection {
                             .decorative(true),
                     );
                 }
-                focused(row, &rows, &channel.id).into_any_element()
+                focused(row, &rows, &channel.id, cx)
             })
             .collect();
         let empty = if self.has_rooms {
@@ -365,7 +368,7 @@ impl RenderOnce for ChannelSection {
             .child(text_line(t::TEXT_SECTION, "Channels").text_color(secondary))
             .child(
                 self.face
-                    .view("channels-load", self.on_retry.clone())
+                    .view("channels-load")
                     .lines(6)
                     .empty(empty)
                     .error_title("Couldn't load channels")
