@@ -57,6 +57,13 @@ sit](#where-toasts-sit).
 
 Stories: `kit-app-frame--empty`, `kit-app-frame--with-banner`.
 
+**In the native kit.** `AppFrame` (`native/crates/semaphore-ui/src/kit/layout/`)
+does the same, with each banner added by `.banner(..)`. A desktop window has no
+on-screen keyboard and no safe areas, so the keyboard rules and the safe-area
+insets are web only. It draws the toast region at its own foot only when the
+template inside did not place one in its main pane. Native stories:
+`kit-app-frame-empty`, `kit-app-frame-with-banner`.
+
 ## The three width ranges
 
 A template changes at two widths and no others. They come from the breakpoint
@@ -76,6 +83,10 @@ In practice:
   into a Sheet that the user opens.
 - **Phone** shows one pane at a time, full width, with a way to go back and
   forth.
+
+Both kits take the ranges from the breakpoint tokens, from the window's width
+(the web's viewport). In the native kit `WidthRange::current(window)` gives the
+range. GPUI has no container queries; the templates need none.
 
 Design all three. A screen is not finished until you have looked at it at phone,
 tablet and desktop widths.
@@ -203,8 +214,8 @@ compact and wide: it stays at the island's foot while the channels and voice
 rooms above it scroll. It is part of the island; the call bar, when there is one,
 sits under the island and so under this footer. A phone has no user card; the
 island keeps its structure there (the footer is empty, not removed), so the
-channels and their scroll and focus survive a resize. Web kit only so far; the
-native kit has not caught up (see [Extending the system](extending.md#the-native-kit-is-catching-up)).
+channels and their scroll and focus survive a resize. Both kits have it (native:
+`ThreeIslands::left_footer`).
 
 **The call bar** is the strip that shows you are in a voice room, with Mute,
 Deafen and Leave. It is optional. At compact and wide it sits at the bottom of
@@ -319,6 +330,13 @@ Stories: `kit-three-islands--chat`, `kit-three-islands--no-right`,
 `kit-three-islands--phone-left`, `kit-three-islands--in-call`,
 `kit-three-islands--chat-light`, `kit-three-islands--no-dock`.
 
+**In the native kit.** `ThreeIslands` has the same slots, ranges, landmarks and
+behaviour. The pane a phone does not show is laid out but never drawn, so its
+scroll and element state survive and nothing in it can be reached, and focus
+follows the shown pane. `call_bar` takes a bar or a `CallStack`. The on-screen
+keyboard rules (the dock bar and the call's video giving way) are web only.
+Native stories: the web ids with one dash, `kit-three-islands-chat` and so on.
+
 ## Settings with side navigation
 
 For changing settings: a community's settings, a user's settings, anything that
@@ -370,6 +388,9 @@ Stories: `kit-settings-layout--community`, `kit-settings-layout--phone-nav`,
 `kit-settings-layout--phone-content`, `kit-settings-layout--community-light`,
 `kit-settings-layout--no-footer`.
 
+**In the native kit.** `SettingsLayout`, the same; native stories
+`kit-settings-layout-community` and so on.
+
 ## The full stage
 
 For watching or presenting media: a voice or video room, a screen share. One
@@ -409,6 +430,11 @@ handles its close request.
 
 Stories: `kit-stage-layout--sharing`, `kit-stage-layout--people-open`,
 `kit-stage-layout--sharing-light`, `kit-stage-layout--no-strip`.
+
+**In the native kit.** `StageLayout`, the same. The stage's content gets the
+whole stage, centred and clipped to it; content that sizes itself to the room (a
+16:9 picture) reads it with GPUI's `container_query`, the native `cqw`/`cqh`.
+Native stories `kit-stage-layout-sharing` and so on.
 
 ## A sheet over a screen
 

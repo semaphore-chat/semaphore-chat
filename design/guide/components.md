@@ -1112,8 +1112,10 @@ it. Layout only: no surface colour, no padding, no landmark.
 |`surface`|content|none|The call's video and what it offers, above the bar, bounded and scrolling.|
 |`summary`|content|none|One line that stands in for `surface` while the keyboard is up. Without it nothing does.|
 
-Web kit only so far; the native kit has not caught up (see
-[Extending the system](extending.md#the-native-kit-is-catching-up)).
+Both kits have it. The native `CallStack` goes in `ThreeIslands::call_bar`; it
+has no on-screen keyboard, so it takes `summary` and never draws it. Native
+stories: `kit-call-stack-bounded`, `kit-call-stack-bounded-light`,
+`kit-call-stack-bar-only`.
 
 Stories: `kit-call-stack--bounded`, `kit-call-stack--bounded-light`,
 `kit-call-stack--keyboard`, `kit-call-stack--bar-only`.
@@ -1874,7 +1876,7 @@ part is something people jump to, and then pick the element with `as`:
 |`label`|text|none|Names the region for screen readers. Required for `nav` and `aside`, not allowed for `div`.|
 |`padding`|`none`, `md`, `lg`|`lg`|The space inside. Use `none` when the content brings its own, such as a list of rows.|
 |`scroll`|true, false|false|The island fills the height its parent gives it, and its content scrolls inside it, never the page.|
-|`footer`|content|none|A block that stays at the island's foot while the content above it scrolls (the user's own card in the left island). It sits inside the island's padding, a small gap below the content. Pass `null` while there is nothing to show: the island keeps its structure, so its content is never rebuilt. A footer taller than the island is cut off (the body shrinks to nothing first), and it adds no safe-area inset of its own. Web kit only so far; the native kit has not caught up (see [Extending the system](extending.md#the-native-kit-is-catching-up)).|
+|`footer`|content|none|A block that stays at the island's foot while the content above it scrolls (the user's own card in the left island). It sits inside the island's padding, a small gap below the content. Pass `null` while there is nothing to show: the island keeps its structure, so its content is never rebuilt. A footer taller than the island is cut off (the body shrinks to nothing first), and it adds no safe-area inset of its own. Both kits have it (native: `Island::footer`).|
 |`id`|text|none|The id of the element.|
 
 Without `scroll`, whatever is wider or taller than the island is cut off. With
