@@ -955,10 +955,13 @@ impl Render for ConversationPane {
             .flex_col()
             .min_h_0()
             .child(
+                // Toasts sit at the foot of the messages, above the typing line and the composer.
                 div()
+                    .relative()
                     .flex_1()
                     .min_h_0()
-                    .when_some(self.list.clone(), |this, list| this.child(list)),
+                    .when_some(self.list.clone(), |this, list| this.child(list))
+                    .child(semaphore_ui::kit::ToastAnchor::new()),
             )
             .child(
                 div()

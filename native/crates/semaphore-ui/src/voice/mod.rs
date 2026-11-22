@@ -22,6 +22,8 @@ mod stories;
 pub(crate) use stories::test_card;
 #[cfg(feature = "stories")]
 mod stories_w4;
+#[cfg(feature = "stories")]
+pub(crate) use stories_w4::recording_stage;
 mod theme;
 
 pub use debug::{DebugActions, voice_debug_panel};

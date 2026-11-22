@@ -3,7 +3,7 @@
 
 use super::call_stack::{CallSlot, PANE_MIN};
 use super::focus::follow_focus;
-use super::frame::place_toasts;
+use super::frame::{place_toasts, toast_scope};
 use super::kept::{pane, shown_or_kept};
 use super::width::WidthRange;
 use crate::kit::{Action, Island, Padding, Sheet};
@@ -187,7 +187,7 @@ impl RenderOnce for ThreeIslands {
         let handles = follow_focus("three-islands-focus", 3, &shown, target, window, cx);
 
         let left = pane("three-islands-left", &handles[LEFT])
-            .when(left_main, |pane| pane.role(Role::Main))
+            .when(left_main, |pane| pane.role(Role::Main).child(toast_scope()))
             .child(
                 Island::new("three-islands-left-island")
                     .nav(self.left_label.clone())
@@ -201,6 +201,7 @@ impl RenderOnce for ThreeIslands {
             )
             .when(left_main, |pane| pane.child(place_toasts(cx)));
         let centre = pane("three-islands-centre", &handles[CENTRE])
+            .when(centre_shown, |pane| pane.child(toast_scope()))
             .child(
                 Island::new("three-islands-centre-island")
                     .main(Some(self.centre_label.clone()))

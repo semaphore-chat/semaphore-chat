@@ -7,6 +7,10 @@ app 1280 800
 # The replay toasts go through the window's queue, which holds a toast while the window is
 # inactive: the user is at this window.
 window activate
+# The sign-in screen first: right after start the app shows its spinner, with no Connect yet.
+wait idle
+wait core session signed-out within 5
+wait idle
 click auth-connect
 wait core label "Username" within 5
 click auth-username
@@ -218,10 +222,7 @@ wait core requests LivekitController_captureReplay >= 1
 wait core dialog capture closed
 wait core label "Recording saved"
 save-as replay.mp4
-# The frame's toasts sit at the foot of the centre island, over the right end of the stage's bar
-# (Capture) while they show: wait for it to go by itself (B11 gives toasts room above the bar).
-tick 5000
-wait core no-element replay-toast
+# The toast sits above the stage's bar (the stage's ToastAnchor), so Capture is pressable at once.
 click voice-capture
 wait core dialog capture open
 click capture-target-download
@@ -230,7 +231,7 @@ wait core requests LivekitController_streamReplay >= 1
 wait core saved replay.mp4
 wait core dialog capture closed
 wait core label "Replay clip downloaded successfully!"
-# The toast sits over the bar's middle until it goes by itself.
+# It goes by itself (the queue's timer), and no later shot has it.
 tick 5000
 wait core no-element replay-toast
 

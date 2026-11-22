@@ -4,6 +4,10 @@
 # window, as X11 or Windows would. Snaps named *-live-* carry video and aren't compared; 06-left is.
 
 app 1280 800
+# The sign-in screen first: right after start the app shows its spinner, with no Connect yet.
+wait idle
+wait core session signed-out within 5
+wait idle
 click auth-connect
 wait core label "Username" within 5
 click auth-username

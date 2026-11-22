@@ -30,6 +30,13 @@ wait idle
 shot 03-general
 # Third-party pictures are off: kwam3's GIF is a Load card, and nothing was fetched for it.
 expect label "GIF from media.gifs.example"
+# B11 (#900): a toast in a channel sits above the composer, at the foot of the messages
+# (ConversationPane's ToastAnchor), never over it.
+toast Saved
+wait core element kit-toast-region
+wait core above kit-toast-region composer-field
+toast off
+wait core no-element kit-toast-region
 
 # 3. Select across rows and copy. Aimed at the rows' text, so a taller row above (a GIF card)
 # can't move the selection.
