@@ -82,7 +82,6 @@ fn invitable() -> InviteCardModel {
         ],
         creating: false,
         code: None,
-        notice: None,
     }
 }
 
@@ -411,19 +410,4 @@ fn a_dismissed_or_pointless_card_shows_what_it_can(cx: &mut TestAppContext) {
     );
     loading.click(cx, "home-invite-quick");
     assert!(loading.events().is_empty(), "roles are still arriving");
-
-    let notice = home_with(
-        cx,
-        1280.,
-        data(),
-        true,
-        InviteCardModel {
-            code: Some("aB3x9Q".into()),
-            notice: Some(InviteNotice::failed(
-                "Couldn't create an invite link. Try again.",
-            )),
-            ..invitable()
-        },
-    );
-    assert!(notice.has(cx, "home-invite-notice"));
 }

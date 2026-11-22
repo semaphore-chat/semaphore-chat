@@ -20,13 +20,11 @@
 //!   moves you here"); the bar still shows the call (`prejoin_shows`, read by `root.rs`).
 
 use super::AppRoot;
-use super::replay::TOAST_FOR;
 use gpui_kit::*;
 use semaphore_core::CoreEvent;
 use semaphore_core::model::{ChannelKind, ChannelRow, ViewKey, VoiceStatus};
 use semaphore_core::platform::CoreError;
-use semaphore_ui::kit::LiveElement;
-use semaphore_ui::kit::{Snackbar, Variant, text};
+use semaphore_ui::kit::{ToastRequest, Variant, text};
 use semaphore_ui::messages::MediaSource;
 use semaphore_ui::nav::Route;
 use semaphore_ui::theme::SemTheme;
@@ -41,8 +39,6 @@ pub struct PreJoinArea {
     /// A channel route whose channel core doesn't know yet, or whose panel waits for a window:
     /// its community and channel.
     pending: Option<(String, String)>,
-    /// Why the last join failed, until its timer runs out.
-    notice: Option<Notice>,
     /// Counts the joins pressed here: only the latest one's failure is shown.
     joins: u64,
 }
@@ -54,10 +50,8 @@ struct Shown {
     _subscription: Subscription,
 }
 
-struct Notice {
-    message: String,
-    _timer: Task<()>,
-}
+/// The failed join's toast: one at a time, a newer failure replaces it.
+pub const JOIN_FAILED_TOAST: &str = "voice-join-failed";
 
 /// What core says when the user left (or moved on) while the join ran: nobody's failure.
 fn was_left(error: &CoreError) -> bool {
@@ -114,34 +108,6 @@ impl AppRoot {
         }
     }
 
-    pub(super) fn prejoin_overlays(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let Some(notice) = &self.prejoin.notice else {
-            return Vec::new();
-        };
-        let _ = cx;
-        // At the top: the voice bar runs along the window's bottom edge.
-        vec![
-            div()
-                .absolute()
-                .left_0()
-                .right_0()
-                .top(px(72.))
-                .px(px(16.))
-                .flex()
-                .justify_center()
-                .child(
-                    div()
-                        .id("voice-join-failed")
-                        .test_support()
-                        .role(Role::Status)
-                        .aria_live(gpui_kit::accesskit::Live::Assertive)
-                        .aria_label(SharedString::from(notice.message.clone()))
-                        .child(Snackbar::new(notice.message.clone())),
-                )
-                .into_any_element(),
-        ]
-    }
-
     /// The content for a voice channel this user isn't in; `None` keeps the plain "Join voice".
     pub(super) fn prejoin_voice_channel(
         &self,
@@ -193,12 +159,9 @@ impl AppRoot {
                 .is_some_and(|(_, id)| id == channel_id)
     }
 
-    /// The failed join's notice, for the rig.
-    pub fn prejoin_notice(&self) -> Option<&str> {
-        self.prejoin
-            .notice
-            .as_ref()
-            .map(|notice| notice.message.as_str())
+    /// The failed join's toast, showing or waiting, for the rig.
+    pub fn prejoin_notice(&self, cx: &App) -> Option<String> {
+        self.toasts().message_of(JOIN_FAILED_TOAST, cx)
     }
 
     /// The pending route's panel, if core knows its channel: built for a voice channel, given up
@@ -314,7 +277,7 @@ impl AppRoot {
             self.voice_channel_name = channel.name;
         }
         self.prepare_join();
-        self.prejoin.notice = None;
+        self.toasts().dismiss(JOIN_FAILED_TOAST, cx);
         self.prejoin.joins += 1;
         let join = self.prejoin.joins;
         let joining = core.clone();
@@ -341,18 +304,8 @@ impl AppRoot {
     }
 
     fn prejoin_fail(&mut self, message: String, cx: &mut Context<Self>) {
-        let timer = cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(TOAST_FOR).await;
-            this.update(cx, |root, cx| {
-                root.prejoin.notice = None;
-                cx.notify();
-            })
-            .ok();
-        });
-        self.prejoin.notice = Some(Notice {
-            message,
-            _timer: timer,
-        });
+        let request = ToastRequest::new(message).id(JOIN_FAILED_TOAST).danger();
+        self.toasts().show(request, cx);
         cx.notify();
     }
 }

@@ -1087,6 +1087,15 @@ impl AppRoot {
                 self.drop_community();
                 self.drop_roles();
                 self.drop_moderation();
+                // This session's notices go with it: none waits on the sign-in screen.
+                let toasts = self.toasts();
+                for id in [
+                    replay::REPLAY_TOAST,
+                    prejoin::JOIN_FAILED_TOAST,
+                    account::INVITE_NOTICE,
+                ] {
+                    toasts.dismiss(id, cx);
+                }
                 self.account_open = false;
                 let notice = (matches!(session, SessionState::SignedOut)
                     && core.last_sign_out() == Some(SignOutReason::Expired))
@@ -1733,6 +1742,8 @@ impl AppRoot {
                     )])
                     .collect::<Vec<_>>(),
                 )
+                // The dialog's body, not a floating menu: not a layer of its own.
+                .inline()
                 .on_close({
                     // Escape closes the dialog the menu is; Tab goes on to its Close button.
                     move |reason, _, cx| {
@@ -1976,7 +1987,27 @@ fn content(
 }
 
 impl Render for AppRoot {
+    /// The app under the window's behaviour host: kit overlays are layers of its stack, and focus
+    /// that has nowhere else to go is on the root's own handle.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sink = self.root_focus.clone();
+        // The window's toast area over the app, at its foot (the root fills the window).
+        let app = div()
+            .size_full()
+            .relative()
+            .child(self.render_app(window, cx))
+            .child(semaphore_ui::kit::ToastRegion::new());
+        semaphore_ui::kit::BehaviourRoot::new(app).focus_sink(&sink)
+    }
+}
+
+impl AppRoot {
+    /// The window's toast queue (`kit::Toasts`): screens' notices go there, never drawn by hand.
+    pub(super) fn toasts(&self) -> semaphore_ui::kit::Toasts {
+        semaphore_ui::kit::Toasts::for_window(self.window)
+    }
+
+    fn render_app(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.reconcile(window, cx);
         // Window keys (push to talk above all) dispatch along the focus path. Nothing focused means
         // the window's root node, outside this view: give the root the focus so they reach here.
@@ -2030,7 +2061,6 @@ impl Render for AppRoot {
             overlays.extend(self.admin_overlays(cx));
             overlays.extend(self.media_overlays(cx));
             overlays.extend(self.u9_overlays(cx));
-            overlays.extend(self.prejoin_overlays(cx));
             return root
                 .child(shell.clone())
                 .children(overlays)

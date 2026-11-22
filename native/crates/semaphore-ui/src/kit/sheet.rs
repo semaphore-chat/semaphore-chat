@@ -1,6 +1,7 @@
 //! Sheet: the larger modal for browsing or a longer task (the "All communities" sheet), the native
 //! side of `frontend/src/kit/overlays/Sheet.tsx`. It shares the modal core with Dialog.
 
+use super::behaviour::LayerKind;
 use super::modal::{ModalAlign, ModalClose, ModalReason, modal};
 use super::overlays::{ShadowKind, shadow, type_text};
 use super::{IconButton, ValueAction};
@@ -23,6 +24,9 @@ pub enum SheetCloseReason {
     Scrim,
     /// The Close button.
     Button,
+    /// The layer the sheet was opened in has closed (the window's overlay stack): the owner
+    /// must close it.
+    ParentClosed,
 }
 
 /// The sheet's width on a wide window: `layout.dialogMd` (560) or twice `layout.dialogSm` (800).
@@ -124,6 +128,7 @@ impl RenderOnce for Sheet {
                     let reason = match reason {
                         ModalReason::Escape => SheetCloseReason::Escape,
                         ModalReason::Scrim => SheetCloseReason::Scrim,
+                        ModalReason::ParentClosed => SheetCloseReason::ParentClosed,
                     };
                     close(reason, window, cx)
                 },
@@ -144,115 +149,124 @@ impl RenderOnce for Sheet {
         } else {
             ModalAlign::Centre
         };
-        modal(id, align, true, modal_close, window, cx, move |first| {
-            let close = IconButton::new("sheet-close", IconName::Close, "Close").on_click({
-                let on_close = on_close.clone();
-                move |_, window, cx| {
-                    if let Some(close) = &on_close {
-                        close(SheetCloseReason::Button, window, cx);
+        modal(
+            id,
+            LayerKind::Sheet,
+            align,
+            true,
+            modal_close,
+            window,
+            cx,
+            move |first| {
+                let close = IconButton::new("sheet-close", IconName::Close, "Close").on_click({
+                    let on_close = on_close.clone();
+                    move |_, window, cx| {
+                        if let Some(close) = &on_close {
+                            close(SheetCloseReason::Button, window, cx);
+                        }
                     }
-                }
-            });
-            let header = div()
-                .flex_none()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap(px(SPACE_MD))
-                .pt(px(SPACE_LG))
-                .pr(px(SPACE_LG))
-                .pb(px(SPACE_MD))
-                .pl(px(SPACE_XL))
-                .child(
-                    type_text(t::TEXT_TITLE, title.clone())
-                        .id("sheet-title")
-                        .role(Role::Heading)
-                        .min_w_0()
-                        .truncate(),
-                )
-                .child(
-                    // With no actions row, Close takes focus when the sheet opens.
-                    div()
-                        .flex_none()
-                        .when(!has_actions, |slot| slot.track_focus(first).tab_group())
-                        .child(close),
-                );
-            let panel = div()
-                .id("sheet-panel")
-                .test_support()
-                .aria_label(title)
-                .occlude()
-                .flex()
-                .flex_col()
-                .overflow_hidden()
-                .bg(sem.role.surface)
-                .text_color(sem.role.text)
-                .border_color(sem.role.hairline)
-                .shadow(shadow(&sem, ShadowKind::Overlay))
-                .map(|panel| {
-                    if bottom {
-                        panel
-                            .w_full()
-                            .max_h(viewport.height - px(LAYOUT_DOCK))
-                            .border_t(px(BORDER_HAIRLINE))
-                            .border_l(px(BORDER_HAIRLINE))
-                            .border_r(px(BORDER_HAIRLINE))
-                            .rounded_t(px(RADIUS_ISLAND))
-                    } else {
-                        panel
-                            .w(px(size.width()))
-                            .max_w_full()
-                            .max_h_full()
-                            .border(px(BORDER_HAIRLINE))
-                            .rounded(px(RADIUS_ISLAND))
-                    }
-                })
-                .child(header)
-                .children(top.map(|top| {
-                    div()
-                        .flex_none()
-                        .min_w_0()
-                        .px(px(SPACE_XL))
-                        .pb(px(SPACE_MD))
-                        .child(top)
-                }))
-                .child(
-                    div()
-                        .id("sheet-body")
-                        .test_support()
-                        .flex_1()
-                        .min_h_0()
-                        .overflow_y_scroll()
-                        .pt(px(SPACE_XS))
-                        .px(px(SPACE_XL))
-                        .pb(px(SPACE_XL))
-                        .flex()
-                        .flex_col()
-                        .children(body),
-                )
-                .when(has_actions, |panel| {
-                    panel.child(
-                        div()
-                            .track_focus(first)
-                            .tab_group()
-                            .flex_none()
-                            .flex()
-                            .gap(px(SPACE_SM))
-                            .py(px(SPACE_MD))
-                            .px(px(SPACE_XL))
-                            .border_t(px(BORDER_HAIRLINE))
-                            .border_color(sem.role.hairline)
-                            .map(|row| {
-                                if bottom {
-                                    row.flex_col().items_stretch()
-                                } else {
-                                    row.flex_row().flex_wrap().justify_end().items_center()
-                                }
-                            })
-                            .children(actions),
-                    )
                 });
-            panel.into_any_element()
-        })
+                let header = div()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(SPACE_MD))
+                    .pt(px(SPACE_LG))
+                    .pr(px(SPACE_LG))
+                    .pb(px(SPACE_MD))
+                    .pl(px(SPACE_XL))
+                    .child(
+                        type_text(t::TEXT_TITLE, title.clone())
+                            .id("sheet-title")
+                            .role(Role::Heading)
+                            .min_w_0()
+                            .truncate(),
+                    )
+                    .child(
+                        // With no actions row, Close takes focus when the sheet opens.
+                        div()
+                            .flex_none()
+                            .when(!has_actions, |slot| slot.track_focus(first).tab_group())
+                            .child(close),
+                    );
+                let panel = div()
+                    .id("sheet-panel")
+                    .test_support()
+                    .aria_label(title)
+                    .occlude()
+                    .flex()
+                    .flex_col()
+                    .overflow_hidden()
+                    .bg(sem.role.surface)
+                    .text_color(sem.role.text)
+                    .border_color(sem.role.hairline)
+                    .shadow(shadow(&sem, ShadowKind::Overlay))
+                    .map(|panel| {
+                        if bottom {
+                            panel
+                                .w_full()
+                                .max_h(viewport.height - px(LAYOUT_DOCK))
+                                .border_t(px(BORDER_HAIRLINE))
+                                .border_l(px(BORDER_HAIRLINE))
+                                .border_r(px(BORDER_HAIRLINE))
+                                .rounded_t(px(RADIUS_ISLAND))
+                        } else {
+                            panel
+                                .w(px(size.width()))
+                                .max_w_full()
+                                .max_h_full()
+                                .border(px(BORDER_HAIRLINE))
+                                .rounded(px(RADIUS_ISLAND))
+                        }
+                    })
+                    .child(header)
+                    .children(top.map(|top| {
+                        div()
+                            .flex_none()
+                            .min_w_0()
+                            .px(px(SPACE_XL))
+                            .pb(px(SPACE_MD))
+                            .child(top)
+                    }))
+                    .child(
+                        div()
+                            .id("sheet-body")
+                            .test_support()
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .pt(px(SPACE_XS))
+                            .px(px(SPACE_XL))
+                            .pb(px(SPACE_XL))
+                            .flex()
+                            .flex_col()
+                            .children(body),
+                    )
+                    .when(has_actions, |panel| {
+                        panel.child(
+                            div()
+                                .track_focus(first)
+                                .tab_group()
+                                .flex_none()
+                                .flex()
+                                .gap(px(SPACE_SM))
+                                .py(px(SPACE_MD))
+                                .px(px(SPACE_XL))
+                                .border_t(px(BORDER_HAIRLINE))
+                                .border_color(sem.role.hairline)
+                                .map(|row| {
+                                    if bottom {
+                                        row.flex_col().items_stretch()
+                                    } else {
+                                        row.flex_row().flex_wrap().justify_end().items_center()
+                                    }
+                                })
+                                .children(actions),
+                        )
+                    });
+                panel.into_any_element()
+            },
+        )
     }
 }
