@@ -207,6 +207,29 @@ fn with_layer<R>(id: Option<String>, cx: &mut App, f: impl FnOnce(&mut App) -> R
     result
 }
 
+/// How many [`while_kept`] scopes are being laid out around the piece being drawn.
+#[derive(Default)]
+struct KeptDepth(usize);
+
+impl Global for KeptDepth {}
+
+/// Runs `f` (a kept pane's layout: rendered so its state survives, never drawn) with layers
+/// switched off: an overlay inside opens no layer, so one already open closes in the frame its
+/// pane is kept, as when it stops being drawn, and a new one opens when the pane is shown again.
+/// Without this an undrawn menu would swallow presses and an undrawn sheet would hold Escape,
+/// the scrim and the toast queue.
+pub(crate) fn while_kept<R>(cx: &mut App, f: impl FnOnce(&mut App) -> R) -> R {
+    cx.default_global::<KeptDepth>().0 += 1;
+    let result = f(cx);
+    cx.default_global::<KeptDepth>().0 -= 1;
+    result
+}
+
+fn is_kept(cx: &App) -> bool {
+    cx.try_global::<KeptDepth>()
+        .is_some_and(|depth| depth.0 > 0)
+}
+
 /// Runs `f` with no layer around it: the root's content is the screen.
 pub(crate) fn outside_every_layer<R>(cx: &mut App, f: impl FnOnce(&mut App) -> R) -> R {
     with_layer(None, cx, f)
@@ -331,13 +354,18 @@ pub(crate) fn bounds_probe(cell: Rc<Cell<Option<Bounds<Pixels>>>>) -> impl IntoE
 /// it in every render that draws the overlay, before anything in it takes focus: the first one
 /// opens the layer with the element that has focus as its opener. Open it on a click, never on a
 /// mouse-down: a layer opened by a press's own mouse-down is closed by that press. `None` without a host: the
-/// piece keeps its own handling.
+/// piece keeps its own handling. `None` too inside a kept pane ([`while_kept`]).
 pub(crate) fn use_layer(
     key: impl Into<ElementId>,
     spec: LayerSpec,
     window: &mut Window,
     cx: &mut App,
 ) -> Option<LayerHandle> {
+    // In a kept pane: no layer (and so no token), whatever the piece does with `None`, nothing of
+    // it is drawn.
+    if is_kept(cx) {
+        return None;
+    }
     let host = BehaviourHost::of(window, cx)?;
     let mut opened: Option<Layer> = None;
     let token = window.use_keyed_state(key, cx, |window, cx| {

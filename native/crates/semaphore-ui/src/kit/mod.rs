@@ -16,6 +16,7 @@ mod display_tests;
 mod fields;
 #[cfg(test)]
 mod keyboard_tests;
+mod layout;
 mod lists;
 mod live;
 mod look;
@@ -33,11 +34,15 @@ mod stories;
 #[cfg(feature = "stories")]
 mod stories_controls;
 #[cfg(feature = "stories")]
+mod stories_layout;
+#[cfg(feature = "stories")]
 mod stories_lists_overlays;
 #[cfg(feature = "stories")]
 mod stories_lounge;
 mod surface;
 mod tabs;
+#[cfg(test)]
+mod tests_layout;
 #[cfg(test)]
 mod tests_lists_overlays;
 #[cfg(test)]
@@ -64,6 +69,10 @@ pub use display::{
 };
 pub use fields::{FieldShape, SelectField, TextField, select_state, text_state};
 pub(crate) use fields::{floating_label, notched};
+pub use layout::{
+    AppFrame, CallSlot, CallStack, PANE_MIN, PhonePane, SettingsLayout, SettingsPane, StageLayout,
+    ThreeIslands, WidthRange,
+};
 pub use lists::{Align, ListRow, RowSize, Table, TableColumn, TableRow};
 pub use live::{HIDDEN_SIZE, LiveElement, Said, Speaker, live_node};
 pub use look::{ButtonVariant, ControlSize};
@@ -104,5 +113,6 @@ pub fn stories() -> Vec<crate::stories::Story> {
     all.extend(stories_lounge::stories());
     all.extend(media_stories::stories());
     all.extend(behaviour::stories::stories());
+    all.extend(stories_layout::stories());
     all
 }
