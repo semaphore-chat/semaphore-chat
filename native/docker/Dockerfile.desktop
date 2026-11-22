@@ -11,7 +11,13 @@ ARG HOST_UID=1000
 
 # dbus-daemon looks its user up and won't start for a uid that isn't in /etc/passwd.
 # sway ships with cap_sys_nice, and a file capability can't be exec'd under no-new-privileges.
-RUN pacman -S --noconfirm --needed weston sway at-spi2-core \
+# The dated archive mirror drops downloads now and then: retry, as Dockerfile.build does.
+RUN for attempt in 1 2 3 4; do \
+      pacman -S --noconfirm --needed weston sway at-spi2-core && break; \
+      if [ "$attempt" = 4 ]; then echo "pacman failed 4 times" >&2; exit 1; fi; \
+      echo "pacman attempt $attempt failed; retrying" >&2; \
+      sleep $((attempt * 20)); \
+    done \
  && setcap -r /usr/bin/sway \
  && rm -rf /var/cache/pacman/pkg/* \
  && echo "builder:x:${HOST_UID}:${HOST_UID}:builder:/cache/home:/bin/sh" >> /etc/passwd

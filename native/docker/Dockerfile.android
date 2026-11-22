@@ -26,7 +26,13 @@ ARG SDK_BUILD_TOOLS=35.0.0
 ARG NDK_VERSION=28.2.13676358
 ARG CARGO_NDK_VERSION=4.1.2
 
-RUN pacman -S --noconfirm --needed jdk17-openjdk unzip \
+# The dated archive mirror drops downloads now and then: retry, as Dockerfile.build does.
+RUN for attempt in 1 2 3 4; do \
+      pacman -S --noconfirm --needed jdk17-openjdk unzip && break; \
+      if [ "$attempt" = 4 ]; then echo "pacman failed 4 times" >&2; exit 1; fi; \
+      echo "pacman attempt $attempt failed; retrying" >&2; \
+      sleep $((attempt * 20)); \
+    done \
  && rm -rf /var/cache/pacman/pkg/*
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 
