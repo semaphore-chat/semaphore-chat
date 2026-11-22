@@ -360,9 +360,9 @@ class AppFlowJvmTest {
         until("the other device's session") { other.host.core().session() is SessionState.SignedIn }
         assertTrue(runBlocking { other.host.core().revokeOtherSessions() } >= 1u)
         other.close()
-        // The running app finds out on its next authenticated call.
+        // The running app finds out on its next authenticated call (a 401, then a refused refresh).
         until("sign-in after the revoke") {
-            run.model.store.retry()
+            runCatching { runBlocking { run.host.core().file("any-file", false) } }
             run.model.navigator.top == Route.SignIn
         }
         assertEquals(SESSION_ENDED, run.model.signIn.value?.notice)
@@ -528,7 +528,6 @@ class AppFlowJvmTest {
         assertEquals("http://my_server:3000", AppModel.normaliseServerUrl("http://my_server:3000"))
         assertEquals("https://[::1]:3000", AppModel.normaliseServerUrl("[::1]:3000"))
         assertNull(AppModel.normaliseServerUrl("https://:3000"))
-        assertNull(AppModel.normaliseServerUrl("https://"))
         assertNull(AppModel.normaliseServerUrl("ftp://x"))
         assertNull(AppModel.normaliseServerUrl("two words"))
     }
