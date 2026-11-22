@@ -7,6 +7,7 @@ use super::frame::place_toasts;
 use super::kept::{pane, shown_or_kept};
 use super::width::WidthRange;
 use crate::kit::{Action, Island, Padding, Sheet};
+use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -189,7 +190,12 @@ impl RenderOnce for ThreeIslands {
                     .child(self.centre),
             )
             .when(centre_shown, |pane| pane.child(place_toasts(cx)));
-        let call = self.call.map(CallSlot::into_parts).unwrap_or_default();
+        // The call slot sits on the frame's ground: the colour its rounded corners are cut against.
+        let behind = cx.sem().role.ground;
+        let call = self
+            .call
+            .map(|call| call.into_parts(behind))
+            .unwrap_or_default();
         let has_call = !call.is_empty();
 
         let mut sheet = None;

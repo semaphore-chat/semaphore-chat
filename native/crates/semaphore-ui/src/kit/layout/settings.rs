@@ -87,8 +87,14 @@ impl SettingsLayout {
     }
 }
 
-fn title_text(title: SharedString) -> Div {
-    type_text(TEXT_TITLE, title).min_w_0().truncate()
+/// The page's heading (the web's `h1`): in the nav island, and in the phone's content header.
+fn title_text(id: &'static str, title: SharedString) -> impl IntoElement {
+    type_text(TEXT_TITLE, title)
+        .id(id)
+        .test_support()
+        .role(Role::Heading)
+        .min_w_0()
+        .truncate()
 }
 
 impl RenderOnce for SettingsLayout {
@@ -115,7 +121,7 @@ impl RenderOnce for SettingsLayout {
                     .nav(self.nav_label.clone())
                     .padding(Padding::Md)
                     .scroll(true)
-                    .child(title_text(self.title.clone()))
+                    .child(title_text("settings-layout-nav-title", self.title.clone()))
                     .child(div().mt(px(SPACE_SM)).child(self.nav)),
             )
             .when(nav_main, |pane| pane.child(place_toasts(cx)));
@@ -136,7 +142,10 @@ impl RenderOnce for SettingsLayout {
                         .variant(IconButtonVariant::Soft)
                         .on_click(move |_, window, cx| on_back(window, cx)),
                 )
-                .child(title_text(self.title.clone()))
+                .child(title_text(
+                    "settings-layout-header-title",
+                    self.title.clone(),
+                ))
         });
         let body_top = if phone { SPACE_XS } else { SPACE_XL };
         let body = div()

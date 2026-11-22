@@ -1,5 +1,6 @@
 //! Focus follows the shown pane: the native side of `useFollowFocus`.
 
+use crate::kit::BehaviourHost;
 use gpui_kit::*;
 
 struct PaneFocus {
@@ -40,7 +41,7 @@ pub(crate) fn decide(
 /// Keeps keyboard and screen-reader focus from being lost when the pane that holds it stops
 /// being shown: the `target` pane takes it. Returns one focus handle per pane (`count` of them,
 /// in order) for the panes to `track_focus`; none of them is a Tab stop. `key` names the
-/// layout's state. Focus that is somewhere else is left alone.
+/// layout's state. Focus that is somewhere else (an overlay, the toast region) is left alone.
 pub(crate) fn follow_focus(
     key: &'static str,
     count: usize,
@@ -58,9 +59,22 @@ pub(crate) fn follow_focus(
         let state = state.read(cx);
         (state.handles.clone(), state.last)
     };
-    let holder = handles
-        .iter()
-        .position(|handle| handle.contains_focused(window, cx));
+    // Focus in the toast region (drawn inside the main pane) is not the pane's: on the web the
+    // region is outside the panes. It counts as elsewhere.
+    let in_toast = BehaviourHost::of(window, cx).is_some_and(|host| {
+        host.read(cx)
+            .toasts
+            .region
+            .as_ref()
+            .is_some_and(|region| region.contains_focused(window, cx))
+    });
+    let holder = if in_toast {
+        None
+    } else {
+        handles
+            .iter()
+            .position(|handle| handle.contains_focused(window, cx))
+    };
     let focused = window.focused(cx).is_some();
     let step = decide(holder, focused, last, shown);
     let now = match step {

@@ -506,6 +506,31 @@ fn three_islands_wide_places_dock_left_centre_and_right(cx: &mut TestAppContext)
 #[gpui_kit::test]
 fn three_islands_landmarks_in_reading_order(cx: &mut TestAppContext) {
     let t = open(cx, 1280., 800., Cfg::default());
+    // In reading order: the navigation, the main, the complementary landmark, left to right.
+    let order = t.rig.with(cx, |_, window, _| {
+        let mut landmarks: Vec<_> = window
+            .elements()
+            .into_iter()
+            .filter(|element| {
+                matches!(
+                    element.role(),
+                    Some(Role::Navigation | Role::Main | Role::Complementary)
+                )
+            })
+            .map(|element| {
+                (
+                    element.bounds().origin.x,
+                    element.label().unwrap_or("").to_string(),
+                )
+            })
+            .collect();
+        landmarks.sort_by(|a, b| a.0.partial_cmp(&b.0).expect("a number"));
+        landmarks
+            .into_iter()
+            .map(|(_, label)| label)
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(order, ["Channels", "general", "Members"]);
     assert_eq!(t.roles(cx, Role::Main), ["general"]);
     assert_eq!(t.roles(cx, Role::Navigation), ["Channels"]);
     assert_eq!(t.roles(cx, Role::Complementary), ["Members"]);
@@ -636,22 +661,6 @@ fn a_kept_pane_keeps_its_state_and_scroll_and_cannot_be_reached(cx: &mut TestApp
 }
 
 #[gpui_kit::test]
-fn a_kept_pane_takes_no_clicks(cx: &mut TestAppContext) {
-    let t = open(cx, 390., 844., Cfg::default());
-    // The left pane is kept under the centre: a press on the centre lands in the centre.
-    let body = t.bounds(cx, "centre-focus");
-    let hit = t.rig.with(cx, move |_, window, _| {
-        window
-            .elements()
-            .into_iter()
-            .filter(|element| element.bounds().contains(&body.center()))
-            .map(|element| format!("{:?}", element.path().last()))
-            .collect::<Vec<_>>()
-    });
-    assert!(hit.iter().all(|path| !path.contains("left")), "{hit:?}");
-}
-
-#[gpui_kit::test]
 fn focus_follows_the_shown_pane_on_a_phone(cx: &mut TestAppContext) {
     let t = open(
         cx,
@@ -692,11 +701,45 @@ fn focus_in_a_shown_pane_or_elsewhere_is_left_alone(cx: &mut TestAppContext) {
     t.focus(cx, "left-focus");
     t.resize(cx, 900., 800.);
     assert!(t.is_focused(cx, "left-focus"));
-    // In the Sheet (an overlay, outside the panes): switching the phone pane leaves it.
+    // In the Sheet (an overlay, outside the panes), on a phone: switching the shown pane, there
+    // and back, leaves it.
+    t.resize(cx, 390., 844.);
     t.set(cx, |cfg| cfg.right_open = Some(true));
+    assert!(t.has(cx, "sheet-panel"));
     t.focus(cx, "right-focus");
     t.set(cx, |cfg| cfg.pane = PhonePane::Left);
     assert!(t.is_focused(cx, "right-focus"));
+    assert!(!t.focus_in(cx, "three-islands-left"));
+    t.set(cx, |cfg| cfg.pane = PhonePane::Centre);
+    assert!(t.is_focused(cx, "right-focus"));
+}
+
+#[gpui_kit::test]
+fn focus_in_a_toast_stays_on_a_phone_pane_switch(cx: &mut TestAppContext) {
+    let t = open(cx, 390., 844., Cfg::default());
+    show_toast(&t, cx);
+    let region = t.rig.with(cx, |_, window, cx| {
+        super::BehaviourHost::of(window, cx)
+            .expect("host")
+            .read(cx)
+            .toasts
+            .region
+            .clone()
+            .expect("region")
+    });
+    let r = region.clone();
+    t.rig.with(cx, move |_, window, cx| window.focus(&r, cx));
+    t.redraw(cx);
+    let inside = |t: &T, cx: &mut TestAppContext| {
+        let r = region.clone();
+        t.rig
+            .with(cx, move |_, window, cx| r.contains_focused(window, cx))
+    };
+    assert!(inside(&t, cx));
+    t.set(cx, |cfg| cfg.pane = PhonePane::Left);
+    // Not pulled into the pane now shown (the region is in that pane, so the pane still
+    // contains it).
+    assert!(inside(&t, cx), "focus stays in the toast");
 }
 
 #[gpui_kit::test]
@@ -854,6 +897,10 @@ fn settings_wide_and_compact_put_nav_beside_content(cx: &mut TestAppContext) {
             footer.origin.y
         );
         assert!(!t.has(cx, "settings-layout-header"));
+        let heading = t.rig.with(cx, |_, window, _| {
+            window.find("settings-layout-nav-title").role()
+        });
+        assert_eq!(heading, Some(Role::Heading));
         assert_eq!(t.roles(cx, Role::Main), ["Community settings"]);
         assert_eq!(t.roles(cx, Role::Navigation), ["Settings sections"]);
     }
@@ -900,6 +947,10 @@ fn a_phone_settings_page_shows_one_pane_with_back(cx: &mut TestAppContext) {
     assert!(!t.has(cx, "settings-layout-nav"));
     assert!(t.focus_in(cx, "settings-layout-content"));
     assert_eq!(t.roles(cx, Role::Main), ["Community settings"]);
+    let heading = t.rig.with(cx, |_, window, _| {
+        window.find("settings-layout-header-title").role()
+    });
+    assert_eq!(heading, Some(Role::Heading));
     t.rig.click(cx, "settings-layout-back");
     assert_eq!(t.log(), ["back"]);
     // The content's state survives going back to the list and returning.
@@ -934,12 +985,20 @@ fn the_stage_holds_its_content_inside_and_the_controls_at_the_foot(cx: &mut Test
         near!(strip.bottom(), controls.origin.y);
         near!(stage.bottom(), strip.origin.y);
         assert!(stage.size.height > px(100.));
-        // Never wider or taller than the stage.
-        let content = t.bounds(cx, "stage-content");
+        // The content is capped at the stage on both axes (a fixed size larger is clipped).
+        let content = t.bounds(cx, "stage-layout-content");
         assert!(
             content.size.width <= stage.size.width,
             "{content:?} {stage:?}"
         );
+        assert!(
+            content.size.height <= stage.size.height,
+            "{content:?} {stage:?}"
+        );
+        assert!(content.origin.x >= stage.origin.x && content.right() <= stage.right());
+        assert!(content.origin.y >= stage.origin.y && content.bottom() <= stage.bottom());
+        // As big as the stage less its padding: content that sizes itself to the room fills it.
+        near!(content.size.height, stage.size.height);
         assert_eq!(t.roles(cx, Role::Main), ["Squad Up"]);
     }
 }
@@ -1108,4 +1167,252 @@ fn the_frame_is_the_ground_and_fills_the_window(cx: &mut TestAppContext) {
     near!(t.bounds(cx, "plain").origin.y, G);
     // No landmark of its own.
     assert!(t.roles(cx, Role::Main).is_empty());
+}
+
+// ---------------------------------------------------------------------------------------------
+// Kept panes and the overlay stack
+
+/// A pane with an overlay in it, a click target and a Tab stop in each pane: the kept pane's
+/// reachability and the overlay stack, with the reviewer's probes as tests.
+mod kept_overlays {
+    use super::*;
+    use crate::kit::BehaviourHost;
+    use crate::kit::{Menu, MenuItem, Sheet};
+    use std::cell::Cell;
+
+    #[derive(Clone, Default)]
+    struct PCfg {
+        pane: PhonePane,
+        sheet_in_left: bool,
+        menu_in_left: bool,
+    }
+
+    struct PHost {
+        cfg: Rc<RefCell<PCfg>>,
+        log: Log,
+        left_clicks: Rc<Cell<u32>>,
+        left_focus: FocusHandle,
+        centre_focus: FocusHandle,
+    }
+
+    impl EventEmitter<()> for PHost {}
+
+    impl Render for PHost {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let cfg = self.cfg.borrow().clone();
+            let clicks = self.left_clicks.clone();
+            let (sheet_log, menu_log, centre_log) =
+                (self.log.clone(), self.log.clone(), self.log.clone());
+            let sheet = cfg.sheet_in_left.then(|| {
+                Sheet::new("probe-sheet", "Probe")
+                    .body(div().h(px(20.)))
+                    .on_request_close(move |reason, _, _| {
+                        sheet_log.borrow_mut().push(format!("sheet:{reason:?}"))
+                    })
+            });
+            let menu = cfg.menu_in_left.then(|| {
+                div().absolute().top(px(300.)).left(px(40.)).child(
+                    Menu::new("Probe menu", [MenuItem::new("pin", "Pin", |_, _| {})])
+                        .id("probe-menu")
+                        .on_close(move |reason, _, _| {
+                            menu_log.borrow_mut().push(format!("menu:{reason:?}"))
+                        }),
+                )
+            });
+            let left = div()
+                .child(
+                    div()
+                        .id("left-button")
+                        .test_support()
+                        .track_focus(&self.left_focus)
+                        .w_full()
+                        .h(px(200.))
+                        .on_click(move |_, _, _| clicks.set(clicks.get() + 1)),
+                )
+                .children(sheet)
+                .children(menu);
+            let centre = div().child(
+                div()
+                    .id("centre-button")
+                    .test_support()
+                    .track_focus(&self.centre_focus)
+                    .w_full()
+                    .h(px(400.))
+                    .on_click(move |_, _, _| centre_log.borrow_mut().push("centre-click".into())),
+            );
+            let chat = ThreeIslands::new(left, "Channels", centre, "general").phone_pane(cfg.pane);
+            BehaviourRoot::new(div().size_full().child(AppFrame::new(chat)))
+        }
+    }
+
+    struct P {
+        rig: Rig<PHost, ()>,
+        cfg: Rc<RefCell<PCfg>>,
+        log: Log,
+        left_clicks: Rc<Cell<u32>>,
+    }
+
+    fn popen(cx: &mut TestAppContext, width: f32, height: f32, cfg: PCfg) -> P {
+        let shared = Rc::new(RefCell::new(cfg));
+        let log: Log = Rc::default();
+        let left_clicks = Rc::new(Cell::new(0));
+        let (c, l, k) = (shared.clone(), log.clone(), left_clicks.clone());
+        let rig = rig_sized(cx, width, height, move |_, cx| PHost {
+            cfg: c,
+            log: l,
+            left_clicks: k,
+            left_focus: cx.focus_handle().tab_stop(true),
+            centre_focus: cx.focus_handle().tab_stop(true),
+        });
+        let p = P {
+            rig,
+            cfg: shared,
+            log,
+            left_clicks,
+        };
+        p.redraw(cx);
+        p
+    }
+
+    impl P {
+        fn redraw(&self, cx: &mut TestAppContext) {
+            self.rig
+                .with(cx, |view, _, cx| view.update(cx, |_, cx| cx.notify()));
+            self.rig.with(cx, |_, _, _| ());
+        }
+        fn set(&self, cx: &mut TestAppContext, change: impl FnOnce(&mut PCfg)) {
+            change(&mut self.cfg.borrow_mut());
+            self.redraw(cx);
+        }
+        fn resize(&self, cx: &mut TestAppContext, width: f32, height: f32) {
+            cx.simulate_window_resize(self.rig.window, size(px(width), px(height)));
+            self.redraw(cx);
+        }
+        fn layers(&self, cx: &mut TestAppContext) -> usize {
+            self.rig.with(cx, |_, window, cx| {
+                BehaviourHost::of(window, cx)
+                    .expect("host")
+                    .read(cx)
+                    .overlay
+                    .layers()
+                    .len()
+            })
+        }
+    }
+
+    impl P {
+        fn paused(&self, cx: &mut TestAppContext) -> bool {
+            self.rig.with(cx, |_, window, cx| {
+                BehaviourHost::of(window, cx)
+                    .expect("host")
+                    .read(cx)
+                    .toasts
+                    .state()
+                    .paused
+            })
+        }
+
+        fn show_toast(&self, cx: &mut TestAppContext) {
+            self.rig.with(cx, |_, window, cx| {
+                Toasts::of(window, cx)
+                    .expect("a host")
+                    .show(ToastRequest::new("Saved").id("saved"), cx);
+            });
+            self.redraw(cx);
+        }
+    }
+
+    /// A real click where the kept pane's control is, and a Tab walk from the shown pane.
+    #[gpui_kit::test]
+    fn a_kept_pane_takes_no_clicks_and_no_tab(cx: &mut TestAppContext) {
+        let p = popen(
+            cx,
+            390.,
+            844.,
+            PCfg {
+                pane: PhonePane::Left,
+                ..PCfg::default()
+            },
+        );
+        let left = p
+            .rig
+            .with(cx, |_, window, _| window.find("left-button").bounds());
+        p.rig.click(cx, "left-button");
+        assert_eq!(p.left_clicks.get(), 1, "shown, it takes the click");
+        p.set(cx, |cfg| cfg.pane = PhonePane::Centre);
+        let centre = p
+            .rig
+            .with(cx, |_, window, _| window.find("centre-button").bounds());
+        assert!(centre.contains(&left.center()));
+        let offset = left.center() - centre.origin;
+        p.rig.with(cx, move |_, window, cx| {
+            window.click_at("centre-button", offset, cx)
+        });
+        assert_eq!(p.left_clicks.get(), 1, "kept, it takes none");
+        assert_eq!(p.log.borrow().as_slice(), ["centre-click"]);
+        let (lf, cf) = p.rig.with(cx, |view, _, cx| {
+            let host = view.read(cx);
+            (host.left_focus.clone(), host.centre_focus.clone())
+        });
+        p.rig.with(cx, move |_, window, cx| window.focus(&cf, cx));
+        for _ in 0..6 {
+            p.rig.with(cx, |_, window, cx| window.focus_next(cx));
+            let l2 = lf.clone();
+            assert!(!p.rig.with(cx, move |_, window, _| l2.is_focused(window)));
+        }
+    }
+
+    /// A Sheet open in the left pane, then a phone showing the centre: the layer closes with the
+    /// pane (nothing undrawn holds Escape, the scrim or the toasts), and opens again, drawn, when
+    /// the pane is shown again.
+    #[gpui_kit::test]
+    fn a_sheet_in_a_pane_that_becomes_kept_leaves_the_stack(cx: &mut TestAppContext) {
+        let p = popen(cx, 1280., 800., PCfg::default());
+        p.set(cx, |cfg| cfg.sheet_in_left = true);
+        assert!(p.rig.has(cx, "sheet-panel"));
+        assert_eq!(p.layers(cx), 1);
+        p.resize(cx, 390., 800.);
+        p.redraw(cx);
+        // An active window: inactive is a reason of its own to pause the toasts.
+        p.rig.with(cx, |_, window, _| window.activate_window());
+        assert!(!p.rig.has(cx, "sheet-panel"));
+        assert_eq!(p.layers(cx), 0);
+        p.show_toast(cx);
+        assert!(!p.paused(cx), "the toast queue runs");
+        p.rig.click(cx, "centre-button");
+        p.rig.with(cx, |_, window, cx| window.press("escape", cx));
+        assert_eq!(p.log.borrow().as_slice(), ["centre-click"]);
+        // The pane shown again: the owner still has the sheet open, so it is drawn and a layer.
+        p.set(cx, |cfg| cfg.pane = PhonePane::Left);
+        p.redraw(cx);
+        assert!(p.rig.has(cx, "sheet-panel"));
+        assert_eq!(p.layers(cx), 1);
+        assert!(p.paused(cx), "a sheet pauses the queue again");
+        p.rig.with(cx, |_, window, cx| window.press("escape", cx));
+        assert_eq!(
+            p.log.borrow().last().map(String::as_str),
+            Some("sheet:Escape")
+        );
+    }
+
+    /// A Menu open in the left pane, then a phone showing the centre: no layer, and the centre's
+    /// clicks reach the centre; shown again, the menu is a layer again.
+    #[gpui_kit::test]
+    fn a_menu_in_a_pane_that_becomes_kept_leaves_the_stack(cx: &mut TestAppContext) {
+        let p = popen(cx, 1280., 800., PCfg::default());
+        p.set(cx, |cfg| cfg.menu_in_left = true);
+        assert!(p.rig.has(cx, "probe-menu"));
+        assert_eq!(p.layers(cx), 1);
+        p.resize(cx, 390., 800.);
+        p.redraw(cx);
+        assert!(!p.rig.has(cx, "probe-menu"));
+        assert_eq!(p.layers(cx), 0);
+        p.rig.click(cx, "centre-button");
+        p.rig.click(cx, "centre-button");
+        assert_eq!(p.log.borrow().as_slice(), ["centre-click", "centre-click"]);
+        p.set(cx, |cfg| cfg.pane = PhonePane::Left);
+        p.redraw(cx);
+        assert!(p.rig.has(cx, "probe-menu"));
+        assert_eq!(p.layers(cx), 1);
+    }
 }

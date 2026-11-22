@@ -1,5 +1,6 @@
 //! A pane that is kept but not shown: the native side of the web `Pane`'s `hidden` + `inert`.
 
+use crate::kit::behaviour::overlay::while_kept;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -31,7 +32,8 @@ pub(crate) fn shown_or_kept(pane: Pane, shown: bool) -> AnyElement {
 
 /// Lays its child out (so the child renders and its element state, read during layout, is kept
 /// from frame to frame) and never prepaints or paints it, so it adds no hitbox, no accessibility
-/// node, no Tab stop and no pixels. It is absolute and fills its parent, which takes no room
+/// node, no Tab stop and no pixels. An overlay inside opens no layer of the window's stack while
+/// kept (its layer closes and reopens when the pane is shown again). It is absolute and fills its parent, which takes no room
 /// from the pane that is shown; put it in a `relative` parent.
 ///
 /// The same trick as MediaTile's `ByWidth` (lay out every step, draw one); the two share no code
@@ -75,7 +77,8 @@ impl Element for Kept {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        let child = self.child.request_layout(window, cx);
+        // Layers off: an overlay in the pane is not drawn, so it must not be on the stack.
+        let child = while_kept(cx, |cx| self.child.request_layout(window, cx));
         let style = Style {
             position: Position::Absolute,
             size: size(relative(1.).into(), relative(1.).into()),

@@ -10,7 +10,8 @@ use semaphore_design::lounge::{CONTROL_MD, SPACE_LG, SPACE_MD};
 use std::rc::Rc;
 
 /// The call screen: one island filling the frame (the main), a header row, the stage taking the
-/// rest of the height with its content centred and held inside it (never cropped, never wider),
+/// rest of the height with its content centred and capped at the stage on both axes (content that
+/// sizes itself to the room fits it; content with a fixed size larger than the stage is clipped),
 /// an optional strip of small tiles, and the controls centred at the bottom. The arrangement is
 /// the same at every width.
 ///
@@ -105,10 +106,18 @@ impl RenderOnce for StageLayout {
             .overflow_hidden()
             .px(px(SPACE_LG))
             .child(
-                // As big as the stage, the content centred in it: content that sizes itself to the
-                // room (a 16:9 picture, the web's `cqw`/`cqh`) reads it with `container_query`.
+                // The web caps the stage's child at 100% of both axes. GPUI cannot set another
+                // element's max size, so the content gets a wrapper capped at the stage (and as
+                // big, so content that sizes itself to the room, by percentages or GPUI's
+                // `container_query`, the web's `cqw`/`cqh`, fits on both axes), centred in it and
+                // clipped to it.
                 div()
-                    .size_full()
+                    .id("stage-layout-content")
+                    .test_support()
+                    .flex_1()
+                    .self_stretch()
+                    .max_w_full()
+                    .max_h_full()
                     .min_w_0()
                     .min_h_0()
                     .flex()

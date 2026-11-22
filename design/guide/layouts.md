@@ -431,9 +431,11 @@ handles its close request.
 Stories: `kit-stage-layout--sharing`, `kit-stage-layout--people-open`,
 `kit-stage-layout--sharing-light`, `kit-stage-layout--no-strip`.
 
-**In the native kit.** `StageLayout`, the same. The stage's content gets the
-whole stage, centred and clipped to it; content that sizes itself to the room (a
-16:9 picture) reads it with GPUI's `container_query`, the native `cqw`/`cqh`.
+**In the native kit.** `StageLayout`, the same. GPUI cannot cap another
+element's size, so the content sits in a wrapper capped at the stage on both axes
+and centred in it: content that sizes itself to the room (a 16:9 picture, with
+GPUI's `container_query`, the native `cqw`/`cqh`) fits it, and content with a
+fixed size larger than the stage is clipped rather than shrunk.
 Native stories `kit-stage-layout-sharing` and so on.
 
 ## A sheet over a screen
