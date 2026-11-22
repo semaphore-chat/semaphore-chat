@@ -26,13 +26,18 @@ ChatPane, MessageQuote, AttachmentTile, LinkCard, TypingLine and SuggestionList.
 The Android app's Compose kit (`native/android/kit`) has the pieces its first
 screens need, with the same names and options in Compose's style (enums for
 the variants, lambdas for the handlers, slots for `leading` and `trailing`):
-Text, Button, Icon, IconButton, TextField, ListRow, Avatar, Spinner, Alert,
-Island and Card. They take the touch values in [Tokens and colour](tokens-and-colour.md)
+Text, Button, Icon, IconButton, TextField, ListRow, Avatar (with the
+`readableBackground` ink and the speaking ring), AvatarStack, Badge, Pill,
+Skeleton, Spinner, Alert, Island, Card, Sheet (a bottom sheet that takes the
+system Back while open) and Dock, DockDivider and DockItem. They take the touch values in [Tokens and colour](tokens-and-colour.md)
 ("Touch density"). Their stories are in
 `native/android/kit/src/test/.../stories/KitStories.kt` (ids `kit-text`,
 `kit-button`, `kit-icon-button`, `kit-text-field`, `kit-list-row`,
-`kit-avatar`, `kit-spinner`, `kit-alert`, `kit-surfaces` and the sample
-screen `kit-sign-in`), and `native/scripts/android-ui-review.sh` renders them.
+`kit-avatar`, `kit-avatar-stack`, `kit-badge`, `kit-pill`, `kit-skeleton`,
+`kit-spinner`, `kit-alert`, `kit-surfaces`, `kit-dock`, `kit-sheet` and the
+sample screen `kit-sign-in`). The app's screens are in `native/android/screens`,
+with stories in `ScreenStories.kt` (ids `screen-*`), and
+`native/scripts/android-ui-review.sh` renders both.
 On Android, Avatar shows initials only for now (pictures come with the
 authenticated file fetch), and Button and IconButton leave out the web's
 `aria-disabled`, `onUnavailablePress`, `current` and `hold`.

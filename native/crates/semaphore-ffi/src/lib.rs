@@ -993,6 +993,12 @@ impl SemaphoreCore {
         self.sync(move |core| core.rail_counts())
     }
 
+    /// Whether a list has arrived (`Communities`, `Channels`, `Members`), so a UI can tell an
+    /// empty list from one still loading. Anything else reads as `Ready`.
+    pub fn load_state(&self, view: ViewKey) -> LoadState {
+        self.sync(move |core| core.load_state(view))
+    }
+
     pub fn custom_emojis(&self, community_id: String) -> Vec<EmojiView> {
         self.sync(move |core| core.custom_emojis(community_id))
     }
@@ -1270,8 +1276,8 @@ mod tests {
         }
         assert_eq!(asyncs, runs, "every async export awaits `self.run`");
         // Exact, so an export the check stops seeing fails here: change these with the exports.
-        assert_eq!(asyncs, 132, "async exports found");
-        assert_eq!(syncs, 99, "sync exports found");
+        assert_eq!(asyncs, 133, "async exports found");
+        assert_eq!(syncs, 100, "sync exports found");
     }
 
     #[test]
