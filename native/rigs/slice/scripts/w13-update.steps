@@ -4,7 +4,9 @@
 # the app's restart seam (the rig records it and starts nothing). No release is contacted and no
 # file outside the run's data directory is touched.
 
-app 1280 800
+# Taller than the old 800: the Lounge frame's islands show fewer rows, and the rows and controls
+# these steps use must be in view.
+app 1280 1000
 click auth-connect
 wait core label "Username" within 5
 click auth-username

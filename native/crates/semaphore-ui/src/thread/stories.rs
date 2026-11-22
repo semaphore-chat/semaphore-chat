@@ -122,6 +122,23 @@ fn pane(
     framed(pane.into(), cx)
 }
 
+/// A real thread pane, unframed, for the shell's side panel story (`shell-side-panel-thread`).
+pub(crate) fn in_shell(window: &mut Window, cx: &mut App) -> AnyView {
+    let parent = list(vec![parent_row()], cx);
+    let reply_rows = replies();
+    let replies = list(reply_rows.clone(), cx);
+    let composer = composer(window, cx);
+    let count = reply_rows.len();
+    cx.new(|cx| {
+        let mut pane = ThreadPane::new(parent, replies, composer, cx);
+        pane.set_clock(PanelClock::fixed(NOW_MS), cx);
+        pane.set_info(ready(true, count as u32), cx);
+        pane.set_reply_rows(count, cx);
+        pane
+    })
+    .into()
+}
+
 fn ready(subscribed: bool, reply_count: u32) -> ThreadInfo {
     ThreadInfo {
         state: LoadState::Ready,

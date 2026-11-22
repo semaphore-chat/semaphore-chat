@@ -38,6 +38,8 @@ pub(crate) enum ModalAlign {
     Centre,
     /// Full width at the bottom edge (a bottom sheet).
     Bottom,
+    /// Full height at the right edge (a drawer).
+    End,
 }
 
 /// Where the modal keeps its first focus: the host's handle, and whether focus was placed.
@@ -139,6 +141,7 @@ pub(crate) fn modal(
         .map(|popup| match align {
             ModalAlign::Centre => popup.items_center().justify_center().p(px(LAYOUT_GUTTER)),
             ModalAlign::Bottom => popup.items_end().justify_center(),
+            ModalAlign::End => popup.items_stretch().justify_end(),
         })
         .child(panel(&first))
         // The panel's bounds: a press in them is inside the modal, anywhere else on its scrim.

@@ -24,7 +24,7 @@ wait idle
 shot 00-link-before-sign-in
 
 # 1. The DMs: the list, then a conversation under its header. Sending in it.
-click rail-dm
+click dock-inbox
 wait core dms 5
 wait core element dm-sidebar
 wait idle
@@ -160,7 +160,9 @@ wait idle
 shot 12-notification-clicked
 
 # 7. The centre lists them; mark all read empties the badge.
-click rail-notifications
+click dock-all
+wait core element sheet-notifications
+click sheet-notifications
 wait core centre open
 wait core element notification-center
 wait idle
@@ -170,7 +172,9 @@ wait core badge 0
 wait core requests NotificationsController_markAllAsRead >= 1
 wait idle
 shot 14-centre-all-read
-click rail-notifications
+click dock-all
+wait core element sheet-notifications
+click sheet-notifications
 wait core centre closed
 
 # 8. A deep link while signed in: a DM, then a channel, both through the parser.

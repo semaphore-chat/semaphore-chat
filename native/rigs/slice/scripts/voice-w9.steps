@@ -56,7 +56,8 @@ wait core w9v prejoin user "kwam3"
 # The call's float card stays off the pre-join (its joins sit where the card goes); the bar shows
 # the call.
 wait core float hidden
-wait core label "Share screen"
+# The bar in the frame's call slot: its narrow layout, Share screen under More (B11 replaces it).
+wait core element voice-more
 expect core voice room channel $ID(vc-squad)
 tick 100
 snap 03-live-moves-you
@@ -76,7 +77,7 @@ shot 04-left
 
 # 4. Priya, timed out in Couch Co-op: "you can listen", and the one join is listen-only.
 server moderate_as "{\"moderatorId\": \"$ID(u-marcus)\", \"action\": \"timeout\", \"communityId\": \"$ID(c-couch)\", \"userId\": \"$ID(u-priya)\", \"durationSeconds\": 3600}"
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out

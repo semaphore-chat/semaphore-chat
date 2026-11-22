@@ -118,7 +118,7 @@ wait idle
 shot 09-sent-reloaded
 
 # 10. The switch off in Settings: the GIF is a Load card, and nothing is fetched.
-click rail-account
+click user-card-menu
 wait core label "Settings"
 click account-settings
 wait core route settings/notifications
@@ -149,7 +149,7 @@ shot 11-loaded
 server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"a picture elsewhere \", \"linkPreview\": {\"url\": \"https://example.invalid/w7\", \"title\": \"A W7 article\", \"description\": \"Its picture is on another site.\", \"siteName\": \"Example\", \"imageUrl\": \"http://127.0.0.1:3999/__fixtures/w7-preview.png\"}}"
 wait core text "a picture elsewhere"
 w7 mark
-click rail-account
+click user-card-menu
 wait core label "Settings"
 click account-settings
 wait core route settings/notifications
@@ -164,7 +164,7 @@ expect label "Image from 127.0.0.1"
 wait idle
 shot 12-preview-off
 expect core w7 new-requests Fixture_image == 0
-click rail-account
+click user-card-menu
 wait core label "Settings"
 click account-settings
 wait core route settings/notifications

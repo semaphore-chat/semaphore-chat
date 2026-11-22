@@ -726,3 +726,198 @@ fn a_late_answer_for_an_earlier_subject_never_shows(cx: &mut TestAppContext) {
     assert!(rig.has(cx, "cleo"), "c-3's answer stays");
     assert!(!rig.has(cx, "dev"), "c-2's late answer never shows");
 }
+
+/// A toast region early in the tree, with a full-window layer that isn't deferred drawn after it
+/// (as the app draws the image viewer after the shell, whose frame places the region). The toast
+/// is over it; kit dialogs and sheets, and deferred overlays, still cover the toast (below).
+struct Covered {
+    log: Log,
+}
+
+impl EventEmitter<()> for Covered {}
+
+impl Render for Covered {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let log = self.log.clone();
+        BehaviourRoot::new(
+            div()
+                .relative()
+                .size_full()
+                .child(div().relative().size_full().child(ToastRegion::new()))
+                .child(
+                    div()
+                        .id("later-layer")
+                        .test_support()
+                        .absolute()
+                        .inset_0()
+                        .occlude()
+                        .on_click(move |_, _, _| log.borrow_mut().push("layer".into())),
+                ),
+        )
+    }
+}
+
+#[gpui_kit::test]
+fn a_toast_stays_over_layers_drawn_after_it(cx: &mut TestAppContext) {
+    let log: Log = Rc::default();
+    let shared = log.clone();
+    let rig: Rig<Covered, ()> = rig(cx, 900., move |_, _| Covered { log: shared });
+    rig.with(cx, |_, window, _| window.activate_window());
+    let ran = log.clone();
+    let toasts = rig.with(cx, |_, window, cx| Toasts::of(window, cx).expect("toasts"));
+    rig.with(cx, move |_, _, cx| {
+        toasts.show(
+            ToastRequest::new("Recording saved")
+                .id("saved")
+                .action("Open", move |_, _| ran.borrow_mut().push("open".into())),
+            cx,
+        );
+    });
+    rig.click(cx, "saved-action");
+    assert_eq!(
+        *log.borrow(),
+        ["open"],
+        "the toast is on top, not the layer"
+    );
+}
+
+/// What covers the region in [`Over`]: a kit Sheet or Dialog, or a menu deferred at priority 1
+/// drawn before the region in the tree.
+#[derive(Clone, Copy, PartialEq)]
+enum Cover {
+    Sheet,
+    Dialog,
+    Menu,
+}
+
+struct Over {
+    log: Log,
+    cover: Cover,
+}
+
+impl EventEmitter<()> for Over {}
+
+impl Render for Over {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let log = self.log.clone();
+        let region = div().relative().size_full().child(ToastRegion::new());
+        let page = div().relative().size_full();
+        let page = match self.cover {
+            Cover::Sheet => page.child(region).child(
+                Sheet::new("later-sheet", "A sheet")
+                    .body(div().h(px(80.)).child("body"))
+                    .on_request_close(move |_, _, _| log.borrow_mut().push("cover".into())),
+            ),
+            Cover::Dialog => page.child(region).child(
+                Dialog::new("later-dialog", "A dialog")
+                    .on_close(move |_, _| log.borrow_mut().push("cover".into())),
+            ),
+            Cover::Menu => page
+                .child(
+                    deferred(
+                        div()
+                            .id("menu-layer")
+                            .absolute()
+                            .inset_0()
+                            .occlude()
+                            .on_click(move |_, _, _| log.borrow_mut().push("cover".into())),
+                    )
+                    .with_priority(1),
+                )
+                .child(region),
+        };
+        BehaviourRoot::new(page)
+    }
+}
+
+/// `layouts.md`, "Where toasts sit": under a dialog or sheet, and one level below every overlay.
+#[gpui_kit::test]
+fn kit_dialogs_sheets_and_deferred_overlays_cover_a_toast(cx: &mut TestAppContext) {
+    for cover in [Cover::Sheet, Cover::Dialog, Cover::Menu] {
+        let log: Log = Rc::default();
+        let shared = log.clone();
+        let rig: Rig<Over, ()> = rig(cx, 900., move |_, _| Over { log: shared, cover });
+        rig.with(cx, |_, window, _| window.activate_window());
+        let ran = log.clone();
+        let toasts = rig.with(cx, |_, window, cx| Toasts::of(window, cx).expect("toasts"));
+        rig.with(cx, move |_, _, cx| {
+            toasts.show(
+                ToastRequest::new("Recording saved")
+                    .id("saved")
+                    .action("Open", move |_, _| ran.borrow_mut().push("open".into())),
+                cx,
+            );
+        });
+        if cover != Cover::Menu {
+            // Under a modal the toast waits: it shows after the modal closes.
+            assert!(!log.borrow().contains(&"open".to_owned()));
+            continue;
+        }
+        rig.click(cx, "saved-action");
+        assert_eq!(*log.borrow(), ["cover"], "the menu is over the toast");
+    }
+}
+
+/// A region `width` wide.
+struct Narrow {
+    width: f32,
+}
+
+impl EventEmitter<()> for Narrow {}
+
+impl Render for Narrow {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        BehaviourRoot::new(
+            div().size_full().child(
+                div()
+                    .relative()
+                    .w(px(self.width))
+                    .h_full()
+                    .child(ToastRegion::new()),
+            ),
+        )
+    }
+}
+
+/// `layouts.md`: as wide as the region less a gutter each side, never wider than 400 px; a long
+/// message wraps instead of running off the window.
+#[gpui_kit::test]
+fn a_toast_is_at_most_400_wide_and_its_message_wraps(cx: &mut TestAppContext) {
+    let long = "Couldn't join voice: engine: signal failure: transport connection error: IO \
+                error: failed to lookup address information: Name or service not known";
+    for (width, short) in [(900., false), (300., false), (900., true)] {
+        let rig: Rig<Narrow, ()> = rig(cx, 900., move |_, _| Narrow { width });
+        let toasts = rig.with(cx, |_, window, cx| Toasts::of(window, cx).expect("toasts"));
+        let message = if short { "Saved" } else { long };
+        rig.with(cx, move |_, _, cx| {
+            toasts.show(ToastRequest::new(message).id("t").danger(), cx);
+        });
+        let bounds = rig.with(cx, |_, window, _| {
+            window.try_find("t").expect("the toast").bounds()
+        });
+        let cap = (width - 32.).min(400.);
+        assert!(
+            bounds.size.width <= px(cap) + px(0.5),
+            "at most {cap} wide in a {width} region: {bounds:?}"
+        );
+        assert!(
+            bounds.left() >= px(16.) - px(0.5),
+            "a gutter on the left: {bounds:?}"
+        );
+        assert!(
+            bounds.right() <= px(width - 16.) + px(0.5),
+            "and the right: {bounds:?}"
+        );
+        if short {
+            assert!(
+                bounds.size.width < px(300.),
+                "a short toast fits its text: {bounds:?}"
+            );
+        } else {
+            assert!(
+                bounds.size.height > px(60.),
+                "the long message wraps: {bounds:?}"
+            );
+        }
+    }
+}

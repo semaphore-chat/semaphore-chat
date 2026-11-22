@@ -7,10 +7,11 @@
 //! fills them. Copy the shape of `root/community.rs` (W5-app): one state struct here, feeds that
 //! read core when they run, continuations that hold a ticket.
 //!
-//! - **Choosing a voice channel never joins it.** Every way there (a sidebar row, a deep link, the
-//!   keyboard, Home's voice section) is a navigation to `Route::Channel`; `prejoin_navigated` builds
-//!   the panel for it once core knows the channel is a voice one. The sidebar row's `JoinVoice` is
-//!   ignored in `root.rs`, as the web's row only selects the channel.
+//! - **Choosing a voice channel never joins it.** Every way there (a voice room card's name, a deep
+//!   link, the keyboard, Home's voice section) is a navigation to `Route::Channel`;
+//!   `prejoin_navigated` builds the panel for it once core knows the channel is a voice one.
+//! - **A voice room card's Join joins from where you are** (`join_from_card`, design PA-2): no
+//!   navigation, and a failed join says so with the pre-join's toast.
 //! - **The call you're in shows the stage**, as before: `root.rs` checks that before asking here.
 //! - **Feeds**: the panel reads `Core::voice_prejoin` on navigation and on `ViewChanged { Voice }`
 //!   (presence, my mute) and `ViewChanged { Channels }` of its community (names, capabilities).
@@ -52,6 +53,10 @@ struct Shown {
 
 /// The failed join's toast: one at a time, a newer failure replaces it.
 pub const JOIN_FAILED_TOAST: &str = "voice-join-failed";
+
+/// What the failed join's toast says.
+pub const JOIN_FAILED_MESSAGE: &str =
+    "Couldn't join the room. Check your connection and try again.";
 
 /// What core says when the user left (or moved on) while the join ran: nobody's failure.
 fn was_left(error: &CoreError) -> bool {
@@ -297,14 +302,70 @@ impl AppRoot {
                 if this.prejoin.joins != join || was_left(&error) || !idle {
                     return;
                 }
-                this.prejoin_fail(format!("Couldn't join voice: {error}"), cx);
+                this.prejoin_fail(cx);
             },
         );
         cx.notify();
     }
 
-    fn prejoin_fail(&mut self, message: String, cx: &mut Context<Self>) {
-        let request = ToastRequest::new(message).id(JOIN_FAILED_TOAST).danger();
+    /// A voice room card's Join (the Lounge's left island): joins the room and stays on the
+    /// screen, as the web's card does (design PA-2). A failure is the pre-join Join's toast.
+    pub(crate) fn join_from_card(
+        &mut self,
+        channel_id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(services) = &self.services else {
+            return;
+        };
+        let (core, exec) = (services.core.clone(), services.exec.clone());
+        let community = self.shell.as_ref().and_then(|shell| {
+            shell
+                .read(cx)
+                .nav()
+                .current()
+                .community_id()
+                .map(str::to_owned)
+        });
+        if let Some(channel) = community.and_then(|community| {
+            core.channels(community)
+                .into_iter()
+                .find(|channel| channel.id == channel_id)
+        }) {
+            self.voice_channel_name = channel.name;
+        }
+        self.prepare_join();
+        self.toasts().dismiss(JOIN_FAILED_TOAST, cx);
+        self.prejoin.joins += 1;
+        let join = self.prejoin.joins;
+        let joining = core.clone();
+        exec.run(
+            window,
+            cx,
+            async move { joining.join_voice(channel_id).await },
+            move |this, result, _, cx| {
+                let Err(error) = result else {
+                    return;
+                };
+                log::warn!("joining voice: {error}");
+                let idle = this
+                    .core()
+                    .is_none_or(|core| core.voice().status == VoiceStatus::Disconnected);
+                if this.prejoin.joins != join || was_left(&error) || !idle {
+                    return;
+                }
+                this.prejoin_fail(cx);
+            },
+        );
+        cx.notify();
+    }
+
+    /// The failed join's toast: a short sentence; the error chain is in the log (`joining voice`).
+    fn prejoin_fail(&mut self, cx: &mut Context<Self>) {
+        let request = ToastRequest::new(JOIN_FAILED_MESSAGE)
+            .id(JOIN_FAILED_TOAST)
+            .danger();
         self.toasts().show(request, cx);
         cx.notify();
     }

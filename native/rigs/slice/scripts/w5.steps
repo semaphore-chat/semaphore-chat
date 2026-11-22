@@ -59,7 +59,7 @@ shot 02-timeout-dialog
 click timeout-confirm
 wait core requests ModerationController_timeoutUser >= 1
 wait core no-element timeout-confirm
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -76,6 +76,8 @@ wait core connection connected
 wait idle
 navigate /community/$ID(c-couch)/channel/$ID(cc-memes)
 wait core channel $ID(cc-memes)
+wait core element community-menu
+click community-menu
 wait core element community-settings
 click community-settings
 wait core route community-settings/$ID(c-couch)/overview
@@ -84,6 +86,8 @@ wait idle
 shot a1-settings-overview
 
 # A2. A channel from the sidebar's "+": it's in the list, then renamed and moved up one.
+click community-menu
+wait core element channels-create
 click channels-create
 wait core element channel-create-name
 click channel-create-name
@@ -115,6 +119,8 @@ click community-settings-close
 wait core route channel/$ID(cc-general)
 
 # A4. A webhook on #general: its URL is shown once, then gone.
+click community-menu
+wait core element community-settings
 click community-settings
 wait core element community-tab-channels
 click community-tab-channels
@@ -229,7 +235,7 @@ wait idle
 shot a9-sounds
 click community-settings-close
 wait core route channel/$ID(cc-general)
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -254,7 +260,7 @@ wait core element moderation-menu
 wait core w5 enabled moderate-ban
 wait idle
 shot m-moderator-can-ban
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -283,7 +289,7 @@ wait idle
 shot 04-live-timeout-over
 
 # 4. A Member only: no settings entry, and the member menu says why each action is off.
-expect core no-element community-settings
+expect core no-element community-menu
 right-click member-$ID(u-kwame)
 wait core element moderation-menu
 wait core w5 disabled moderate-ban

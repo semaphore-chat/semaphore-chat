@@ -49,6 +49,10 @@ pub trait ShellSource {
     fn community_caps(&self, _community_id: &str) -> CommunityCaps {
         CommunityCaps::default()
     }
+    /// The instance lets this user create a community (`CREATE_COMMUNITY`): the sheet offers it.
+    fn can_create_community(&self) -> bool {
+        false
+    }
 }
 
 /// The app's source: core's reads, with `Core::load_state` saying whether each list is there yet.
@@ -128,5 +132,9 @@ impl ShellSource for CoreSource {
 
     fn community_caps(&self, community_id: &str) -> CommunityCaps {
         self.0.community_permissions(community_id.to_owned()).caps
+    }
+
+    fn can_create_community(&self) -> bool {
+        self.0.instance_permissions().can_create_community
     }
 }

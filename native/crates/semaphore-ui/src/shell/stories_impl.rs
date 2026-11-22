@@ -186,9 +186,10 @@ pub(crate) struct Options {
     pub channel: Option<&'static str>,
     pub connection: ConnectionState,
     pub edit: fn(&mut Fixture),
-    pub expanded: bool,
+    /// The members shown (below wide, their Sheet open).
     pub members_open: bool,
     pub messages: bool,
+    /// A phone shows the centre rather than the left island.
     pub phone_content: bool,
     pub side_panel: bool,
     /// Open `/direct-messages` instead of a channel, with a stand-in route sidebar.
@@ -211,7 +212,6 @@ impl Default for Options {
             channel: Some("general"),
             connection: ConnectionState::Connected,
             edit: |_| {},
-            expanded: false,
             members_open: false,
             messages: true,
             phone_content: false,
@@ -227,7 +227,12 @@ impl Default for Options {
     }
 }
 
-pub(crate) fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyView {
+pub(crate) fn shell_view(
+    env: &StoryEnv,
+    options: Options,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
     let views = env.scenario(options.scenario).unwrap_or_else(|error| {
         panic!("story scenario {}: {error}", options.scenario);
     });
@@ -272,9 +277,8 @@ pub(crate) fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyV
     );
     cx.set_global(GlobalStub(stub));
 
-    let (connection, expanded, members_open, phone_content, side_panel) = (
+    let (connection, members_open, phone_content, side_panel) = (
         options.connection,
-        options.expanded,
         options.members_open,
         options.phone_content,
         options.side_panel,
@@ -298,7 +302,8 @@ pub(crate) fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyV
             as UpdateBannerSlot
     });
     cx.new(|cx| {
-        let mut shell = Shell::new(source, route, content, connection, cx);
+        let mut shell = Shell::new(source, route, content, connection, window, cx)
+            .with_instance_label("moss.social");
         if let Some(slot) = route_sidebar {
             shell = shell.with_route_sidebar(slot);
         }
@@ -306,9 +311,14 @@ pub(crate) fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyV
             shell = shell.with_update_banner(slot);
         }
         shell.header_accessory = accessory;
-        shell.rail_expanded = expanded;
-        shell.members_open = members_open;
-        shell.phone_content = phone_content;
+        if members_open {
+            shell.right_open = Some(true);
+        }
+        shell.phone_pane = if phone_content {
+            crate::kit::PhonePane::Centre
+        } else {
+            crate::kit::PhonePane::Left
+        };
         shell.pinned_count = 1;
         shell.side_panel = panel;
         shell
@@ -331,25 +341,14 @@ impl Render for PlaceholderPanel {
 }
 
 /// Stands in for the DM sidebar, which draws its own stories.
-fn placeholder_sidebar(
-    props: &RouteSidebarProps,
-    _: &mut Window,
-    cx: &mut App,
-) -> Option<AnyElement> {
+fn placeholder_sidebar(_: &RouteSidebarProps, _: &mut Window, cx: &mut App) -> Option<AnyElement> {
     let sem = cx.sem();
     Some(
         div()
             .size_full()
             .p(px(16.))
             .bg(sem.paper)
-            .child(crate::kit::text(
-                crate::kit::Variant::H6,
-                if props.phone {
-                    "Route sidebar (phone)"
-                } else {
-                    "Route sidebar"
-                },
-            ))
+            .child(crate::kit::text(crate::kit::Variant::H6, "Route sidebar"))
             .into_any_element(),
     )
 }
@@ -486,23 +485,23 @@ fn ready_package() -> crate::update::UpdateStatus {
 
 macro_rules! shell_story {
     ($name:literal, $($field:ident: $value:expr),* $(,)?) => {
-        Story::new($name, |env, _, cx| {
+        Story::new($name, |env, window, cx| {
             #[allow(clippy::needless_update)]
             let options = Options { $($field: $value,)* ..Options::default() };
-            shell_view(env, options, cx)
+            shell_view(env, options, window, cx)
         })
     };
 }
 
 pub fn stories() -> Vec<Story> {
     vec![
-        Story::new("shell-connected", |env, _, cx| {
-            shell_view(env, Options::default(), cx)
+        Story::new("shell-connected", |env, window, cx| {
+            shell_view(env, Options::default(), window, cx)
         }),
         shell_story!("shell-offline", connection: ConnectionState::Offline),
         // W13: the update card beside the connection chip's corner; the settings row draws "up to
         // date" (there is no card for it).
-        Story::new("shell-update-available", |env, _, cx| {
+        Story::new("shell-update-available", |env, window, cx| {
             shell_view(
                 env,
                 Options {
@@ -520,10 +519,10 @@ pub fn stories() -> Vec<Story> {
                     phone_content: true,
                     ..Options::default()
                 },
-                cx,
+                window, cx
             )
         }),
-        Story::new("shell-update-downloading", |env, _, cx| {
+        Story::new("shell-update-downloading", |env, window, cx| {
             shell_view(
                 env,
                 Options {
@@ -537,30 +536,33 @@ pub fn stories() -> Vec<Story> {
                     )),
                     ..Options::default()
                 },
+                window,
                 cx,
             )
         }),
-        Story::new("shell-update-ready-appimage", |env, _, cx| {
+        Story::new("shell-update-ready-appimage", |env, window, cx| {
             shell_view(
                 env,
                 Options {
                     update: Some(update_card(ready_appimage(), false, cx)),
                     ..Options::default()
                 },
+                window,
                 cx,
             )
         }),
-        Story::new("shell-update-ready-package", |env, _, cx| {
+        Story::new("shell-update-ready-package", |env, window, cx| {
             shell_view(
                 env,
                 Options {
                     update: Some(update_card(ready_package(), false, cx)),
                     ..Options::default()
                 },
+                window,
                 cx,
             )
         }),
-        Story::new("shell-update-failed", |env, _, cx| {
+        Story::new("shell-update-failed", |env, window, cx| {
             shell_view(
                 env,
                 Options {
@@ -574,10 +576,10 @@ pub fn stories() -> Vec<Story> {
                     )),
                     ..Options::default()
                 },
-                cx,
+                window, cx
             )
         }),
-        Story::new("shell-update-available-manual", |env, _, cx| {
+        Story::new("shell-update-available-manual", |env, window, cx| {
             shell_view(
                 env,
                 Options {
@@ -594,10 +596,10 @@ pub fn stories() -> Vec<Story> {
                     )),
                     ..Options::default()
                 },
-                cx,
+                window, cx
             )
         }),
-        Story::new("shell-update-over-offline", |env, _, cx| {
+        Story::new("shell-update-over-offline", |env, window, cx| {
             shell_view(
                 env,
                 Options {
@@ -605,19 +607,32 @@ pub fn stories() -> Vec<Story> {
                     update: Some(update_card(ready_appimage(), false, cx)),
                     ..Options::default()
                 },
+                window,
                 cx,
             )
         }),
         shell_story!("shell-reconnecting", connection: ConnectionState::Disconnected),
         shell_story!("shell-unread", edit: mark_unread),
-        shell_story!("shell-rail-expanded", expanded: true),
         shell_story!("shell-members-open", members_open: true, phone_content: true),
         shell_story!("shell-channel-pane", phone_content: true),
         shell_story!("shell-side-panel", side_panel: true, phone_content: true),
+        // A real thread in the side panel: the right island at wide, a drawer below.
+        Story::new("shell-side-panel-thread", |env, window, cx| {
+            let panel = Some(crate::thread::stories::in_shell(window, cx));
+            shell_view(
+                env,
+                Options {
+                    panel,
+                    phone_content: true,
+                    ..Options::default()
+                },
+                window,
+                cx,
+            )
+        }),
         shell_story!("shell-route-sidebar", dm_route: true),
         shell_story!("shell-header-accessory", header_accessory: true, phone_content: true),
         shell_story!("shell-long-content", edit: long_names),
-        shell_story!("shell-long-content-expanded", edit: long_names, expanded: true),
         shell_story!("shell-voice-connected", edit: connect_hangout),
         shell_story!("shell-voice-server-muted", edit: connect_hangout_moderated),
         shell_story!("shell-voice-speaking", edit: connect_hangout_speaking),

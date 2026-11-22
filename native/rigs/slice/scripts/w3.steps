@@ -24,7 +24,7 @@ wait idle
 type "before signing out"
 press enter
 wait core sent "before signing out"
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -78,7 +78,7 @@ shot 05-profile-saved
 
 # 3. Settings from the account menu, replacing W2's dialogs. Voice and video: push to talk and a
 # processing switch, saved and handed to the engine at once.
-click rail-account
+click user-card-menu
 wait core label "Settings"
 click account-settings
 wait core route settings/notifications
@@ -160,7 +160,7 @@ link "semaphore://community/$ID(c-couch)/channel/$ID(cc-general)"
 wait core channel $ID(cc-general)
 wait idle
 shot 13-appearance-light-conversation
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 wait idle
 shot 14-appearance-light-dialog
@@ -173,7 +173,7 @@ wait core session signed-in
 expect core theme light-minimal-8e75ff
 wait core channel $ID(cc-general)
 expect core engine ptt on
-click rail-account
+click user-card-menu
 wait core label "Settings"
 click account-settings
 click settings-tab-voice
@@ -182,7 +182,9 @@ wait idle
 shot 15-restart-settings-voice
 
 # 9. Create a community from the rail's "+", and land in it.
-click rail-create-community
+click dock-all
+wait core element sheet-create-community
+click sheet-create-community
 wait core element create-community-name
 click create-community-name
 type "Board Games"
@@ -221,7 +223,7 @@ expect core element home-invite-code
 # Home shows no code and no notice when its answer lands.
 server delay_route "{\"operationId\": \"InviteController_createInvite\", \"ms\": 3000}"
 click home-invite-quick
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -248,7 +250,7 @@ expect core no-element home-invite-notice
 server public_settings "{\"passwordResetEnabled\": true}"
 server seed_invite "{\"code\": \"w3-invite\"}"
 server reset_token "{\"token\": \"w3-reset-token\"}"
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -297,7 +299,7 @@ shot 21-registered-home
 # 10b. A reset link's route, signed out: a token nobody issued is refused in the server's words
 # and offers another link; a live one sets the new account's password, which then signs in.
 server reset_token "{\"email\": \"newcomer@example.com\", \"token\": \"w3-newcomer-reset\"}"
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -344,7 +346,7 @@ shot 21e-reset-signed-in
 # 11. Sign in with the browser, end to end: the app opens the instance's desktop-login page, the
 # rig plays the browser (the signed-in user approves, the browser follows the redirect to the
 # app's loopback listener), and the app redeems the code.
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out

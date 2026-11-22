@@ -15,8 +15,18 @@ wait core session signed-in
 wait core channel $ID(cc-general)
 wait core connection connected
 
-# Join: connected, the publisher seen, its video reaching a tile. The row shows the pre-join
-# (WP); its Join joins.
+# A room card's Join joins from where you are (design PA-2): #general stays on screen, the card
+# says "You're here", and its Leave leaves.
+click room-join-$ID(vc-squad)
+wait core voice connected within 30
+expect core channel $ID(cc-general)
+wait core element room-leave-$ID(vc-squad)
+click room-leave-$ID(vc-squad)
+wait core voice disconnected within 15
+wait core element room-join-$ID(vc-squad)
+
+# Join: connected, the publisher seen, its video reaching a tile. The room card's name opens the
+# pre-join (WP); its Join joins.
 click channel-$ID(vc-squad)
 wait core element voice-prejoin-join
 click voice-prejoin-join
@@ -74,7 +84,7 @@ wait core label "Turn on camera"
 
 # The settings page's camera test: the selected camera's picture in the preview, nothing published,
 # then Stop lets the camera go.
-click rail-account
+click user-card-menu
 wait core label "Settings"
 click account-settings
 click settings-tab-voice
@@ -140,10 +150,12 @@ wait core label "Screen 1"
 click picker-cancel
 expect core voice screen off
 
-# Elsewhere in the app, the call's bar stays under the columns.
+# Elsewhere in the app, the call's bar stays in the frame's call slot. It is the bar's narrow
+# layout there (the slot is the left column), where Share screen is under More (B11 replaces it).
 click channel-$ID(cc-general)
 wait core channel $ID(cc-general)
-wait core label "Share screen"
+wait core element voice-more
+wait core element voice-leave
 expect core voice connected
 tick 100
 snap 05-live-bar-elsewhere

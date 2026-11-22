@@ -209,10 +209,17 @@ impl RenderOnce for VoiceRoomCard {
                 .people
                 .iter()
                 .map(|person| {
-                    StackPerson::new(person.name.clone())
+                    let speaking = here && self.speaking.contains(&person.id);
+                    let face = StackPerson::new(person.name.clone())
                         .colour(person_colour(Some(&person.id)))
-                        .speaking(here && self.speaking.contains(&person.id))
-                        .file(person.file.as_deref())
+                        .speaking(speaking)
+                        .file(person.file.as_deref());
+                    // The old voice row's id for a speaker's ring, which the voice steps wait on.
+                    if speaking {
+                        face.id(format!("voice-user-speaking-{}", person.id))
+                    } else {
+                        face
+                    }
                 })
                 .collect();
             div()
