@@ -1,4 +1,4 @@
-// Semaphore Chat's Android client (D1). Copyright (C) 2026 the Semaphore Chat authors.
+// Semaphore Chat's Android client. Copyright (C) 2026 the Semaphore Chat authors.
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // This program is free software: you can redistribute it and/or modify it under the terms of the
@@ -7,114 +7,252 @@
 
 package app.semaphorechat.android
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import uniffi.semaphore.ConnectionState
-import uniffi.semaphore.CoreEvent
-import uniffi.semaphore.CoreListener
-import uniffi.semaphore.SemaphoreCore
-import uniffi.semaphore.SessionState
-import uniffi.semaphore.WallClock
+import androidx.compose.ui.platform.LocalContext
+import app.semaphorechat.android.design.Tokens
+import app.semaphorechat.android.kit.Alert
+import app.semaphorechat.android.kit.AlertSeverity
+import app.semaphorechat.android.kit.KitRoot
+import app.semaphorechat.android.screens.ChatActions
+import app.semaphorechat.android.screens.ChatFormat
+import app.semaphorechat.android.screens.ChatHeaderModel
+import app.semaphorechat.android.screens.ChatScreen
+import app.semaphorechat.android.screens.CommunityHomeModel
+import app.semaphorechat.android.screens.ConnectScreen
+import app.semaphorechat.android.screens.Load
+import app.semaphorechat.android.screens.LoungeScreen
+import app.semaphorechat.android.screens.Route
+import app.semaphorechat.android.screens.SignInScreen
+import app.semaphorechat.android.screens.StartScreen
+import app.semaphorechat.android.screens.StartState
+import androidx.lifecycle.Lifecycle
+import java.time.ZoneId
+import uniffi.semaphore.Appearance
 
 /**
- * D1's one screen: it builds [SemaphoreCore] (the Rust client core, through the UniFFI surface in
- * crates/semaphore-ffi) and shows values read back from it. A core with no services is exactly
- * what `SemaphoreCore::new` gives: state and lifecycle work, commands report Unavailable.
+ * The app's one activity. The screens come from the `screens` module, fed by [AppModel] over the
+ * networked core; which one shows is the navigator's top, and the session decides that.
+ *
+ * Lifecycle: going to the background suspends the core (the socket closes) and waits briefly for
+ * its secrets to be written, since Android may end the process there without another word; coming
+ * back resumes it. Both are recorded even before the core has started (SemaphoreHost).
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // TLS is initialised by SemaphoreApp.onCreate, before any component of this process starts.
-        setContent {
-            MaterialTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    CoreStatus()
+        setContent { AppRoot() }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        SemaphoreHost.foregrounded()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // A rotation stops and starts the activity at once: not a trip to the background.
+        if (isChangingConfigurations) return
+        SemaphoreHost.backgroundedNow()
+    }
+}
+
+/**
+ * What the core's `Appearance::default()` is (semaphore-core's `model/account.rs`: dark, the
+ * server's default accent purple, minimal, base `DEFAULT_BASE` #8e75ff, no match-system), which
+ * `appearance()` returns while signed out. The first frames use it too, so a cold start does not
+ * change theme when the core arrives.
+ */
+private val DEFAULT_APPEARANCE = Appearance(
+    mode = uniffi.semaphore.ThemeMode.DARK,
+    accent = uniffi.semaphore.AccentColor.PURPLE,
+    intensity = uniffi.semaphore.ThemeIntensity.MINIMAL,
+    base = uniffi.semaphore.Rgb(0x8Eu, 0x75u, 0xFFu),
+    matchSystem = false,
+    newDesign = false,
+    baseColourSettings = true,
+)
+
+/** Opens a server page in the browser: setup, registration and password reset live there. */
+private fun openWeb(context: Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: ActivityNotFoundException) {
+        // No browser on the device: nothing to open it in.
+    }
+}
+
+@Composable
+private fun AppRoot() {
+    val context = LocalContext.current
+    var session by remember { mutableStateOf(SemaphoreHost.current()) }
+    var startError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        if (session == null) {
+            runCatching { SemaphoreHost.get(context) }
+                .onSuccess { session = it }
+                .onFailure { startError = it.message ?: it.javaClass.name }
+        }
+    }
+    val loaded = session
+    if (loaded == null) {
+        CoreTheme(DEFAULT_APPEARANCE) {
+            KitRoot {
+                StartScreen(
+                    startError?.let { StartState.StartFailed(it) } ?: StartState.Starting,
+                    onRetry = {},
+                    onOtherServer = {},
+                )
+            }
+        }
+        return
+    }
+    val model = loaded.model
+    val appearance by model.store.appearance.collectAsState()
+    CoreTheme(appearance) {
+        KitRoot { Screens(model, LinkOpener(launch = { openWeb(context, it) })) { openWeb(context, it) } }
+    }
+}
+
+@Composable
+private fun Screens(model: AppModel, links: LinkOpener, openWeb: (String) -> Unit) {
+    val stack by model.navigator.stack.collectAsState()
+    // Back with no overlay open goes one screen back; at the root, to the platform (the activity
+    // finishes). Registered before the screens', so an open sheet takes the Back first.
+    BackHandler(enabled = stack.size > 1) { model.back() }
+    var notice by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(model) {
+        model.store.notices.collect { if (it is CoreNotice.CommunityRemoved) notice = it.message }
+    }
+
+    Box {
+        when (val route = stack.last()) {
+            Route.Start -> {
+                val start by model.start.collectAsState()
+                StartScreen(start, onRetry = model::retryRestore, onOtherServer = model::useAnotherServer)
+            }
+            Route.Connect -> {
+                val state by model.connect.collectAsState()
+                ConnectScreen(
+                    state,
+                    onUrlChange = model::onUrlChange,
+                    onConnect = model::connect,
+                    onContinue = model::continueInsecure,
+                    onOpenWeb = openWeb,
+                )
+            }
+            Route.SignIn -> {
+                val state by model.signIn.collectAsState()
+                state?.let {
+                    SignInScreen(
+                        it,
+                        onUsernameChange = model::onUsernameChange,
+                        onPasswordChange = model::onPasswordChange,
+                        onSignIn = model::signIn,
+                        onChangeServer = model::changeServer,
+                        onOpenWeb = openWeb,
+                    )
                 }
+            }
+            is Route.Community -> {
+                val communities by model.store.communities.collectAsState()
+                val allOpen by model.allOpen.collectAsState()
+                val query by model.sheetQuery.collectAsState()
+                val community = route.id?.let { id -> (communities as? Load.Ready)?.value?.firstOrNull { it.id == id } }
+                val home = community?.let {
+                    val channels by remember(it.id) { model.store.watch(it.id) }.collectAsState()
+                    CommunityHomeModel(it, channels)
+                }
+                LoungeScreen(
+                    communities = communities,
+                    home = home,
+                    allOpen = allOpen,
+                    sheetQuery = query,
+                    onSheetQuery = model::onSheetQuery,
+                    onOpenCommunity = model::openCommunity,
+                    onOpenAll = model::openAll,
+                    onCloseAll = model::closeAll,
+                    onOpenChannel = model::openChannel,
+                    onRetry = model.store::retry,
+                    onOpenWeb = { model.server?.let(openWeb) },
+                )
+            }
+            is Route.Channel -> {
+                val communities by model.store.communities.collectAsState()
+                val channels by remember(route.communityId) { model.store.watch(route.communityId) }.collectAsState()
+                val channel = (channels as? Load.Ready)?.value?.text?.firstOrNull { it.id == route.channelId }
+                val communityName = (communities as? Load.Ready)?.value
+                    ?.firstOrNull { it.id == route.communityId }?.name.orEmpty()
+                // Keyed: another channel at this call site (a #mention, then Back) is a new chat, with
+                // its own remembered state and effects.
+                key(route.channelId) { ChannelChat(model, links, route.channelId, ChatHeaderModel(channel?.name.orEmpty(), channel?.icon ?: app.semaphorechat.android.screens.ChannelIcon.Hash, communityName)) }
+            }
+        }
+        notice?.let {
+            Box(
+                Modifier.fillMaxWidth().safeDrawingPadding().padding(Tokens.Space.Md).align(Alignment.TopCenter),
+            ) {
+                Alert(AlertSeverity.Warning, it, onClose = { notice = null })
             }
         }
     }
 }
 
+/** A text channel's chat, over its [ConversationStore], opened when the screen shows. */
 @Composable
-private fun CoreStatus() {
-    // Once, for the activity: a failure here is a build problem, and re-reading state does not
-    // fix it.
-    val core = remember { runCatching { SemaphoreCore(SystemClock, QuietListener) } }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text("Semaphore core loaded", style = MaterialTheme.typography.headlineSmall)
-
-        core.fold(
-            onSuccess = { loaded ->
-                // What core reports for a fresh, service-less instance: signed out, disconnected,
-                // no communities. Spelled out rather than interpolated, because a sealed class's
-                // unit variant prints as an object identity.
-                Text(
-                    "session: ${sessionLabel(loaded.session())}",
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(
-                    "connection: ${connectionLabel(loaded.connection())}",
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(
-                    "communities: ${loaded.communities().size}",
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-            },
-            onFailure = { error ->
-                Text(
-                    "core did not load: ${error.message ?: error.javaClass.name}",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            },
+private fun ChannelChat(model: AppModel, links: LinkOpener, channelId: String, header: ChatHeaderModel) {
+    val context = LocalContext.current
+    val chat = remember(channelId) { model.chat(channelId) }
+    LaunchedEffect(chat) { chat.open() }
+    val state by chat.state.collectAsState()
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val resumed = lifecycle.currentStateFlow.collectAsState().value.isAtLeast(Lifecycle.State.RESUMED)
+    // Shown while the app is resumed: core counts unread and the newest row is marked read only
+    // then. Leaving closes the conversation in core, so it counts as unread again.
+    LaunchedEffect(chat, resumed) { chat.setShown(resumed) }
+    DisposableEffect(chat) { onDispose { chat.leave() } }
+    // The phone's 12/24-hour setting and zone, read when the screen shows.
+    val format = remember(context) {
+        ChatFormat(ZoneId.systemDefault(), android.text.format.DateFormat.is24HourFormat(context)) { System.currentTimeMillis() }
+    }
+    val actions = remember(chat) {
+        ChatActions(
+            onBack = { model.back() },
+            onRetry = chat::open,
+            onLoadOlder = chat::loadOlder,
+            onLoadNewer = chat::loadNewer,
+            onJump = chat::jump,
+            onAwayChanged = chat::setAway,
+            // The store marks only while shown (resumed) and at the bottom.
+            onSeenNewest = chat::markSeen,
+            onOpenLink = { links.open(it) },
+            onOpenChannel = model::openMentionedChannel,
         )
     }
-}
-
-/** The platform's wall clock, in Unix milliseconds, as core asks for it. */
-private object SystemClock : WallClock {
-    override fun nowMs(): ULong = System.currentTimeMillis().toULong()
-}
-
-/** Nothing here subscribes: D1 reads state and ignores the events core would push. */
-private object QuietListener : CoreListener {
-    override fun onEvent(event: CoreEvent) = Unit
-}
-
-private fun sessionLabel(state: SessionState): String = when (state) {
-    SessionState.SignedOut -> "signed out"
-    SessionState.SigningIn -> "signing in"
-    is SessionState.SignedIn -> "signed in"
-    is SessionState.SignInFailed -> "sign-in failed"
-}
-
-private fun connectionLabel(state: ConnectionState): String = when (state) {
-    ConnectionState.DISCONNECTED -> "disconnected"
-    ConnectionState.CONNECTED -> "connected"
-    ConnectionState.SUSPENDED -> "suspended"
-    ConnectionState.OFFLINE -> "offline"
+    ChatScreen(header, state, format, actions, chat.listState)
 }

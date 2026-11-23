@@ -96,7 +96,7 @@ own are inside the stories that set them.
 | `--fuzz <percent>` | differing pixels at or below this share of a shot count as unchanged; default `0`, an exact pixel comparison. The report says which mode ran |
 | `--reuse` | skip the base build and renders when the same base commit, sizes and `--stories` filter were already rendered (`native/.ui-review/meta/base-sha`) |
 | `--pr <n>`, `--update-pr` | replace (or append) the marked section in PR `<n>`'s description with `gh`; everything outside the markers, a web UI-review section included, is left alone |
-| `--shards <n>` | renders in parallel; default 8, or `UI_REVIEW_SHARDS` |
+| `--shards <n>` | renders in parallel, and threads for the comparison; default 8, or `UI_REVIEW_SHARDS` |
 
 Exit code: `0` when everything rendered, changes or not; `1` when the build failed or a story
 didn't render, with the failing story ids listed. Visual changes are never a failure.

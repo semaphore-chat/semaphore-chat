@@ -237,7 +237,7 @@ wait core route channel/$ID(cc-lfg)
 # About, from the account menu (the app menu's Help item is drawn only on platforms with a native
 # menu bar): it names the version this build reports, and Escape closes it, leaving the
 # conversation where it was.
-click rail-account
+click user-card-menu
 wait core element account-about
 click account-about
 wait core element about

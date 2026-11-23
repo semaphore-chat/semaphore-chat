@@ -7,6 +7,10 @@
 #   receipt events, so a channel's line is read once per message).
 
 app 1280 800
+# The sign-in screen first: right after start the app shows its spinner, with no Connect yet.
+wait idle
+wait core session signed-out within 5
+wait idle
 click auth-connect
 wait core label "Username" within 5
 click auth-username
@@ -20,7 +24,7 @@ wait core connection connected
 window activate
 
 # 1. The DM with Priya: my message, then her read.
-click rail-dm
+click dock-inbox
 wait core element dm-sidebar
 click dm-row-$ID(dm-priya)
 wait core dm $ID(dm-priya)

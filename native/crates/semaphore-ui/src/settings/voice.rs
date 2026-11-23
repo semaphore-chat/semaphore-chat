@@ -546,8 +546,8 @@ impl VoiceVideoSettings {
             "voice-ptt-change",
             if capturing { "Cancel" } else { "Change Key" },
         )
-        .outlined()
-        .size(ButtonSize::Small)
+        .soft()
+        .size(ButtonSize::Sm)
         .on_click(cx.listener(move |this, _, window, cx| {
             if capturing {
                 this.cancel_capture(cx);
@@ -586,10 +586,12 @@ impl VoiceVideoSettings {
                       cx: &App| {
             let view = view.clone();
             switch_row(
-                Switch::new(id, label, checked).on_change(move |on, _, cx| {
-                    view.update(cx, |this, cx| this.change(cx, |state| set(state, on)))
-                        .ok();
-                }),
+                Switch::new(id, label, checked)
+                    .label_hidden()
+                    .on_change(move |on, _, cx| {
+                        view.update(cx, |this, cx| this.change(cx, |state| set(state, on)))
+                            .ok();
+                    }),
                 label,
                 Some(hint.into()),
                 cx,
@@ -651,7 +653,7 @@ impl VoiceVideoSettings {
                 .test_support()
                 .role(Role::ProgressIndicator)
                 .aria_label(SharedString::from(format!("Loading {label}")))
-                .child(Skeleton::rect(
+                .child(Skeleton::sized(
                     SharedString::from(format!("{id}-skeleton")),
                     relative(1.),
                     56.,
@@ -676,8 +678,8 @@ impl VoiceVideoSettings {
         }
         let ready = matches!(self.devices.state, LoadState::Ready);
         let test_sound = Button::new("voice-test-sound", "Play test sound")
-            .outlined()
-            .size(ButtonSize::Small)
+            .soft()
+            .size(ButtonSize::Sm)
             .start_icon(DesignIcon::PlayArrow)
             .disabled(ready && self.devices.outputs.is_empty())
             .on_click(cx.listener(|_, _, _, cx| cx.emit(VoiceSettingsEvent::PlayTestSound)));
@@ -727,8 +729,8 @@ impl VoiceVideoSettings {
             "voice-camera-test",
             if active { "Stop" } else { "Test camera" },
         )
-        .outlined()
-        .size(ButtonSize::Small)
+        .soft()
+        .size(ButtonSize::Sm)
         .start_icon(if active {
             DesignIcon::VideocamOff
         } else {
@@ -758,7 +760,7 @@ impl VoiceVideoSettings {
                 .aria_label("Loading cameras")
                 .absolute()
                 .inset_0()
-                .child(Skeleton::rect(
+                .child(Skeleton::sized(
                     "voice-camera-test-skeleton",
                     relative(1.),
                     200.,
@@ -902,8 +904,8 @@ impl VoiceVideoSettings {
         let no_mic =
             matches!(self.devices.state, LoadState::Ready) && self.devices.inputs.is_empty();
         let button = Button::new("voice-mic-test", if testing { "Stop" } else { "Test" })
-            .outlined()
-            .size(ButtonSize::Small)
+            .soft()
+            .size(ButtonSize::Sm)
             .start_icon(if testing {
                 DesignIcon::MicOff
             } else {
@@ -927,7 +929,7 @@ impl VoiceVideoSettings {
                 .flex_col()
                 .gap(px(4.))
                 .child(caption("Input Sensitivity", cx))
-                .child(Slider::new(&self.threshold, "Input sensitivity"))
+                .child(Slider::new(&self.threshold, "Input sensitivity").label_hidden())
                 .child(
                     div()
                         .flex()
@@ -1063,15 +1065,15 @@ impl VoiceVideoSettings {
             .child(text(Variant::Body2, "Frame rate").text_color(sem.text_secondary))
             .child(div().flex().flex_wrap().gap_x(spacing(1.)).children(rates))
             .child(switch_row(
-                Switch::new("share-audio", "Share system audio", share.audio).on_change(
-                    move |on, _, cx| {
+                Switch::new("share-audio", "Share system audio", share.audio)
+                    .label_hidden()
+                    .on_change(move |on, _, cx| {
                         audio_view
                             .update(cx, |this, cx| {
                                 this.change(cx, |state| state.share.audio = on)
                             })
                             .ok();
-                    },
-                ),
+                    }),
                 "Share system audio",
                 Some("Everything you hear, except this call".into()),
                 cx,

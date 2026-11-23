@@ -523,6 +523,11 @@ impl NavModel {
         !self.back.is_empty()
     }
 
+    /// How many entries Back can go through.
+    pub fn depth(&self) -> usize {
+        self.back.len()
+    }
+
     /// Goes to `route`. Going to where we are adds no history.
     pub fn navigate(&mut self, route: Route) {
         if route == self.current {

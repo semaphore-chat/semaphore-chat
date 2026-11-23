@@ -7,6 +7,7 @@ use super::common::{
     who,
 };
 use super::rules::{Pending, act, date_label, failure_of, needs, running};
+use crate::kit::IconButtonVariant;
 use crate::kit::{
     Alert, Button, ButtonSize, Severity, TextField, Variant, spacing, text, text_state,
 };
@@ -165,13 +166,14 @@ impl PrivateChannelsTab {
                             SharedString::from(format!("private-channel-{id}")),
                             short_name(&channel.name),
                         )
-                        .size(ButtonSize::Small)
+                        .text()
+                        .size(ButtonSize::Sm)
                         .start_icon(DesignIcon::LockOutlined)
                         .on_click(cx.listener(move |tab, _, _, cx| tab.select(id.clone(), cx)));
                         if self.selected.as_deref() == Some(channel.id.as_str()) {
-                            button.contained()
+                            button.primary()
                         } else {
-                            button.outlined()
+                            button.soft()
                         }
                     })),
             )
@@ -232,7 +234,7 @@ impl PrivateChannelsTab {
                             format!("Remove {} from #{}", who(&user), channel.name),
                             locked.clone(),
                             busy,
-                            Some(sem.error),
+                            Some(IconButtonVariant::Danger),
                             cx.listener(move |tab, _, _, cx| {
                                 tab.removing = Some(user.clone());
                                 cx.notify();
@@ -306,8 +308,8 @@ impl PrivateChannelsTab {
                         .child(user_line(user, cx))
                         .child(
                             Button::new(SharedString::from(format!("private-add-{id}")), "Add")
-                                .outlined()
-                                .size(ButtonSize::Small)
+                                .soft()
+                                .size(ButtonSize::Sm)
                                 .start_icon(DesignIcon::PersonAdd)
                                 .loading(busy)
                                 .on_click(cx.listener(move |tab, _, _, cx| {
@@ -364,8 +366,8 @@ impl Render for PrivateChannelsTab {
             .cloned();
         let body: AnyElement = match (&self.state, channel) {
             (LoadState::Loading, _) => loading_rows("private-loading", "Loading channels", 3),
-            (LoadState::Failed { .. }, _) => Alert::new(Severity::Error, "Failed to load channels. Please try again.").into_any_element(),
-            (LoadState::Ready, _) if self.channels.is_empty() => Alert::new(
+            (LoadState::Failed { .. }, _) => Alert::new("community-settings-private-alert-1", Severity::Danger, "Failed to load channels. Please try again.").into_any_element(),
+            (LoadState::Ready, _) if self.channels.is_empty() => Alert::new("community-settings-private-alert-2", 
                 Severity::Info,
                 "No private channels found. Create a private channel first to manage its membership.",
             )

@@ -1,18 +1,14 @@
 //! W4 stories: the incoming call, DM call buttons, the participant menu and kick confirm, server
-//! mutes, the soundboard, the float card and its dock zones, and the debug panel.
+//! mutes, the soundboard and the debug panel.
 
 use super::debug::{DebugActions, voice_debug_panel};
-use super::dock::PipPlacement;
-use super::float::FloatCard;
-use super::frames::VideoFrames;
 use super::incoming::{
     DmCallActions, DmCallState, IncomingActions, IncomingProps, dm_call_controls,
     incoming_call_banner,
 };
 use super::menu::{ParticipantMenu, ParticipantMenuModel};
-use super::model::{NoController, VoiceStageModel};
 use super::soundboard::SoundboardBar;
-use super::stories::{camera, model, person, push_cards, stage_entity};
+use super::stories::{camera, model, person, stage_entity};
 use crate::kit::{Variant, text};
 use crate::stories::{Story, StoryEnv};
 use crate::theme::SemTheme;
@@ -20,11 +16,10 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
     ConnectionQuality, ErrorView, IncomingCallView, JoinFailure, JoinFailureClass, LoadState,
-    MediaDiagnostics, ParticipantView, SoundboardSound, SoundboardView, UserView, VideoTrackView,
+    MediaDiagnostics, ParticipantView, SoundboardSound, SoundboardView, UserView,
     VoiceDiagnosticEvent, VoiceDiagnosticsView, VoiceModerationCaps, VoiceStatus, VoiceView,
 };
 use std::rc::Rc;
-use std::sync::Arc;
 
 type Build = Box<dyn Fn(&mut Window, &mut App) -> AnyElement>;
 
@@ -454,6 +449,12 @@ fn server_muted_others(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyVi
 // at phone width).
 
 fn bar_recording(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
+    recording_stage(window, cx)
+}
+
+/// The stage of a call whose share's replay records (the bar shows Capture), for the shell's
+/// story of a toast over the stage.
+pub(crate) fn recording_stage(window: &mut Window, cx: &mut App) -> AnyView {
     let mut model = model(people());
     model.voice.local.screen = semaphore_core::model::LocalShare::On;
     model.voice.local.may_share = true;
@@ -589,139 +590,6 @@ fn soundboard_closed(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView
         )
     });
     stage.into()
-}
-
-// The float card over a message column.
-
-struct FloatFrame {
-    card: Entity<FloatCard>,
-}
-
-impl Render for FloatFrame {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let sem = cx.sem().clone();
-        let line = |width: f32| {
-            div()
-                .h(px(12.))
-                .w(relative(width))
-                .rounded(px(6.))
-                .bg(sem.text_disabled.opacity(0.25))
-        };
-        div()
-            .size_full()
-            .relative()
-            .bg(sem.background_default)
-            .child(
-                div()
-                    .size_full()
-                    .flex()
-                    .flex_col()
-                    .gap(px(18.))
-                    .p(px(24.))
-                    .children((0..12).map(move |index| line([0.6, 0.85, 0.4, 0.7][index % 4]))),
-            )
-            .child(self.card.clone())
-    }
-}
-
-fn float_story(
-    call: VoiceStageModel,
-    placement: PipPlacement,
-    drag: Option<(f32, f32)>,
-    window: &mut Window,
-    cx: &mut App,
-) -> AnyView {
-    let frames = VideoFrames::for_window(window);
-    push_cards(&frames, &call);
-    let card =
-        cx.new(|cx| FloatCard::new(call, frames, Arc::new(NoController), placement, window, cx));
-    if drag.is_some() {
-        // Held until the card has measured its area on its first paint.
-        card.update(cx, |card, cx| card.preview_drag(drag, cx));
-    }
-    cx.new(|_| FloatFrame { card }).into()
-}
-
-fn float_avatar(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
-    float_story(model(people()), PipPlacement::default(), None, window, cx)
-}
-
-fn float_camera(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
-    let mut people = people();
-    people[1].camera = camera(1);
-    float_story(model(people), PipPlacement::default(), None, window, cx)
-}
-
-fn float_screen(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
-    let mut people = people();
-    people[2].screen_share = Some(VideoTrackView {
-        track_sid: "TR_screen2".into(),
-        width: 1920,
-        height: 1080,
-    });
-    let placement = PipPlacement {
-        anchor: super::dock::PipAnchor::TopRight,
-        ..PipPlacement::default()
-    };
-    float_story(model(people), placement, None, window, cx)
-}
-
-fn float_server_muted(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
-    let mut call = model(people());
-    call.voice.server_muted = true;
-    call.voice.muted = true;
-    float_story(call, PipPlacement::default(), None, window, cx)
-}
-
-fn float_pill(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
-    let placement = PipPlacement {
-        collapsed: true,
-        ..PipPlacement::default()
-    };
-    float_story(model(people()), placement, None, window, cx)
-}
-
-fn float_long_name(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
-    let mut call = model(people());
-    call.channel_name =
-        "a voice channel with a name that runs right off the end of the card".into();
-    let placement = PipPlacement {
-        anchor: super::dock::PipAnchor::BottomLeft,
-        ..PipPlacement::default()
-    };
-    float_story(call, placement, None, window, cx)
-}
-
-fn float_long_name_pill(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
-    let mut call = model(people());
-    call.channel_name =
-        "a voice channel with a name that runs right off the end of the pill".into();
-    let placement = PipPlacement {
-        collapsed: true,
-        ..PipPlacement::default()
-    };
-    float_story(call, placement, None, window, cx)
-}
-
-fn float_drag(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
-    float_story(
-        model(people()),
-        PipPlacement::default(),
-        Some((60., 60.)),
-        window,
-        cx,
-    )
-}
-
-fn float_drag_free(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
-    let size = window.viewport_size();
-    float_story(
-        model(people()),
-        PipPlacement::default(),
-        Some((f32::from(size.width) / 2., f32::from(size.height) / 2.)),
-        window,
-        cx,
-    )
 }
 
 // The debug panel.
@@ -892,15 +760,6 @@ pub fn stories() -> Vec<Story> {
         Story::new("voice-soundboard-many", soundboard_many),
         Story::new("voice-soundboard-starting", soundboard_starting),
         Story::new("voice-soundboard-play-error", soundboard_play_error),
-        Story::new("voice-float-avatar", float_avatar),
-        Story::new("voice-float-camera", float_camera),
-        Story::new("voice-float-screen", float_screen),
-        Story::new("voice-float-server-muted", float_server_muted),
-        Story::new("voice-float-pill", float_pill),
-        Story::new("voice-float-long-name", float_long_name),
-        Story::new("voice-float-long-name-pill", float_long_name_pill),
-        Story::new("voice-float-drag", float_drag),
-        Story::new("voice-float-drag-free", float_drag_free),
         Story::new("voice-debug-disconnected", debug_disconnected),
         Story::new("voice-debug-connecting", debug_connecting),
         Story::new("voice-debug-connected", debug_connected),

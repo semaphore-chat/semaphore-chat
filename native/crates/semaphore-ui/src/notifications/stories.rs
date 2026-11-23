@@ -222,7 +222,7 @@ fn menu_story(level: Option<NotifyLevel>, state: LoadState, open: bool, cx: &mut
     cx.new(|_| HeaderFrame { menu }).into()
 }
 
-fn menu_in_shell(env: &StoryEnv, cx: &mut App) -> AnyView {
+fn menu_in_shell(env: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
     let menu = menu(Some(NotifyLevel::All), LoadState::Ready, true, cx);
     shell_view(
         env,
@@ -231,6 +231,7 @@ fn menu_in_shell(env: &StoryEnv, cx: &mut App) -> AnyView {
             phone_content: true,
             ..Options::default()
         },
+        window,
         cx,
     )
 }
@@ -425,8 +426,8 @@ pub fn stories() -> Vec<Story> {
         Story::new("notifications-menu-loading", |_, _, cx| {
             menu_story(None, LoadState::Loading, false, cx)
         }),
-        Story::new("notifications-menu-in-shell", |env, _, cx| {
-            menu_in_shell(env, cx)
+        Story::new("notifications-menu-in-shell", |env, window, cx| {
+            menu_in_shell(env, window, cx)
         }),
         Story::new("notifications-settings-loading", |_, window, cx| {
             settings_story(

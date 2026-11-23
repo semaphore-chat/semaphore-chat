@@ -204,6 +204,7 @@ impl State {
         self.media = None;
         self.call_ended_early = None;
         self.had_connection = false;
+        self.connect_on_resume = false;
         self.token_expires_at_ms = None;
         self.view_changed(ViewKey::Session);
         self.view_changed(ViewKey::Voice);
@@ -460,6 +461,21 @@ impl State {
         }
         self.trim_windows();
         !loaded
+    }
+
+    /// The conversation is no longer on screen; its window stays loaded for the next open.
+    fn close(&mut self, conversation: &Conversation) {
+        let slot = match conversation {
+            Conversation::Thread { .. } => &mut self.thread_conversation,
+            _ => &mut self.main_conversation,
+        };
+        if slot.as_ref() != Some(conversation) {
+            return;
+        }
+        *slot = None;
+        if let Some(window) = self.windows.get_mut(conversation) {
+            window.hide();
+        }
     }
 
     fn hide_if_replaced(&mut self, previous: Option<Conversation>, next: &Conversation) {

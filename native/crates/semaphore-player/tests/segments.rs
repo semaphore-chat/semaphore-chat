@@ -350,6 +350,131 @@ fn m2ts_packets_play_like_plain_ts() {
         Some(Colour::Blue)
     );
     assert_eq!(out.video.len(), 200);
+    // The M2TS PMT names this AAC as private data (0x06); its ADTS payload is what says AAC.
+    assert_eq!(media.streams()[1].codec, Codec::Aac);
+    if AAC {
+        assert!(
+            out.audio.len() > 400,
+            "10 s of AAC in the M2TS form decodes: {} frames",
+            out.audio.len()
+        );
+    }
+}
+
+/// A real LiveKit egress segment, cut to 0.6 s by stream copy (no re-encode), in both packet
+/// forms: `egress-1080p-remuxed.ts` is ffmpeg's remux of egress's bytes (H.264 High 1920x1080 at
+/// 30 fps, AAC-LC 44.1 kHz stereo), the form the backend normally serves, and
+/// `egress-1080p-m2ts.ts` the same data as 192-byte M2TS, whose PMT names the AAC as private
+/// stream 0x06 with no descriptor, as ffmpeg's BDAV muxer writes it (a form the backend never
+/// serves: its fallback returns egress's own file). Both forms must list and decode the same 20
+/// video and 26 audio frames.
+#[test]
+fn a_real_egress_segment_plays_in_both_packet_forms() {
+    fn play(name: &str) -> (Media, Decoded) {
+        let mut media = Media::open_segments(
+            Segments::new(vec![Ok(fixture(name))]),
+            vec![S],
+            Duration::ZERO,
+            Cancel::default(),
+            None,
+        )
+        .unwrap();
+        let streams = media.streams();
+        assert_eq!(
+            (streams[0].kind, streams[0].codec),
+            (Kind::Video, Codec::H264),
+            "{name}"
+        );
+        assert_eq!(
+            (streams[0].width, streams[0].height),
+            (1920, 1080),
+            "{name}"
+        );
+        assert_eq!(
+            (streams[1].kind, streams[1].codec),
+            (Kind::Audio, Codec::Aac),
+            "{name}: egress's audio is ADTS AAC-LC, in either packet form"
+        );
+        assert_eq!((streams[1].sample_rate, streams[1].channels), (44_100, 2));
+        enable_all(&mut media);
+        let out = decode(&mut media, 1000);
+        assert_eq!(media.skipped_packets(), 0, "{name}");
+        (media, out)
+    }
+
+    let (plain_media, plain) = play("egress-1080p-remuxed.ts");
+    let (_m2ts_media, m2ts) = play("egress-1080p-m2ts.ts");
+
+    assert_eq!(plain.video.len(), 20, "0.6 s at 30 fps");
+    assert!(
+        plain.video.windows(2).all(|w| {
+            let step = w[1].0 - w[0].0;
+            step >= Duration::from_micros(33_333) && step <= Duration::from_micros(33_334)
+        }),
+        "one 30 fps frame each 33.333 ms"
+    );
+    let times = |out: &Decoded| out.video.iter().map(|(t, _)| *t).collect::<Vec<_>>();
+    assert_eq!(times(&plain), times(&m2ts), "both forms, one timeline");
+    assert_eq!(plain_media.container(), "mpegts");
+
+    if AAC {
+        assert_eq!(plain.audio.len(), 26, "0.6 s of AAC-LC at 44.1 kHz");
+        assert_eq!((plain.rate, plain.channels), (44_100, 2));
+        assert_eq!(m2ts.audio.len(), plain.audio.len());
+        assert!(
+            m2ts.audio
+                .iter()
+                .zip(&plain.audio)
+                .all(|(a, b)| a.0.abs_diff(b.0) <= Duration::from_millis(1)),
+            "the M2TS form's frames are timed as the plain one's"
+        );
+    } else {
+        assert!(plain.audio.is_empty() && m2ts.audio.is_empty());
+    }
+}
+
+/// Egress's own bytes, not a remux: one real egress v1.14.1 HLS segment, cut on a packet
+/// boundary with `head -c` and nothing else, to 1.5 s of H.264 High 1920x1080 at 30 fps and
+/// AAC-LC 44.1 kHz stereo. This is the file the backend's remux-failure fallback serves (its
+/// remux is the fixture above); its PMT names the audio AAC in ADTS (0x0F), as egress writes it.
+#[test]
+fn a_raw_egress_segment_plays_with_its_sound() {
+    let mut media = Media::open_segments(
+        Segments::new(vec![Ok(fixture("egress-1080p-raw.ts"))]),
+        vec![S],
+        Duration::ZERO,
+        Cancel::default(),
+        None,
+    )
+    .unwrap();
+    let streams = media.streams();
+    assert_eq!(
+        (streams[0].kind, streams[0].codec),
+        (Kind::Video, Codec::H264)
+    );
+    assert_eq!((streams[0].width, streams[0].height), (1920, 1080));
+    assert_eq!(
+        (streams[1].kind, streams[1].codec),
+        (Kind::Audio, Codec::Aac)
+    );
+    assert_eq!((streams[1].sample_rate, streams[1].channels), (44_100, 2));
+    enable_all(&mut media);
+    let out = decode(&mut media, 1000);
+    assert_eq!(media.skipped_packets(), 0);
+    assert_eq!(
+        out.video.len(),
+        42,
+        "1.5 s of 30 fps video, less the cut tail"
+    );
+    // The segment opens with 0.34 s of audio ahead of egress's PAT/PMT, which the demuxer cannot
+    // attribute to a stream, and three frames before the first video frame, behind the preview's
+    // start: 56 of the 74 AAC frames in the cut decode.
+    if AAC {
+        assert_eq!(out.audio.len(), 56, "1.3 s of AAC-LC before the cut tail");
+        assert_eq!((out.rate, out.channels), (44_100, 2));
+    } else {
+        assert!(out.audio.is_empty());
+    }
 }
 
 #[test]

@@ -103,7 +103,7 @@ impl Render for CreateDmDialog {
             600.
         };
         let view = cx.weak_entity();
-        Dialog::new("Start a Direct Message")
+        Dialog::new("start-a-direct-message-dialog", "Start a Direct Message")
             .width(width)
             .on_close({
                 let view = view.clone();
@@ -127,12 +127,12 @@ impl Render for CreateDmDialog {
                         )
                     })
                     .children(
-                        self.failed
-                            .clone()
-                            .map(|message| Alert::new(Severity::Error, message)),
+                        self.failed.clone().map(|message| {
+                            Alert::new("dms-create-alert", Severity::Danger, message)
+                        }),
                     ),
             )
-            .action(Button::new("create-dm-cancel", "Cancel").on_click({
+            .action(Button::new("create-dm-cancel", "Cancel").ghost().on_click({
                 let view = view.clone();
                 move |_, _, cx| {
                     view.update(cx, |_, cx| cx.emit(CreateDmEvent::Cancel)).ok();
@@ -140,7 +140,7 @@ impl Render for CreateDmDialog {
             }))
             .action(
                 Button::new("create-dm-create", "Create")
-                    .contained()
+                    .primary()
                     .disabled(picked == 0)
                     .loading(self.busy)
                     .on_click(move |_, _, cx| {

@@ -651,27 +651,120 @@ async fn unread_counts_follow_the_web_rules() {
     rig.core.ingest(new_message("a", "someone", "x"));
     assert_eq!(unread_of(&rig, CHANNEL), 0);
 
+    // Closed, though the app is focused: it counts.
+    rig.core.close_conversation(channel());
+    rig.core.ingest(new_message("a2", "someone", "x"));
+    assert_eq!(unread_of(&rig, CHANNEL), 1);
+    // Opened again: its rows come back as one reset, and it is on screen once more.
+    rig.sync();
+    rig.core.open_conversation(channel()).await.unwrap();
+    let reopened = rig.sync();
+    assert!(reopened.iter().any(|event| matches!(
+        event,
+        CoreEvent::MessagesChanged { ops, .. } if ops.iter().any(|op| matches!(op, ListOp::Reset { .. }))
+    )));
+    rig.core.ingest(new_message("a3", "someone", "x"));
+    assert_eq!(unread_of(&rig, CHANNEL), 1);
+
     // Not focused: it counts.
     rig.core.set_focused(false);
     rig.core.ingest(new_message("b", "someone", "x"));
-    assert_eq!(unread_of(&rig, CHANNEL), 1);
+    assert_eq!(unread_of(&rig, CHANNEL), 2);
 
     // My own messages never count.
     rig.core.ingest(new_message("c", ME, "x"));
-    assert_eq!(unread_of(&rig, CHANNEL), 1);
+    assert_eq!(unread_of(&rig, CHANNEL), 2);
 
     // A peer's read mark says nothing about mine.
     let read_at = "2026-09-22T18:01:00.000Z";
     rig.core.ingest(event("readReceiptUpdated", json!({
         "channelId": CHANNEL, "directMessageGroupId": null, "lastReadMessageId": "b", "lastReadAt": read_at, "userId": "ava",
     })));
-    assert_eq!(unread_of(&rig, CHANNEL), 1);
+    assert_eq!(unread_of(&rig, CHANNEL), 2);
 
     rig.core.ingest(event("readReceiptUpdated", json!({
         "channelId": CHANNEL, "directMessageGroupId": null, "lastReadMessageId": "b", "lastReadAt": read_at,
     })));
     assert_eq!(unread_of(&rig, CHANNEL), 0);
     rig.sync();
+}
+
+#[tokio::test]
+async fn a_closed_main_conversation_counts_new_messages_as_unread_until_opened_again() {
+    let rig = Rig::new();
+    rig.backend
+        .channels
+        .lock()
+        .unwrap()
+        .push(text_channel(CHANNEL, 1));
+    rig.backend
+        .unread
+        .lock()
+        .unwrap()
+        .push(json!({ "channelId": CHANNEL, "unreadCount": 0, "mentionCount": 0 }));
+    let mut rig = rig.signed_in().await.open_channel(history("m", 1)).await;
+    rig.core.channels("comm".into());
+    rig.core.run_until_idle().await;
+    // On screen and focused: a message doesn't bump.
+    rig.core.ingest(new_message("z", "someone", "x"));
+    assert_eq!(unread_of(&rig, CHANNEL), 0);
+
+    // A phone shows the channel list: nothing is on screen, so a message counts.
+    rig.core.close_main_conversation();
+    rig.core.ingest(new_message("a", "someone", "x"));
+    assert_eq!(unread_of(&rig, CHANNEL), 1);
+
+    // The chat again: on screen, and a message no longer bumps.
+    rig.core.open_conversation(channel()).await.unwrap();
+    rig.core.ingest(new_message("b", "someone", "x"));
+    assert_eq!(unread_of(&rig, CHANNEL), 1);
+    rig.sync();
+}
+
+/// `close_main_conversation` (desktop: whatever is main) and `close_conversation` (Android: a named
+/// one) are one path: closing the main conversation either way leaves core in the same state.
+#[tokio::test]
+async fn closing_the_main_conversation_by_name_or_as_main_agree() {
+    async fn closed(by_name: bool) -> (u32, bool, bool) {
+        let rig = Rig::new();
+        rig.backend
+            .channels
+            .lock()
+            .unwrap()
+            .push(text_channel(CHANNEL, 1));
+        rig.backend
+            .unread
+            .lock()
+            .unwrap()
+            .push(json!({ "channelId": CHANNEL, "unreadCount": 0, "mentionCount": 0 }));
+        let mut rig = rig.signed_in().await.open_channel(history("m", 1)).await;
+        rig.core.channels("comm".into());
+        rig.core.run_until_idle().await;
+        // Another conversation named: nothing closes.
+        rig.core.close_conversation(Conversation::Channel {
+            id: "elsewhere".into(),
+        });
+        rig.core.ingest(new_message("a", "someone", "x"));
+        let still_open = unread_of(&rig, CHANNEL) == 0;
+        if by_name {
+            rig.core.close_conversation(channel());
+        } else {
+            rig.core.close_main_conversation();
+        }
+        rig.core.ingest(new_message("b", "someone", "x"));
+        let unread = unread_of(&rig, CHANNEL);
+        rig.sync();
+        rig.core.open_conversation(channel()).await.unwrap();
+        let reset = rig.sync().iter().any(|event| matches!(
+            event,
+            CoreEvent::MessagesChanged { ops, .. } if ops.iter().any(|op| matches!(op, ListOp::Reset { .. }))
+        ));
+        assert!(still_open);
+        (unread, reset, rig.core.at_live_edge(channel()))
+    }
+    let as_main = closed(false).await;
+    assert_eq!(as_main, (1, true, true));
+    assert_eq!(closed(true).await, as_main);
 }
 
 #[tokio::test]
@@ -1512,6 +1605,42 @@ fn a_sink_can_call_back_in_and_events_stay_in_order() {
                 state: ConnectionState::Suspended
             },
         ]
+    );
+}
+
+/// Panics on its first event, as a foreign listener that threw does through UniFFI.
+#[derive(Default)]
+struct ThrowsOnce {
+    thrown: std::sync::atomic::AtomicBool,
+    seen: Mutex<Vec<CoreEvent>>,
+}
+
+impl EventSink for ThrowsOnce {
+    fn on_event(&self, event: CoreEvent) {
+        if !self.thrown.swap(true, Ordering::SeqCst) {
+            panic!("the listener threw");
+        }
+        self.seen.lock().unwrap().push(event);
+    }
+}
+
+#[test]
+fn a_sink_that_panics_once_does_not_stop_later_deliveries() {
+    let sink = Arc::new(ThrowsOnce::default());
+    let rig = Rig::new();
+    let core = Core::new(rig.clock.clone(), sink.clone());
+    let thrown = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| core.suspend()));
+    assert!(thrown.is_err(), "the first delivery panicked");
+    // The change itself stands; only its event was lost with the panic.
+    assert_eq!(core.connection(), ConnectionState::Suspended);
+
+    core.resume();
+    assert_eq!(
+        sink.seen.lock().unwrap().clone(),
+        vec![CoreEvent::ConnectionChanged {
+            state: ConnectionState::Disconnected
+        }],
+        "the next change is delivered, not left in the outbox"
     );
 }
 

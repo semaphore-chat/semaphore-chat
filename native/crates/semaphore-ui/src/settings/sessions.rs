@@ -202,12 +202,12 @@ impl SessionsSettings {
                                 .flex()
                                 .flex_col()
                                 .gap(px(6.))
-                                .child(Skeleton::rect(
+                                .child(Skeleton::sized(
                                     ("session-skeleton-a", index),
                                     relative(0.6),
                                     18.,
                                 ))
-                                .child(Skeleton::rect(
+                                .child(Skeleton::sized(
                                     ("session-skeleton-b", index),
                                     relative(0.4),
                                     14.,
@@ -258,8 +258,7 @@ impl Render for SessionsSettings {
         let sign_out_all = (ready && others > 0).then(|| {
             div().flex().justify_end().child(
                 Button::new("sessions-revoke-others", "Sign out all other devices")
-                    .outlined()
-                    .color(cx.sem().error)
+                    .quiet_danger()
                     .start_icon(DesignIcon::Logout)
                     .loading(revoking)
                     .on_click(cx.listener(|this, _, _, cx| {
@@ -279,23 +278,24 @@ impl Render for SessionsSettings {
             .children(
                 self.notice
                     .as_ref()
-                    .map(|(severity, message)| Alert::new(*severity, message.clone())),
+                    .map(|(severity, message)| Alert::new("settings-sessions-alert", *severity, message.clone())),
             )
             .child(self.list(cx))
             .children(sign_out_all);
-        let dialog = (self.confirming && others > 0).then(|| {
-            let close = cx.weak_entity();
-            let cancel = cx.weak_entity();
-            let confirm = cx.weak_entity();
-            let noun = if others == 1 { "device" } else { "devices" };
-            Dialog::new("Sign out other devices?")
+        let dialog =
+            (self.confirming && others > 0).then(|| {
+                let close = cx.weak_entity();
+                let cancel = cx.weak_entity();
+                let confirm = cx.weak_entity();
+                let noun = if others == 1 { "device" } else { "devices" };
+                Dialog::new("sign-out-other-devices-dialog", "Sign out other devices?")
                 .body(text(
                     Variant::Body2,
                     format!(
                         "This signs you out on {others} other {noun}. You'll stay signed in here."
                     ),
                 ))
-                .action(Button::new("sessions-confirm-cancel", "Cancel").on_click(
+                .action(Button::new("sessions-confirm-cancel", "Cancel").ghost().on_click(
                     move |_, _, cx| {
                         cancel
                             .update(cx, |this, cx| {
@@ -307,8 +307,7 @@ impl Render for SessionsSettings {
                 ))
                 .action(
                     Button::new("sessions-confirm-revoke", "Sign out all")
-                        .contained()
-                        .color(cx.sem().error)
+                        .danger()
                         .on_click(move |_, _, cx| {
                             confirm
                                 .update(cx, |this, cx| {
@@ -327,7 +326,7 @@ impl Render for SessionsSettings {
                         })
                         .ok();
                 })
-        });
+            });
         div()
             .relative()
             .size_full()

@@ -1,9 +1,9 @@
 //! Every primitive, so a screenshot reviews them all at once, in any theme.
 
 use super::{
-    Alert, Avatar, Badge, Button, ButtonSize, ButtonTone, CheckState, Checkbox, Chip, Dialog, Icon,
-    IconButton, LinearProgress, ListRow, Paper, Radio, SecondaryTone, SelectField, Severity,
-    Skeleton, Slider, Snackbar, Spinner, Switch, Table, Tabs, TextField, Tip, Variant, link,
+    Alert, Avatar, Badge, Button, ButtonSize, CheckState, Checkbox, Chip, Dialog, Icon, IconButton,
+    LinearProgress, ListRow, Paper, Radio, SecondaryTone, SelectField, Severity, Skeleton, Slider,
+    Snackbar, Spinner, Switch, Table, TableColumn, TableRow, Tabs, TextField, Tip, Variant, link,
     select_state, text, text_state,
 };
 use super::{Menu as KitMenu, MenuItem as KitMenuItem};
@@ -101,21 +101,21 @@ impl Render for Gallery {
                     .gap(px(8.))
                     .child(
                         row()
-                            .child(Button::new("b1", "Contained").contained())
-                            .child(Button::new("b2", "Outlined").outlined())
-                            .child(Button::new("b3", "Text")),
+                            .child(Button::new("b1", "Contained").primary())
+                            .child(Button::new("b2", "Outlined").soft())
+                            .child(Button::new("b3", "Text").text()),
                     )
                     .child(
                         row()
                             .child(
                                 Button::new("b4", "Open")
-                                    .contained()
+                                    .primary()
                                     .start_icon(I::OpenInBrowser)
-                                    .size(ButtonSize::Large),
+                                    .size(ButtonSize::Lg),
                             )
-                            .child(Button::new("b5", "Disabled").contained().disabled(true))
-                            .child(Button::new("b6", "Saving").outlined().loading(true))
-                            .child(Button::new("open-dialog", "Dialog").outlined().on_click({
+                            .child(Button::new("b5", "Disabled").primary().disabled(true))
+                            .child(Button::new("b6", "Saving").soft().loading(true))
+                            .child(Button::new("open-dialog", "Dialog").soft().on_click({
                                 let view = view.clone();
                                 move |_, _, cx| {
                                     view.update(cx, |this, cx| {
@@ -128,38 +128,33 @@ impl Render for Gallery {
                     )
                     .child(
                         row()
-                            .child(Button::new("b7", "Saving").contained().loading(true))
-                            .child(Button::new("b8", "Delete").contained().tone(ButtonTone::Danger))
+                            .child(Button::new("b7", "Saving").primary().loading(true))
+                            .child(Button::new("b8", "Delete").danger())
                             .child(
                                 Button::new("b9", "Timeout")
-                                    .contained()
-                                    .tone(ButtonTone::Warning),
+                                    .danger(),
                             ),
                     )
                     .child(
                         row()
                             .child(
                                 Button::new("b10", "Delete")
-                                    .contained()
-                                    .tone(ButtonTone::Danger)
+                                    .danger()
                                     .disabled(true),
                             )
                             .child(
                                 Button::new("b11", "Timeout")
-                                    .contained()
-                                    .tone(ButtonTone::Warning)
+                                    .danger()
                                     .disabled(true),
                             )
                             .child(
                                 Button::new("b12", "Deleting")
-                                    .contained()
-                                    .tone(ButtonTone::Danger)
+                                    .danger()
                                     .loading(true),
                             )
                             .child(
                                 Button::new("b13", "Timing out")
-                                    .contained()
-                                    .tone(ButtonTone::Warning)
+                                    .danger()
                                     .loading(true),
                             ),
                     )
@@ -183,23 +178,19 @@ impl Render for Gallery {
                     .pt(px(6.))
                     .child(
                         TextField::new("username", &self.username, "Username")
-                            .required(true)
-                            .surface(sem.background_default),
+                            .required(true),
                     )
                     .child(
                         TextField::new("filled", &self.filled, "Filled")
-                            .helper("A helper line")
-                            .surface(sem.background_default),
+                            .helper("A helper line"),
                     )
                     .child(
                         TextField::new("failed", &self.failed, "Server URL")
                             .error(true)
-                            .helper("Couldn't reach that server")
-                            .surface(sem.background_default),
+                            .helper("Couldn't reach that server"),
                     )
                     .child(
-                        SelectField::new("accent", &self.choice, "Accent")
-                            .surface(sem.background_default),
+                        SelectField::new("accent", &self.choice, "Accent"),
                     ),
             ))
             .child(section(
@@ -243,7 +234,7 @@ impl Render for Gallery {
                                 .state(CheckState::Indeterminate))
                             .child(
                                 Checkbox::new("c4", "Granted", true)
-                                    .caption("CREATE_MESSAGE"),
+                                    .description("CREATE_MESSAGE"),
                             )
                             .child(
                                 Checkbox::new(
@@ -251,15 +242,15 @@ impl Render for Gallery {
                                     "A label long enough that it has to wrap onto several lines before the row runs out of width",
                                     true,
                                 )
-                                .caption("And a caption under the label, muted and smaller"),
+                                .description("And a caption under the label, muted and smaller"),
                             )
                             .child(
                                 Checkbox::new("c6", "Partly selected, off", false)
                                     .state(CheckState::Indeterminate)
-                                    .caption("You don't have permission")
+                                    .description("You don't have permission")
                                     .disabled(true),
                             )
-                            .child(Checkbox::new("c7", "Box only", false).hide_label()),
+                            .child(Checkbox::new("c7", "Box only", false).label_hidden()),
                     )
                     .child(row().children((0..3).map(|index| {
                         let view = view.clone();
@@ -323,7 +314,7 @@ impl Render for Gallery {
                         ListRow::new("l2", "A row with a very long name that has to stop before the badge at its end")
                             .secondary("And a secondary line")
                             .leading(Avatar::new("AB").size(32.).background(sem.primary))
-                            .trailing(Badge::new(3).compact()),
+                            .trailing(Badge::new("3 unread").count(3)),
                     )
                     .child(ListRow::new("l3", "Disabled row").disabled(true)),
             ))
@@ -332,12 +323,16 @@ impl Render for Gallery {
                 secondary,
                 row()
                     .gap(px(16.))
-                    .child(Badge::new(32).on(Avatar::new("MI").size(48.)))
-                    .child(Badge::new(150).on(Avatar::new("NC").background(sem.warning)))
+                    .child(Badge::new("32 unread").count(32).on(Avatar::new("MI").size(48.)))
+                    .child(
+                        Badge::new("150 unread")
+                            .count(150)
+                            .on(Avatar::new("NC").background(sem.warning)),
+                    )
                     .child(Avatar::new("PF").size(32.).background(sem.success))
                     .child(Chip::new("Connected"))
                     .child(Chip::new("With icon").icon(Icon::new(I::Check).size(16.)))
-                    .child(Badge::new(7)),
+                    .child(Badge::new("7 unread").count(7)),
             ))
             .child(section(
                 "Progress and skeleton",
@@ -358,8 +353,8 @@ impl Render for Gallery {
                                     .flex()
                                     .flex_col()
                                     .gap(px(6.))
-                                    .child(Skeleton::rect("sk2", relative(0.6), 14.))
-                                    .child(Skeleton::rect("sk3", relative(0.4), 12.)),
+                                    .child(Skeleton::sized("sk2", relative(0.6), 14.))
+                                    .child(Skeleton::sized("sk3", relative(0.4), 12.)),
                             ),
                     ),
             ))
@@ -370,20 +365,30 @@ impl Render for Gallery {
                     .flex()
                     .flex_col()
                     .gap(px(8.))
-                    .child(Alert::new(Severity::Error, "Login failed. Please try again."))
-                    .child(Alert::new(Severity::Warning, "Your session expires soon."))
-                    .child(Alert::new(Severity::Info, "You've been signed out."))
-                    .child(Alert::new(Severity::Success, "Saved.")),
+                    .child(Alert::new("kit-stories-alert-1", Severity::Danger, "Login failed. Please try again."))
+                    .child(Alert::new("kit-stories-alert-2", Severity::Warning, "Your session expires soon."))
+                    .child(Alert::new("kit-stories-alert-3", Severity::Info, "You've been signed out."))
+                    .child(Alert::new("kit-stories-alert-4", Severity::Success, "Saved.")),
             ))
             .child(section(
                 "Table",
                 secondary,
                 Paper::new().child(Table::new(
                     "Members",
-                    vec!["Name".into(), "Role".into(), "Joined".into()],
                     vec![
-                        vec!["Mike".into(), "Owner".into(), "Sep 16".into()],
-                        vec!["Priya Nilsson".into(), "Member".into(), "Sep 18".into()],
+                        TableColumn::new("name", "Name"),
+                        TableColumn::new("role", "Role"),
+                        TableColumn::new("joined", "Joined"),
+                    ],
+                    vec![
+                        TableRow::new("mike")
+                            .text("name", "Mike")
+                            .text("role", "Owner")
+                            .text("joined", "Sep 16"),
+                        TableRow::new("priya")
+                            .text("name", "Priya Nilsson")
+                            .text("role", "Member")
+                            .text("joined", "Sep 18"),
                     ],
                 )),
             ))
@@ -418,7 +423,7 @@ impl Render for Gallery {
                     .child(cx.new(|_| Tip("A tooltip".into())))
                     .child(
                         Snackbar::new("Message sent")
-                            .action(Button::new("undo", "Undo")),
+                            .action(Button::new("undo", "Undo").text()),
                     ),
             ));
 
@@ -445,21 +450,21 @@ impl Render for Gallery {
                 let view = view.clone();
                 let close = view.clone();
                 gallery.child(
-                    Dialog::new("Leave this community?")
+                    Dialog::new("leave-this-community-dialog", "Leave this community?")
                         .body(text(
                             Variant::Body1,
                             "You'll lose access to its channels until someone invites you back.",
                         ))
-                        .action(
-                            Button::new("dialog-cancel", "Cancel").on_click(move |_, _, cx| {
+                        .action(Button::new("dialog-cancel", "Cancel").text().on_click(
+                            move |_, _, cx| {
                                 view.update(cx, |this, cx| {
                                     this.dialog = false;
                                     cx.notify();
                                 })
                                 .ok();
-                            }),
-                        )
-                        .action(Button::new("dialog-ok", "Leave").color(sem.error))
+                            },
+                        ))
+                        .action(Button::new("dialog-ok", "Leave").quiet_danger())
                         .on_close(move |_, cx| {
                             close
                                 .update(cx, |this, cx| {
@@ -522,11 +527,51 @@ impl Render for Cjk {
     }
 }
 
+/// Every icon of the design system's set, named, at the four icon sizes: each must draw, in the
+/// text colour.
+struct LoungeIcons;
+
+impl Render for LoungeIcons {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use semaphore_design::LoungeIcon;
+        use semaphore_design::lounge::{ICON_LG, ICON_MD, ICON_SM, ICON_XS};
+        let sem = cx.sem().clone();
+        div()
+            .id("kit-lounge-icons")
+            .size_full()
+            .overflow_y_scroll()
+            .bg(sem.role.surface)
+            .text_color(sem.role.text)
+            .font_family(FONT_FAMILY)
+            .p(px(16.))
+            .flex()
+            .flex_wrap()
+            .gap(px(8.))
+            .children(LoungeIcon::ALL.into_iter().map(|icon| {
+                div()
+                    .w(px(112.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .child(
+                        div().flex().items_end().gap(px(6.)).children(
+                            [ICON_XS, ICON_SM, ICON_MD, ICON_LG]
+                                .map(|size| Icon::lounge(icon).size(size)),
+                        ),
+                    )
+                    .child(text(Variant::Xs, icon.name()).text_color(sem.role.text_secondary))
+            }))
+    }
+}
+
 pub fn stories() -> Vec<Story> {
     vec![
         Story::new("kit-gallery", |_, window, cx| {
             cx.new(|cx| Gallery::new(window, cx)).into()
         }),
         Story::new("kit-cjk", |_, _, cx| cx.new(|_| Cjk).into()),
+        Story::new("kit-lounge-icons", |_, _, cx| {
+            cx.new(|_| LoungeIcons).into()
+        }),
     ]
 }

@@ -101,23 +101,6 @@ fn stub_rows(props: &ContentProps, _: &mut Window, cx: &mut App) -> AnyElement {
             .child(text(Variant::H5, format!("Welcome to #{}", channel.name)))
             .child(text(Variant::Body1, "No messages yet"))
             .into_any_element(),
-        // `CommunityPage` with no channel selected.
-        (_, None) if props.route.community_id().is_some() => div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .gap(spacing(2.))
-            .text_color(sem.text_secondary)
-            .when_some(props.community.as_ref(), |this, community| {
-                this.child(text(Variant::H5, format!("Welcome to {}", community.name)))
-            })
-            .child(text(
-                Variant::Body1,
-                "Select a channel from the sidebar to get started",
-            ))
-            .into_any_element(),
         (_, None) => home_card(props, &sem).into_any_element(),
     }
 }
@@ -171,8 +154,8 @@ fn home_card(props: &ContentProps, sem: &crate::theme::Sem) -> impl IntoElement 
                             .child(
                                 div().pt(spacing(1.5)).child(
                                     KitButton::new("home-message-someone", "Message someone")
-                                        .outlined()
-                                        .size(ButtonSize::Large)
+                                        .soft()
+                                        .size(ButtonSize::Lg)
                                         .start_icon(IconName::ChatBubbleOutline),
                                 ),
                             ),
@@ -184,11 +167,14 @@ fn home_card(props: &ContentProps, sem: &crate::theme::Sem) -> impl IntoElement 
 pub(crate) struct Options {
     pub scenario: &'static str,
     pub channel: Option<&'static str>,
+    /// Open this community id instead of the scenario's first (one the user isn't in, say).
+    pub community: Option<&'static str>,
     pub connection: ConnectionState,
     pub edit: fn(&mut Fixture),
-    pub expanded: bool,
+    /// The members shown (below wide, their Sheet open).
     pub members_open: bool,
     pub messages: bool,
+    /// A phone shows the centre rather than the left island.
     pub phone_content: bool,
     pub side_panel: bool,
     /// Open `/direct-messages` instead of a channel, with a stand-in route sidebar.
@@ -209,9 +195,9 @@ impl Default for Options {
         Self {
             scenario: "big-community",
             channel: Some("general"),
+            community: None,
             connection: ConnectionState::Connected,
             edit: |_| {},
-            expanded: false,
             members_open: false,
             messages: true,
             phone_content: false,
@@ -227,14 +213,22 @@ impl Default for Options {
     }
 }
 
-pub(crate) fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyView {
+pub(crate) fn shell_view(
+    env: &StoryEnv,
+    options: Options,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
     let views = env.scenario(options.scenario).unwrap_or_else(|error| {
         panic!("story scenario {}: {error}", options.scenario);
     });
     let json = env.scenarios_dir.join(format!("{}.json", options.scenario));
     let mut fixture = Fixture::load(views, &json).unwrap_or_else(|error| panic!("{error}"));
     (options.edit)(&mut fixture);
-    let community = fixture.first_community();
+    let community = options
+        .community
+        .map(str::to_owned)
+        .unwrap_or_else(|| fixture.first_community());
     let channel_id = options.channel.and_then(|name| {
         fixture
             .channel_named(&community, name)
@@ -272,9 +266,8 @@ pub(crate) fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyV
     );
     cx.set_global(GlobalStub(stub));
 
-    let (connection, expanded, members_open, phone_content, side_panel) = (
+    let (connection, members_open, phone_content, side_panel) = (
         options.connection,
-        options.expanded,
         options.members_open,
         options.phone_content,
         options.side_panel,
@@ -298,7 +291,8 @@ pub(crate) fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyV
             as UpdateBannerSlot
     });
     cx.new(|cx| {
-        let mut shell = Shell::new(source, route, content, connection, cx);
+        let mut shell = Shell::new(source, route, content, connection, window, cx)
+            .with_instance_label("moss.social");
         if let Some(slot) = route_sidebar {
             shell = shell.with_route_sidebar(slot);
         }
@@ -306,14 +300,45 @@ pub(crate) fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyV
             shell = shell.with_update_banner(slot);
         }
         shell.header_accessory = accessory;
-        shell.rail_expanded = expanded;
-        shell.members_open = members_open;
-        shell.phone_content = phone_content;
+        if members_open {
+            shell.right_open = Some(true);
+        }
+        shell.phone_pane = if phone_content {
+            crate::kit::PhonePane::Centre
+        } else {
+            crate::kit::PhonePane::Left
+        };
         shell.pinned_count = 1;
         shell.side_panel = panel;
         shell
     })
     .into()
+}
+
+/// `view` with a toast showing from its first frame, as the app shows one through the queue.
+fn with_toast(view: AnyView, cx: &mut App) -> AnyView {
+    cx.new(|_| WithToast { view, shown: false }).into()
+}
+
+struct WithToast {
+    view: AnyView,
+    shown: bool,
+}
+
+impl Render for WithToast {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !std::mem::replace(&mut self.shown, true) {
+            let toasts = crate::kit::Toasts::for_window(window.window_handle());
+            // After this frame: never show a toast while rendering.
+            window.defer(cx, move |_, cx| {
+                toasts.show(
+                    crate::kit::ToastRequest::new("Clip saved to your library").id("story-toast"),
+                    cx,
+                );
+            });
+        }
+        div().size_full().child(self.view.clone())
+    }
 }
 
 /// Stands in for the pins, search or thread panel, which draw their own stories.
@@ -331,25 +356,14 @@ impl Render for PlaceholderPanel {
 }
 
 /// Stands in for the DM sidebar, which draws its own stories.
-fn placeholder_sidebar(
-    props: &RouteSidebarProps,
-    _: &mut Window,
-    cx: &mut App,
-) -> Option<AnyElement> {
+fn placeholder_sidebar(_: &RouteSidebarProps, _: &mut Window, cx: &mut App) -> Option<AnyElement> {
     let sem = cx.sem();
     Some(
         div()
             .size_full()
             .p(px(16.))
             .bg(sem.paper)
-            .child(crate::kit::text(
-                crate::kit::Variant::H6,
-                if props.phone {
-                    "Route sidebar (phone)"
-                } else {
-                    "Route sidebar"
-                },
-            ))
+            .child(crate::kit::text(crate::kit::Variant::H6, "Route sidebar"))
             .into_any_element(),
     )
 }
@@ -486,23 +500,23 @@ fn ready_package() -> crate::update::UpdateStatus {
 
 macro_rules! shell_story {
     ($name:literal, $($field:ident: $value:expr),* $(,)?) => {
-        Story::new($name, |env, _, cx| {
+        Story::new($name, |env, window, cx| {
             #[allow(clippy::needless_update)]
             let options = Options { $($field: $value,)* ..Options::default() };
-            shell_view(env, options, cx)
+            shell_view(env, options, window, cx)
         })
     };
 }
 
 pub fn stories() -> Vec<Story> {
     vec![
-        Story::new("shell-connected", |env, _, cx| {
-            shell_view(env, Options::default(), cx)
+        Story::new("shell-connected", |env, window, cx| {
+            shell_view(env, Options::default(), window, cx)
         }),
         shell_story!("shell-offline", connection: ConnectionState::Offline),
         // W13: the update card beside the connection chip's corner; the settings row draws "up to
         // date" (there is no card for it).
-        Story::new("shell-update-available", |env, _, cx| {
+        Story::new("shell-update-available", |env, window, cx| {
             shell_view(
                 env,
                 Options {
@@ -520,10 +534,10 @@ pub fn stories() -> Vec<Story> {
                     phone_content: true,
                     ..Options::default()
                 },
-                cx,
+                window, cx
             )
         }),
-        Story::new("shell-update-downloading", |env, _, cx| {
+        Story::new("shell-update-downloading", |env, window, cx| {
             shell_view(
                 env,
                 Options {
@@ -537,30 +551,33 @@ pub fn stories() -> Vec<Story> {
                     )),
                     ..Options::default()
                 },
+                window,
                 cx,
             )
         }),
-        Story::new("shell-update-ready-appimage", |env, _, cx| {
+        Story::new("shell-update-ready-appimage", |env, window, cx| {
             shell_view(
                 env,
                 Options {
                     update: Some(update_card(ready_appimage(), false, cx)),
                     ..Options::default()
                 },
+                window,
                 cx,
             )
         }),
-        Story::new("shell-update-ready-package", |env, _, cx| {
+        Story::new("shell-update-ready-package", |env, window, cx| {
             shell_view(
                 env,
                 Options {
                     update: Some(update_card(ready_package(), false, cx)),
                     ..Options::default()
                 },
+                window,
                 cx,
             )
         }),
-        Story::new("shell-update-failed", |env, _, cx| {
+        Story::new("shell-update-failed", |env, window, cx| {
             shell_view(
                 env,
                 Options {
@@ -574,10 +591,10 @@ pub fn stories() -> Vec<Story> {
                     )),
                     ..Options::default()
                 },
-                cx,
+                window, cx
             )
         }),
-        Story::new("shell-update-available-manual", |env, _, cx| {
+        Story::new("shell-update-available-manual", |env, window, cx| {
             shell_view(
                 env,
                 Options {
@@ -594,10 +611,10 @@ pub fn stories() -> Vec<Story> {
                     )),
                     ..Options::default()
                 },
-                cx,
+                window, cx
             )
         }),
-        Story::new("shell-update-over-offline", |env, _, cx| {
+        Story::new("shell-update-over-offline", |env, window, cx| {
             shell_view(
                 env,
                 Options {
@@ -605,19 +622,78 @@ pub fn stories() -> Vec<Story> {
                     update: Some(update_card(ready_appimage(), false, cx)),
                     ..Options::default()
                 },
+                window,
                 cx,
             )
         }),
         shell_story!("shell-reconnecting", connection: ConnectionState::Disconnected),
         shell_story!("shell-unread", edit: mark_unread),
-        shell_story!("shell-rail-expanded", expanded: true),
         shell_story!("shell-members-open", members_open: true, phone_content: true),
         shell_story!("shell-channel-pane", phone_content: true),
         shell_story!("shell-side-panel", side_panel: true, phone_content: true),
+        // A real thread in the side panel: the right island at wide, a drawer below.
+        // B11: a toast over a screen that pins something to the centre's foot sits above it.
+        Story::new("shell-toast-over-stage", |env, window, cx| {
+            let stage = crate::voice::recording_stage(window, cx);
+            let content: ContentSlot = Rc::new(move |_, _, _| stage.clone().into_any_element());
+            let shell = shell_view(
+                env,
+                Options {
+                    content: Some(content),
+                    phone_content: true,
+                    ..Options::default()
+                },
+                window,
+                cx,
+            );
+            with_toast(shell, cx)
+        }),
+        Story::new("shell-toast-over-composer", |env, window, cx| {
+            let composer = crate::composer::story_composer(window, cx);
+            let content: ContentSlot = Rc::new(move |props, window, cx| {
+                div()
+                    .size_full()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .relative()
+                            .flex_1()
+                            .min_h_0()
+                            .child(stub_rows(props, window, cx))
+                            .child(crate::kit::ToastAnchor::new()),
+                    )
+                    .child(div().flex_shrink_0().child(composer.clone()))
+                    .into_any_element()
+            });
+            let shell = shell_view(
+                env,
+                Options {
+                    content: Some(content),
+                    phone_content: true,
+                    ..Options::default()
+                },
+                window,
+                cx,
+            );
+            with_toast(shell, cx)
+        }),
+        Story::new("shell-side-panel-thread", |env, window, cx| {
+            let panel = Some(crate::thread::stories::in_shell(window, cx));
+            shell_view(
+                env,
+                Options {
+                    panel,
+                    phone_content: true,
+                    ..Options::default()
+                },
+                window,
+                cx,
+            )
+        }),
         shell_story!("shell-route-sidebar", dm_route: true),
         shell_story!("shell-header-accessory", header_accessory: true, phone_content: true),
         shell_story!("shell-long-content", edit: long_names),
-        shell_story!("shell-long-content-expanded", edit: long_names, expanded: true),
         shell_story!("shell-voice-connected", edit: connect_hangout),
         shell_story!("shell-voice-server-muted", edit: connect_hangout_moderated),
         shell_story!("shell-voice-speaking", edit: connect_hangout_speaking),
@@ -688,6 +764,34 @@ pub fn stories() -> Vec<Story> {
                 fixture.channels_state = Fake::Loading;
                 fixture.members_state = Fake::Loading;
             },
+        ),
+        // B12: the community home's centre (compact and wide; a phone shows the left pane).
+        shell_story!(
+            "shell-community-home-not-member",
+            channel: None,
+            community: Some("c-not-yours"),
+        ),
+        shell_story!(
+            "shell-community-home-channels-error",
+            channel: None,
+            edit: |fixture| fixture.channels_state = Fake::Failed,
+        ),
+        shell_story!(
+            "shell-community-home-long-name",
+            channel: None,
+            edit: |fixture| {
+                fixture.views.channels.retain(|c| c.kind == ChannelKind::Voice);
+                fixture.caps = Some(reader_caps());
+                if let Some(row) = fixture.views.communities.first_mut() {
+                    row.name = "The Late-Night Speedrunners, Tinkerers and Occasional Bakers Society".into();
+                }
+            },
+        ),
+        shell_story!(
+            "shell-community-home-members-open",
+            channel: None,
+            members_open: true,
+            edit: |fixture| fixture.views.channels.retain(|c| c.kind == ChannelKind::Voice),
         ),
         shell_story!(
             "shell-error",

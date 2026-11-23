@@ -187,6 +187,7 @@ fn window_appearance_from_color_scheme(cs: ColorScheme) -> WindowAppearance {
     match cs {
         ColorScheme::PreferDark => WindowAppearance::Dark,
         ColorScheme::PreferLight => WindowAppearance::Light,
-        ColorScheme::NoPreference => WindowAppearance::Light,
+        // Semaphore: no preference is the design default, dark.
+        ColorScheme::NoPreference => WindowAppearance::Dark,
     }
 }

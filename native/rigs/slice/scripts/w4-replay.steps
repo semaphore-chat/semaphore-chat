@@ -31,7 +31,7 @@ server seed_clip "{\"id\": \"$ID(w4-priya-priv)\", \"userId\": \"$ID(u-priya)\",
 type "my clips"
 press enter
 wait core sent "my clips"
-click-row message-author "my clips"
+click-row message/name "my clips"
 wait core profile-open $ID(me)
 wait core element profile-modal
 click profile-view-page
@@ -100,7 +100,7 @@ link "semaphore://community/$ID(c-couch)/channel/$ID(cc-general)"
 wait core channel $ID(cc-general)
 server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"see my clip\"}"
 wait core text "see my clip" within 5
-click-row message-author "see my clip"
+click-row message/name "see my clip"
 wait core profile-open $ID(u-priya)
 click profile-view-page
 wait core route profile/$ID(u-priya)

@@ -152,7 +152,7 @@ impl AddFriendForm {
         let picked = !self.picker.read(cx).picked().is_empty();
         let view = cx.weak_entity();
         Button::new("add-friend-send", "Send Friend Request")
-            .contained()
+            .primary()
             .when(full_width, |button| button.full_width())
             .disabled(!picked)
             .loading(matches!(self.outcome, AddOutcome::Sending))
@@ -163,8 +163,16 @@ impl AddFriendForm {
 
     fn fields(&self) -> Div {
         let alert = match &self.outcome {
-            AddOutcome::Sent => Some(Alert::new(Severity::Success, "Friend request sent!")),
-            AddOutcome::Failed(error) => Some(Alert::new(Severity::Error, friendly_error(error))),
+            AddOutcome::Sent => Some(Alert::new(
+                "friends-add-alert-1",
+                Severity::Success,
+                "Friend request sent!",
+            )),
+            AddOutcome::Failed(error) => Some(Alert::new(
+                "friends-add-alert-2",
+                Severity::Danger,
+                friendly_error(error),
+            )),
             _ => None,
         };
         div()
@@ -228,7 +236,7 @@ impl Render for AddFriendDialog {
         let fields = self.form.read(cx).fields();
         let send = self.form.update(cx, |form, cx| form.send_button(false, cx));
         let view = cx.weak_entity();
-        Dialog::new("Add Friend")
+        Dialog::new("add-friend-dialog", "Add Friend")
             .width(width)
             .on_close({
                 let view = view.clone();
@@ -237,11 +245,11 @@ impl Render for AddFriendDialog {
                 }
             })
             .body(div().id("add-friend").pt(px(8.)).child(fields))
-            .action(
-                Button::new("add-friend-cancel", "Cancel").on_click(move |_, window, cx| {
+            .action(Button::new("add-friend-cancel", "Cancel").ghost().on_click(
+                move |_, window, cx| {
                     view.update(cx, |dialog, cx| dialog.close(window, cx)).ok();
-                }),
-            )
+                },
+            ))
             .action(send)
     }
 }

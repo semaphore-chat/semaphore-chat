@@ -9,6 +9,7 @@ use super::common::{
 use super::rules::{
     Outcome, Pending, act, check_group_name, failure_of, needs, running, running_of,
 };
+use crate::kit::IconButtonVariant;
 use crate::kit::{
     Alert, Button, Checkbox, Chip, Severity, TextField, Variant, spacing, text, text_state,
 };
@@ -359,7 +360,7 @@ impl MentionGroupsTab {
                                 format!("Edit @{}", group.name),
                                 edit_locked.clone(),
                                 false,
-                                Some(sem.primary),
+                                Some(IconButtonVariant::Soft),
                                 cx.listener(move |tab, _, window, cx| tab.edit(edit_id.clone(), window, cx)),
                             ))
                             .child(action_icon(
@@ -368,7 +369,7 @@ impl MentionGroupsTab {
                                 format!("Delete @{}", group.name),
                                 delete_locked.clone(),
                                 busy,
-                                Some(sem.error),
+                                Some(IconButtonVariant::Danger),
                                 cx.listener(move |tab, _, _, cx| {
                                     tab.deleting = Some(delete_row.clone());
                                     cx.notify();
@@ -463,12 +464,18 @@ impl MentionGroupsTab {
                 .collect();
             if community.members.is_empty() {
                 Alert::new(
+                    "community-settings-groups-alert-1",
                     Severity::Info,
                     "No members in this community yet. Add members to the community first.",
                 )
                 .into_any_element()
             } else if shown.is_empty() {
-                Alert::new(Severity::Info, "No members match your search.").into_any_element()
+                Alert::new(
+                    "community-settings-groups-alert-2",
+                    Severity::Info,
+                    "No members match your search.",
+                )
+                .into_any_element()
             } else {
                 let all = shown.iter().all(|user| editor.selected.contains(&user.id));
                 let ids: Vec<String> = shown.iter().map(|user| user.id.clone()).collect();
@@ -566,7 +573,7 @@ impl MentionGroupsTab {
         };
         let save = locked_button(
             Button::new("group-save", save_label)
-                .contained()
+                .primary()
                 .start_icon(DesignIcon::Save)
                 .disabled(busy || waiting_group || name_text.trim().is_empty())
                 .on_click(cx.listener(|tab, _, _, cx| tab.save(cx))),
@@ -581,7 +588,7 @@ impl MentionGroupsTab {
             .gap(spacing(1.))
             .child(
                 Button::new("group-cancel", "Cancel")
-                    .outlined()
+                    .soft()
                     .start_icon(DesignIcon::Cancel)
                     .disabled(busy)
                     .on_click(cx.listener(|tab, _, _, cx| {
@@ -641,7 +648,7 @@ impl Render for MentionGroupsTab {
         } else {
             vec![locked_button(
                 Button::new("group-create", "Create Group")
-                    .contained()
+                    .primary()
                     .start_icon(DesignIcon::Add)
                     .on_click(cx.listener(|tab, _, window, cx| tab.create(window, cx))),
                 "group-create-locked",

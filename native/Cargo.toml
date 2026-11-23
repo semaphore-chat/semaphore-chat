@@ -67,6 +67,29 @@ webrtc-sys-build = { path = "third_party/vendor/webrtc-sys-build" }
 [profile.dev]
 debug = "line-tables-only"
 
+# The native UI review runs a debug rig-shot, which decodes, diffs and re-encodes thousands of
+# large PNGs. Unoptimised, that took over an hour when most shots changed (#885). The codecs are
+# small leaf crates and rig-shot is one small crate, so optimising them in dev costs seconds of
+# build time; renders stay byte-identical.
+[profile.dev.package.rig-shot]
+opt-level = 3
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.flate2]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.dev.package.crc32fast]
+opt-level = 3
+[profile.dev.package.simd-adler32]
+opt-level = 3
+[profile.dev.package.adler2]
+opt-level = 3
+
 [profile.release]
 strip = "symbols"
 lto = "thin"

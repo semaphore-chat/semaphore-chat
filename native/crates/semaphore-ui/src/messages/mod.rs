@@ -2,7 +2,8 @@
 //!
 //! - `store`: `Arc<MessageRow>` in seq order, changed only by core's `ListOp`s.
 //! - `text`, `selection`: what the display string means. Plain Rust, with no GPUI.
-//! - `row`, `text_element`: drawing one row, after the web client's `components/Message/`.
+//! - `row`: drawing one row on the kit's `MessageRow` and `MessageText`; `segments`: a row's
+//!   words as the kit's segments, and the map between the display string and the words as drawn.
 //! - `media`: where images come from, the bounded cache, animation timing, the allocator setting.
 //! - `third_party`: the only way to a GIF's or a link preview's picture, closed while the setting
 //!   is off. `seen`: which row "Seen by" goes under and how it reads.
@@ -18,16 +19,18 @@ mod actions;
 mod announce;
 mod format;
 mod icons;
+#[cfg(test)]
+mod link_tests;
 mod media;
 pub mod palette;
 #[cfg(test)]
 mod player_tests;
 mod row;
 mod seen;
+mod segments;
 mod selection;
 mod store;
 mod text;
-mod text_element;
 mod third_party;
 mod view;
 

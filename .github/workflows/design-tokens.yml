@@ -1,10 +1,11 @@
 name: Design tokens
 
-# Both clients read the generated token files, never design/tokens.json itself,
-# and those files are committed. A change to the source, the generator or a
-# generated file that was not regenerated leaves the clients out of step, so
-# this workflow fails when `gen_tokens.py --check` reports a stale or missing
-# output. It needs no dependency install: the generator is standard library only.
+# Every client (web, desktop, Android) reads its generated token and icon files,
+# never design/tokens.json itself, and those files are committed. A change to
+# the source, the generator or a generated file that was not regenerated leaves
+# the clients out of step, so this workflow fails when `gen_tokens.py --check`
+# reports a stale or missing output. It needs no dependency install: the
+# generator is standard library only.
 #
 # It also checks design/guide/exceptions.md, the list of `design-exception:`
 # comments in the clients' source. That page changes when someone adds such a
@@ -25,6 +26,7 @@ on:
       - 'frontend/src/kit/behaviour/generated/**'
       - 'native/crates/semaphore-design/src/lounge_icons.rs'
       - 'native/crates/semaphore-design/assets/lucide/**'
+      - 'native/android/kit/src/main/java/app/semaphorechat/android/design/**'
       - 'frontend/src/**'
       - 'native/crates/**'
       - '.github/workflows/design-tokens.yml'
@@ -41,6 +43,7 @@ on:
       - 'frontend/src/kit/behaviour/generated/**'
       - 'native/crates/semaphore-design/src/lounge_icons.rs'
       - 'native/crates/semaphore-design/assets/lucide/**'
+      - 'native/android/kit/src/main/java/app/semaphorechat/android/design/**'
       - 'frontend/src/**'
       - 'native/crates/**'
       - '.github/workflows/design-tokens.yml'

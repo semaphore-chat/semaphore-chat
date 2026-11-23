@@ -4,11 +4,11 @@
 mod common;
 
 use common::*;
-use semaphore_core::CoreEvent;
 use semaphore_core::backend::BackendError;
 use semaphore_core::model::{
     LoadState, RegistrationMode, RestoreOutcome, SessionState, SignOutReason, ViewKey,
 };
+use semaphore_core::{ConnectionState, CoreEvent, NetworkState};
 use semaphore_wire::enums::ErrorCode;
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
@@ -194,6 +194,83 @@ async fn restore_signs_in_with_the_stored_session_and_connects() {
     assert!(rig.realtime.calls().contains(&"connect".to_owned()));
     rig.core.run_until_idle().await;
     assert_eq!(rig.core.load_state(ViewKey::Communities), LoadState::Ready);
+}
+
+#[tokio::test]
+async fn a_restore_that_finishes_while_suspended_connects_on_resume_not_before() {
+    let rig = Rig::new();
+    *rig.backend.stored_session.lock().unwrap() = true;
+    rig.core.suspend();
+    let outcome = rig
+        .core
+        .restore_session("http://server".into())
+        .await
+        .unwrap();
+    assert_eq!(outcome, RestoreOutcome::SignedIn);
+    assert!(matches!(rig.core.session(), SessionState::SignedIn { .. }));
+    assert!(
+        !rig.realtime.calls().contains(&"connect".to_owned()),
+        "no socket while suspended: {:?}",
+        rig.realtime.calls()
+    );
+    assert_eq!(rig.core.connection(), ConnectionState::Suspended);
+
+    assert!(rig.core.resume().reconnect_socket);
+    let calls = rig.realtime.calls();
+    assert_eq!(
+        calls.last().map(String::as_str),
+        Some("connect"),
+        "{calls:?}"
+    );
+    // Once: the next resume resumes the socket that now exists.
+    rig.core.suspend();
+    rig.core.resume();
+    assert_eq!(
+        rig.realtime.calls().last().map(String::as_str),
+        Some("resume(false)")
+    );
+}
+
+#[tokio::test]
+async fn a_sign_in_while_suspended_and_offline_connects_when_the_network_returns() {
+    let rig = Rig::new();
+    rig.core.suspend();
+    rig.core.network_changed(NetworkState::Unavailable);
+    *rig.backend.stored_session.lock().unwrap() = true;
+    rig.core
+        .restore_session("http://server".into())
+        .await
+        .unwrap();
+    // Resumed offline: nothing to connect yet.
+    assert!(!rig.core.resume().reconnect_socket);
+    assert!(!rig.realtime.calls().contains(&"connect".to_owned()));
+    assert!(
+        rig.core
+            .network_changed(NetworkState::Available)
+            .reconnect_socket
+    );
+    assert_eq!(
+        rig.realtime.calls().last().map(String::as_str),
+        Some("connect")
+    );
+}
+
+#[tokio::test]
+async fn a_sign_out_while_suspended_forgets_the_pending_connect() {
+    let rig = Rig::new();
+    *rig.backend.stored_session.lock().unwrap() = true;
+    rig.core.suspend();
+    rig.core
+        .restore_session("http://server".into())
+        .await
+        .unwrap();
+    rig.core.sign_out().await.unwrap();
+    rig.core.resume();
+    assert!(
+        !rig.realtime.calls().contains(&"connect".to_owned()),
+        "{:?}",
+        rig.realtime.calls()
+    );
 }
 
 #[tokio::test]

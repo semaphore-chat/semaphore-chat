@@ -187,7 +187,7 @@ pub(crate) fn error_block(
                 .mb(px(12.))
                 .text_center(),
         )
-        .child(Button::new(id, "Try again").outlined().on_click(on_retry))
+        .child(Button::new(id, "Try again").soft().on_click(on_retry))
         .into_any_element()
 }
 
@@ -239,9 +239,11 @@ pub(crate) fn relative_time(now_ms: i64, then_ms: i64) -> String {
     }
 }
 
-/// The message text a panel previews: the display string on one line, as the web joins spans.
+/// The message text a panel previews: the display string on one line, as the web joins spans,
+/// without bidi controls, so nothing in a message can reorder how its preview reads.
 pub(crate) fn preview_text(display: &str, max_chars: Option<usize>) -> String {
-    let joined = display.split_whitespace().collect::<Vec<_>>().join(" ");
+    let plain = semaphore_design::chat::strip_bidi(display);
+    let joined = plain.split_whitespace().collect::<Vec<_>>().join(" ");
     match max_chars {
         Some(max) if joined.chars().count() > max => {
             let cut: String = joined.chars().take(max).collect();
@@ -343,5 +345,20 @@ mod tests {
         assert_eq!(preview_text("a\n\nb  c", None), "a b c");
         assert_eq!(preview_text("abcdef", Some(3)), "abc...");
         assert_eq!(preview_text("abc", Some(3)), "abc");
+    }
+}
+
+#[cfg(test)]
+mod preview_tests {
+    use super::preview_text;
+    use std::prelude::rust_2024::test;
+
+    #[test]
+    fn a_preview_drops_bidi_controls() {
+        assert_eq!(
+            preview_text("pay at \u{202E}https://evil.example/moc.knab//:sptth", None),
+            "pay at https://evil.example/moc.knab//:sptth"
+        );
+        assert_eq!(preview_text("a\u{2066}b\u{2069} c", None), "ab c");
     }
 }

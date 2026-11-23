@@ -14,6 +14,10 @@
 //!   and frames before it are dropped; the ring is flushed by the audio callback, which
 //!   acknowledges the generation, and nothing new is queued until it has. The first frame at the
 //!   target shows even when paused, and a [`PlayerEvent::Position`] reports where it landed.
+//! - **Pause.** The pause is given to the output callback as a generation too, and reported only
+//!   once a callback has acknowledged it with a buffer of silence: no frame computed while
+//!   playing is written by the callback after [`PlayerEvent::State`] says Paused. A resampling
+//!   device backend may still play up to one chunk it buffered before acknowledging.
 //! - **One active player.** Playing one pauses whichever was playing.
 //! - **Unmount.** Dropping a [`Player`] stops its thread, closes the output and removes its
 //!   video surface. The device stays open while paused (cheap; reopening costs a glitch).
@@ -104,6 +108,10 @@ const VIDEO_TARGET: usize = 3;
 const VIDEO_CAP: usize = 8;
 const POSITION_EVERY: Duration = Duration::from_millis(250);
 const DEFAULT_FRAME: Duration = Duration::from_millis(40);
+/// How long a pause waits for the output to confirm it is silent. A device chunk is 10 to 20 ms;
+/// 500 ms leaves room for a descheduled audio thread on a loaded machine. Past it the pause is
+/// reported anyway (a device that never calls back gets no sample out either).
+const PAUSE_ACK: Duration = Duration::from_millis(500);
 
 enum Command {
     Play,
@@ -129,6 +137,19 @@ struct Shared {
 impl Shared {
     fn registry(&self) -> MutexGuard<'_, Registry> {
         self.registry.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// `player` starts: it becomes the one playing, and whoever held it is told to pause. Called
+    /// when a view asks to play, and again when the engine handles that play: a pause queued
+    /// ahead of it may have released the registration after the view made it, and the play must
+    /// put it back.
+    fn activate(&self, player: u64) {
+        let mut registry = self.registry();
+        if let Some(previous) = registry.exclusive.activate(player)
+            && let Some(other) = registry.players.get(&previous)
+        {
+            let _ = other.send(Command::Pause);
+        }
     }
 }
 
@@ -248,14 +269,7 @@ impl Player {
 
 impl MediaPlayer for Player {
     fn play(&self) {
-        {
-            let mut registry = self.shared.registry();
-            if let Some(previous) = registry.exclusive.activate(self.id)
-                && let Some(other) = registry.players.get(&previous)
-            {
-                let _ = other.send(Command::Pause);
-            }
-        }
+        self.shared.activate(self.id);
         let _ = self.commands.send(Command::Play);
     }
 
@@ -361,7 +375,10 @@ fn run(context: Context, commands: mpsc::Receiver<Command>) {
 
 /// Shared with the output callback.
 struct OutState {
-    paused: AtomicBool,
+    /// 0 while playing; otherwise the pause generation the output must be silent for.
+    pause: AtomicU64,
+    /// The pause generation a callback has filled its buffer with silence for.
+    pause_ack: AtomicU64,
     /// Sample frames taken from the ring since the last flush.
     played: AtomicU64,
     delay_ms: AtomicU32,
@@ -409,6 +426,8 @@ struct Engine {
     seek: Option<SeekPending>,
     last_position: Option<Instant>,
     flush_generation: u64,
+    /// Bumped on every stop, so the output can acknowledge this one and not an earlier one.
+    pause_generation: u64,
     stopped: bool,
 }
 
@@ -471,6 +490,7 @@ impl Engine {
             seek: None,
             last_position: None,
             flush_generation: 0,
+            pause_generation: 0,
             stopped: false,
         };
         let input = if video.is_none() && audio.is_none() {
@@ -549,6 +569,9 @@ impl Engine {
     }
 
     fn start(&mut self) {
+        // `play()` registered this player from the view's thread; a `Pause` queued ahead of that
+        // `Play` may have released it since, so register it again here, in command order.
+        self.context.shared.activate(self.context.id);
         self.playing = true;
         self.wall.start(Instant::now());
         if self.audio.is_some() && self.output.is_none() && !self.output_failed {
@@ -563,24 +586,44 @@ impl Engine {
             }
         }
         if let Some(output) = &self.output {
-            output.state.paused.store(false, Ordering::Relaxed);
+            output.state.pause.store(0, Ordering::Release);
         }
     }
 
+    /// Stops the sound, and waits (bounded) for the output callback to confirm it plays
+    /// silence. Only then does the state machine report Paused, so no frame computed while
+    /// playing is written by the callback after that report; a resampling device backend may
+    /// still play up to one chunk it buffered before acknowledging.
     fn stop(&mut self) {
         self.playing = false;
         self.wall.stop(Instant::now());
-        if let Some(output) = &self.output {
-            output.state.paused.store(true, Ordering::Relaxed);
-        }
+        self.pause_output();
         self.release();
+    }
+
+    fn pause_output(&mut self) {
+        self.pause_generation += 1;
+        let request = self.pause_generation;
+        let Some(output) = &self.output else {
+            return;
+        };
+        output.state.pause.store(request, Ordering::Release);
+        let deadline = Instant::now() + PAUSE_ACK;
+        while output.state.pause_ack.load(Ordering::Acquire) != request {
+            if Instant::now() >= deadline {
+                log::warn!("player: the audio output did not confirm the pause in {PAUSE_ACK:?}");
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
     }
 
     fn open_output(&self) -> Result<Output, String> {
         let capacity = SAMPLE_RATE as usize * self.channels / 2;
         let (producer, consumer) = RingBuffer::<i16>::new(capacity);
         let state = Arc::new(OutState {
-            paused: AtomicBool::new(!self.playing),
+            pause: AtomicU64::new(0),
+            pause_ack: AtomicU64::new(0),
             played: AtomicU64::new(0),
             delay_ms: AtomicU32::new(0),
             flush_request: AtomicU64::new(self.flush_generation),
@@ -988,8 +1031,8 @@ fn nv12(image: &Nv12Image) -> Nv12Frame<'_> {
     }
 }
 
-/// Runs on the device's thread: flushes on a new seek generation, plays silence while paused,
-/// applies the gain, counts what it took.
+/// Runs on the device's thread: flushes on a new seek generation, plays silence while paused and
+/// acknowledges the pause, applies the gain, counts what it took.
 fn output_callback(
     mut consumer: Consumer<i16>,
     state: Arc<OutState>,
@@ -1006,8 +1049,10 @@ fn output_callback(
             seen = wanted;
             state.flush_ack.store(wanted, Ordering::Release);
         }
-        if state.paused.load(Ordering::Relaxed) {
+        let pause = state.pause.load(Ordering::Acquire);
+        if pause != 0 {
             buffer.fill(0);
+            state.pause_ack.store(pause, Ordering::Release);
             return;
         }
         let gain = controls.gain();

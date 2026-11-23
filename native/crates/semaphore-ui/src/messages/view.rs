@@ -60,6 +60,11 @@ const SKELETON_ROWS: usize = 12;
 /// The app calls this at startup.
 pub fn init(cx: &mut App) {
     super::media::tune_allocator();
+    // Rows are the kit's pieces, which read the theme. A host that set none (a rig) gets the
+    // default one; the app's own is left alone.
+    if !cx.has_global::<crate::theme::Sem>() {
+        crate::theme::init(cx);
+    }
     let context = Some(KEY_CONTEXT);
     // `KeyBinding::new` parses with no platform in hand, so it rejects GPUI's "secondary".
     macro_rules! chord {
@@ -97,13 +102,6 @@ pub fn with_list_frame_policy(options: WindowOptions) -> WindowOptions {
     }
 }
 
-/// What a press in the text landed on: released in place, it opens.
-#[derive(Debug, Clone)]
-enum Pressed {
-    Link(String),
-    User(String),
-}
-
 /// What the list asks of the app.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MessageListEvent {
@@ -119,6 +117,8 @@ pub enum MessageListEvent {
     LoadOlder,
     /// `Core::hold_rows`: core keeps this span loaded while a selection needs it.
     HoldRows(Option<(i64, i64)>),
+    /// A link in a row was followed. `url` is always `check_link`'s address: the words' links come
+    /// from `MessageText::on_link`, and a preview card's or a GIF's through `check_link`.
     OpenLink {
         url: String,
     },
@@ -245,12 +245,13 @@ pub struct MessageList {
     status: ListStatus,
     scrollbar: bool,
     follow_theme: bool,
+    /// Room under the last row (`set_bottom_room`).
+    bottom_room: Pixels,
     auto: AutoScroll,
     dragging: bool,
     moved: bool,
     drag: Option<UnitDrag>,
     pressed_at: Point<Pixels>,
-    pressed_link: Option<Pressed>,
     pointer: Point<Pixels>,
     /// Where keyboard extension starts when nothing is selected: the last press.
     caret: Option<Pos>,
@@ -281,6 +282,13 @@ impl MessageList {
     /// Whether third-party pictures (GIFs, link-preview images) may load
     /// (`Core::third_party_media()`). Off (the default) draws "Load" cards and never asks the
     /// media source for such a picture.
+    /// Room under the last row. A list in a `ChatPane` keeps the typing line's height
+    /// (`semaphore_design::chat::TYPING_LINE_HEIGHT`), which floats there, so it never covers a row.
+    pub fn set_bottom_room(&mut self, room: Pixels, cx: &mut Context<Self>) {
+        self.bottom_room = room;
+        cx.notify();
+    }
+
     pub fn set_third_party_media(&mut self, on: bool, cx: &mut Context<Self>) {
         if self.shared.third_party.replace(on) != on {
             // Cards and pictures differ in height, in rows on screen and off it.
@@ -373,9 +381,9 @@ impl MessageList {
             prepared: RefCell::default(),
             visible: RefCell::new(BTreeMap::new()),
             selection: Cell::new(None),
-            hovered_link: Cell::new(None),
             palette: Cell::new(options.palette),
             fonts: Fonts::pick(cx),
+            stills: RefCell::default(),
             me_id: data.me_id,
             time: options.time,
             media: Media::new(media, cx),
@@ -421,12 +429,12 @@ impl MessageList {
             status: data.status,
             scrollbar: options.scrollbar,
             follow_theme: options.follow_theme,
+            bottom_room: px(8.),
             auto: AutoScroll::default(),
             dragging: false,
             moved: false,
             drag: None,
             pressed_at: Point::default(),
-            pressed_link: None,
             pointer: Point::default(),
             caret: None,
             goal_x: None,
@@ -685,9 +693,8 @@ impl MessageList {
     fn render_remove_dialog(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
         let (seq, reason) = self.remove.clone()?;
         let confirm_reason = reason.clone();
-        let error = crate::theme::SemTheme::sem(&**cx).error;
         Some(
-            Dialog::new("Remove message")
+            Dialog::new("remove-message-dialog", "Remove message")
                 .width(400.)
                 .on_close({
                     let view = cx.weak_entity();
@@ -706,7 +713,7 @@ impl MessageList {
                                 .placeholder("Shown to moderators"),
                         ),
                 )
-                .action(KitButton::new("remove-cancel", "Cancel").on_click({
+                .action(KitButton::new("remove-cancel", "Cancel").ghost().on_click({
                     let view = cx.weak_entity();
                     move |_, _, cx| {
                         view.update(cx, |list, cx| list.cancel_delete(cx)).ok();
@@ -714,7 +721,7 @@ impl MessageList {
                 }))
                 .action(
                     KitButton::new("remove-confirm", "Remove")
-                        .color(error)
+                        .danger()
                         .on_click({
                             let view = cx.weak_entity();
                             move |_, _, cx| {
@@ -928,6 +935,7 @@ impl MessageList {
     }
 
     pub fn set_selection(&mut self, selection: Option<Selection>, cx: &mut Context<Self>) {
+        let selection = selection.map(|selection| self.widen_out_of_links(selection));
         self.shared.selection.set(selection);
         let held = selection.map(|selection| selection.seq_range());
         if held != self.held {
@@ -935,6 +943,37 @@ impl MessageList {
             cx.emit(MessageListEvent::HoldRows(held));
         }
         cx.notify();
+    }
+
+    /// A selection end inside a relabelled link (drawn by a label other than its written text)
+    /// widens to the link's end away from the other end, so the link is one unit: a drag from
+    /// inside it takes it all, and a key step into it crosses it. Highlight and copy then agree.
+    fn widen_out_of_links(&self, selection: Selection) -> Selection {
+        let rows = self.shared.rows.borrow();
+        let widen = |pos: Pos, to_end: bool| {
+            let Some(row) = rows.by_seq(pos.seq).cloned() else {
+                return pos;
+            };
+            match self.shared.prepared_for(&row).text.map.atomic_at(pos.byte) {
+                Some(link) => Pos {
+                    seq: pos.seq,
+                    byte: if to_end { link.end } else { link.start },
+                },
+                None => pos,
+            }
+        };
+        if selection.is_empty() {
+            let at = widen(selection.cursor, false);
+            return Selection {
+                anchor: at,
+                cursor: at,
+            };
+        }
+        let forward = selection.anchor <= selection.cursor;
+        Selection {
+            anchor: widen(selection.anchor, !forward),
+            cursor: widen(selection.cursor, forward),
+        }
     }
 
     pub fn selected_text(&self) -> String {
@@ -978,31 +1017,18 @@ impl MessageList {
         }
         let (&(seq, base), block) = best?;
         let byte = if position.y < block.bounds.top() {
-            0
+            base
         } else if position.y >= block.bounds.bottom() {
-            block.selectable as usize
+            base + block.selectable
         } else {
-            block
-                .layout
-                .index_for_position(position)
-                .unwrap_or_else(|closest| closest)
+            block.display_of(
+                block
+                    .layout
+                    .index_for_position(position)
+                    .unwrap_or_else(|closest| closest),
+            )
         };
-        Some(Pos {
-            seq,
-            byte: base + (byte as u32).min(block.selectable),
-        })
-    }
-
-    /// The link under the pointer, exactly, and the block holding it.
-    fn link_under(&self, position: Point<Pixels>) -> Option<(i64, u32, String)> {
-        let visible = self.shared.visible.borrow();
-        let (&(seq, base), block) = visible
-            .iter()
-            .find(|(_, block)| block.bounds.contains(&position))?;
-        let byte = block.layout.index_for_position(position).ok()? as u32;
-        let rows = self.shared.rows.borrow();
-        let url = text::link_at(rows.by_seq(seq)?, base + byte)?.to_owned();
-        Some((seq, base, url))
+        Some(Pos { seq, byte })
     }
 
     /// Text blocks painted in the last frame, in order, with their bounds.
@@ -1018,16 +1044,27 @@ impl MessageList {
     /// Where a byte of a painted row is, plus half a line, so the point lands on the glyphs.
     pub fn point_of(&self, pos: Pos) -> Option<Point<Pixels>> {
         let visible = self.shared.visible.borrow();
-        let ((_, base), block) = visible
+        let (_, block) = visible
             .range((pos.seq, 0)..=(pos.seq, pos.byte))
             .next_back()?;
-        let position = block
-            .layout
-            .position_for_index((pos.byte - base) as usize)?;
-        Some(point(
-            position.x + px(1.),
-            position.y + block.layout.line_height() / 2.,
-        ))
+        let index = block.index_of(pos.byte);
+        let line = block.layout.line_height();
+        let mut position = block.layout.position_for_index(index)?;
+        // At a soft wrap the index is drawn at the start of the next line, not past the end of
+        // this one, where nothing is under the point.
+        let on_glyph = |at: Point<Pixels>| {
+            block
+                .layout
+                .index_for_position(point(at.x + px(1.), at.y + line / 2.))
+                .ok()
+        };
+        if on_glyph(position) != Some(index) {
+            let next = point(block.bounds.left(), position.y + line);
+            if on_glyph(next) == Some(index) {
+                position = next;
+            }
+        }
+        Some(point(position.x + px(1.), position.y + line / 2.))
     }
 
     /// How many animated images have painted since the list opened. The rigs use this.
@@ -1075,7 +1112,6 @@ impl MessageList {
         self.pressed_at = event.position;
         self.moved = false;
         self.goal_x = None;
-        self.pressed_link = None;
         let Some(hit) = self.hit(event.position) else {
             self.set_selection(None, cx);
             return;
@@ -1101,25 +1137,12 @@ impl MessageList {
                 cursor: drag.first.1,
             }
         };
-        if drag.unit == Unit::Char && !event.modifiers.shift {
-            self.pressed_link = text::link_at(&row, hit.byte)
-                .map(|url| Pressed::Link(url.to_owned()))
-                .or_else(|| {
-                    text::mention_at(&row, hit.byte).map(|id| Pressed::User(id.to_owned()))
-                });
-        }
         self.set_selection(Some(selection), cx);
         self.dragging = true;
     }
 
     fn on_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
         if !self.dragging {
-            let hovered = self
-                .link_under(event.position)
-                .map(|(seq, base, _)| (seq, base));
-            if self.shared.hovered_link.replace(hovered) != hovered {
-                cx.notify();
-            }
             return;
         }
         let offset = event.position - self.pressed_at;
@@ -1145,19 +1168,9 @@ impl MessageList {
         self.dragging = false;
         self.pointer = event.position;
         self.auto.stop();
-        let link = self.pressed_link.take();
+        // A click on a link or a mention is the words' own (`MessageText`'s `on_link`).
         if self.moved {
             self.update_drag(cx);
-        } else {
-            match link {
-                Some(Pressed::Link(url)) if text::is_openable_url(&url) => {
-                    cx.emit(MessageListEvent::OpenLink { url });
-                }
-                Some(Pressed::User(user_id)) => {
-                    cx.emit(MessageListEvent::OpenProfile { user_id });
-                }
-                _ => {}
-            }
         }
         if self
             .shared
@@ -1242,7 +1255,7 @@ impl MessageList {
         let (&key, block) = visible
             .range((cursor.seq, 0)..=(cursor.seq, cursor.byte))
             .next_back()?;
-        let local = (cursor.byte - key.1).min(block.selectable) as usize;
+        let local = block.index_of(cursor.byte);
         let at = block.layout.position_for_index(local)?;
         let line = block.layout.line_height();
         let goal = self.goal_x.get_or_insert(at.x);
@@ -1256,10 +1269,10 @@ impl MessageList {
             let index = block
                 .layout
                 .index_for_position(point(goal_x, y))
-                .unwrap_or_else(|closest| closest) as u32;
+                .unwrap_or_else(|closest| closest);
             return Some(Pos {
                 seq: cursor.seq,
-                byte: key.1 + index.min(block.selectable),
+                byte: block.display_of(index),
             });
         }
         let next = if down {
@@ -1281,10 +1294,10 @@ impl MessageList {
         let index = next_block
             .layout
             .index_for_position(point(goal_x, y))
-            .unwrap_or_else(|closest| closest) as u32;
+            .unwrap_or_else(|closest| closest);
         Some(Pos {
             seq: next_key.0,
-            byte: next_key.1 + index.min(next_block.selectable),
+            byte: next_block.display_of(index),
         })
     }
 
@@ -1342,7 +1355,7 @@ impl Render for MessageList {
         if self.follow_theme
             && let Some(sem) = cx.try_global::<crate::theme::Sem>()
         {
-            let palette = Palette::for_theme(sem.choice);
+            let palette = Palette::from_sem(sem);
             let old = self.shared.palette.get();
             if (old.text, old.background, old.primary)
                 != (palette.text, palette.background, palette.primary)
@@ -1398,7 +1411,7 @@ impl Render for MessageList {
         let rows = list(self.list.clone(), move |ix, window, cx| {
             render_row(&shared, ix, window, cx)
         })
-        .pb(px(8.))
+        .pb(self.bottom_room)
         .size_full();
         let entity = cx.entity();
         root.on_action(cx.listener(|view, _: &CopySelection, _, cx| view.copy(cx)))

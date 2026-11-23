@@ -14,6 +14,7 @@ use super::rules::{
     Outcome, Pending, actions_preview, delete_block, edit_block, failure, move_block, moved_order,
     needs, permissions_count, role_action, running,
 };
+use crate::kit::IconButtonVariant;
 use crate::kit::{Alert, Button, Chip, Dialog, Severity, Spinner, Variant, spacing, text};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
@@ -243,13 +244,13 @@ impl RolesPanel {
     fn header_actions(&self, narrow: bool, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let resetting = running(&self.view.op, &reset());
         let reset_button = Button::new("roles-reset", "Reset Defaults")
-            .outlined()
+            .soft()
             .start_icon(DesignIcon::RestartAlt)
             .loading(resetting)
             .disabled(resetting)
             .on_click(cx.listener(|panel, _, _, cx| panel.ask_reset(cx)));
         let create = Button::new("roles-create", "Create Role")
-            .contained()
+            .primary()
             .start_icon(DesignIcon::PersonAdd)
             .on_click(cx.listener(|panel, _, window, cx| panel.open_create(window, cx)));
         vec![
@@ -372,7 +373,7 @@ impl RolesPanel {
                 DesignIcon::DeleteOutline,
                 format!("Delete {}", role.name),
                 delete_block(role),
-                Some(sem.error),
+                Some(IconButtonVariant::Danger),
                 cx.listener(move |panel, _, _, cx| panel.ask_delete(&delete_id, cx)),
             )
         };
@@ -401,14 +402,16 @@ impl RolesPanel {
                     format!("View {} (read-only)", role.name)
                 },
                 None,
-                Some(sem.primary),
+                Some(IconButtonVariant::Soft),
                 cx.listener(move |panel, _, window, cx| panel.open_edit(&edit_id, window, cx)),
             ))
             .child(delete_button);
         let error = row_error.map(|error| {
-            div()
-                .w_full()
-                .child(Alert::new(Severity::Error, error.message))
+            div().w_full().child(Alert::new(
+                "roles-list-alert-1",
+                Severity::Danger,
+                error.message,
+            ))
         });
         let base = row(
             SharedString::from(format!("role-{id}")),
@@ -457,6 +460,7 @@ impl RolesPanel {
         if !self.view.can_read && self.view.state != LoadState::Loading {
             {
                 return Alert::new(
+                    "roles-list-alert-2",
                     Severity::Info,
                     "You don't have permission to view roles in this community.",
                 )
@@ -467,7 +471,8 @@ impl RolesPanel {
             LoadState::Loading => return loading_rows("roles-loading", "Loading roles", 4),
             LoadState::Failed { error } => {
                 return Alert::new(
-                    Severity::Error,
+                    "roles-list-alert-3",
+                    Severity::Danger,
                     format!("Failed to load roles: {}", error.message),
                 )
                 .into_any_element();
@@ -503,7 +508,13 @@ impl RolesPanel {
         ]
         .into_iter()
         .flatten()
-        .map(|error| Alert::new(Severity::Error, error.message.clone()))
+        .map(|error| {
+            Alert::new(
+                "roles-list-alert-4",
+                Severity::Danger,
+                error.message.clone(),
+            )
+        })
         .collect();
         let resetting = running(&self.view.op, &reset());
         div()
@@ -513,6 +524,7 @@ impl RolesPanel {
             .children(errors)
             .when(resetting, |body| {
                 body.child(Alert::new(
+                    "roles-list-alert-5",
                     Severity::Info,
                     "Resetting the default roles\u{2026}",
                 ))
@@ -585,7 +597,8 @@ impl RolesPanel {
             Some(view) => match &view.state {
                 LoadState::Loading => loading_rows("role-members-loading", "Loading members", 3),
                 LoadState::Failed { error } => Alert::new(
-                    Severity::Error,
+                    "roles-list-alert-6",
+                    Severity::Danger,
                     format!("Failed to load the role's members: {}", error.message),
                 )
                 .into_any_element(),
@@ -608,7 +621,7 @@ impl RolesPanel {
         let close = cx.weak_entity();
         let close_button = cx.weak_entity();
         Some(
-            Dialog::new(format!("Role Members: {name}"))
+            Dialog::new("role-members-dialog", format!("Role Members: {name}"))
                 .body(
                     div()
                         .id("role-members-body")
@@ -616,13 +629,13 @@ impl RolesPanel {
                         .overflow_y_scroll()
                         .child(body),
                 )
-                .action(
-                    Button::new("role-members-close", "Close").on_click(move |_, _, cx| {
+                .action(Button::new("role-members-close", "Close").ghost().on_click(
+                    move |_, _, cx| {
                         close_button
                             .update(cx, |panel, cx| panel.close_members(cx))
                             .ok();
-                    }),
-                )
+                    },
+                ))
                 .on_close(move |_, cx| {
                     close.update(cx, |panel, cx| panel.close_members(cx)).ok();
                 }),

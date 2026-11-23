@@ -122,9 +122,13 @@ shot 09-restored-after-revoke-others
 
 # 11. W5 against the real backend: from the community's settings, a channel created and deleted,
 # and an invite created.
+wait core element community-menu within 20
+click community-menu
 wait core element community-settings within 20
 click community-settings
 wait core element community-tab-channels within 20
+click community-menu
+wait core element channels-create
 click channels-create
 wait core element channel-create-name
 click channel-create-name

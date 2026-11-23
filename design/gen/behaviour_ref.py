@@ -257,7 +257,7 @@ def step_toast_queue(state: dict, event: dict, params: dict) -> tuple[dict, Effe
 # overlayStack
 # ---------------------------------------------------------------------------
 
-OVERLAY_EVENTS = ("open", "closed", "escape", "pressOutside", "tab")
+OVERLAY_EVENTS = ("open", "closed", "escape", "pressOutside", "tab", "back")
 MODAL_KINDS = ("dialog", "sheet")
 
 
@@ -348,6 +348,18 @@ def step_overlay_stack(state: dict, event: dict, params: dict) -> tuple[dict, Ef
             # Rule 9: a press outside a dialog or sheet is a press on its scrim.
             effects.append(_effect("requestClose", id=layer["id"], reason="scrim"))
             break
+
+    elif name == "back":
+        # Rule 20: a tooltip never takes the Back: every tooltip is asked to close,
+        # topmost first, and the Back carries on.
+        for layer in tooltips:
+            effects.append(_effect("requestClose", id=layer["id"], reason="back"))
+        if others:
+            # Rule 20: Back asks the topmost layer under the tooltips to close, one per Back.
+            effects.append(_effect("requestClose", id=others[-1]["id"], reason="back"))
+        else:
+            # Rule 21: with no layer open under the tooltips, the platform goes back.
+            effects.append(_effect("passToPlatform"))
 
     elif name == "tab":
         # Rule 11: Tab closes a menu that is topmost under the tooltips; otherwise nothing.

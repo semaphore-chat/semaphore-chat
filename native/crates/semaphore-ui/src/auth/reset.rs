@@ -228,7 +228,11 @@ impl Render for ResetPasswordScreen {
                     .test_support()
                     .w_full()
                     .mb(spacing(2.))
-                    .child(Alert::new(Severity::Error, MISSING_TOKEN)),
+                    .child(Alert::new(
+                        "auth-reset-alert-1",
+                        Severity::Danger,
+                        MISSING_TOKEN,
+                    )),
             )
             .child(request_new(cx))
         } else if self.success {
@@ -240,12 +244,12 @@ impl Render for ResetPasswordScreen {
                     .aria_label(DONE)
                     .w_full()
                     .mb(spacing(2.))
-                    .child(Alert::new(Severity::Success, DONE)),
+                    .child(Alert::new("auth-reset-alert-2", Severity::Success, DONE)),
             )
             .child(
                 div().w_full().child(
                     Button::new("reset-password-sign-in", "Sign in")
-                        .contained()
+                        .primary()
                         .full_width()
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(ResetEvent::SignIn))),
                 ),
@@ -286,7 +290,8 @@ impl Render for ResetPasswordScreen {
                     .w_full()
                     .mb(spacing(2.))
                     .child(Alert::new(
-                        Severity::Error,
+                        "auth-reset-alert-3",
+                        Severity::Danger,
                         if message.is_empty() {
                             "Failed to reset password. Please try again.".to_owned()
                         } else {
@@ -312,8 +317,7 @@ impl Render for ResetPasswordScreen {
                 let field = TextField::new("reset-password", &self.password, "New password")
                     .required(true)
                     .disabled(self.busy)
-                    .error(helper.is_some())
-                    .surface(sem.background_default);
+                    .error(helper.is_some());
                 match helper {
                     Some(helper) => field.helper(helper),
                     None => field,
@@ -334,8 +338,7 @@ impl Render for ResetPasswordScreen {
                 )
                 .required(true)
                 .disabled(self.busy)
-                .error(helper.is_some())
-                .surface(sem.background_default);
+                .error(helper.is_some());
                 match helper {
                     Some(helper) => field.helper(helper),
                     None => field,
@@ -344,7 +347,7 @@ impl Render for ResetPasswordScreen {
             .child(
                 div().w_full().mb(spacing(2.)).child(
                     Button::new("reset-password-submit", "Reset Password")
-                        .contained()
+                        .primary()
                         .full_width()
                         .loading(self.busy)
                         .disabled(!can)

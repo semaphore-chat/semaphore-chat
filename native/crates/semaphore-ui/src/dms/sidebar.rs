@@ -81,7 +81,7 @@ impl DmSidebar {
             DmTab::Friends => "dm-tab-friends",
         };
         let name = if badge > 0 {
-            format!("{label}, {badge} requests")
+            format!("{label}, {}", requests(badge))
         } else {
             label.to_owned()
         };
@@ -103,8 +103,9 @@ impl DmSidebar {
             .focus_visible(move |style| style.bg(hover))
             .text_color(color)
             .child(
-                Badge::new(badge as u32)
-                    .compact()
+                Badge::new(requests(badge))
+                    .count(badge as u32)
+                    .decorative(true)
                     .on(design_icon(icon, 20., color)),
             )
             .child(text(Variant::Button, label).truncate())
@@ -205,5 +206,22 @@ impl Render for DmSidebar {
                     )),
             )
             .child(div().flex_1().min_h_0().child(body))
+    }
+}
+
+/// "1 request", "3 requests": the Friends tab's pending count.
+fn requests(count: usize) -> String {
+    match count {
+        1 => "1 request".into(),
+        count => format!("{count} requests"),
+    }
+}
+
+#[cfg(test)]
+mod requests_tests {
+    #[test]
+    fn one_request_is_singular() {
+        assert_eq!(super::requests(1), "1 request");
+        assert_eq!(super::requests(3), "3 requests");
     }
 }

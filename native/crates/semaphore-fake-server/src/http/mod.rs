@@ -229,6 +229,9 @@ async fn gate(State(inner): State<Arc<Inner>>, request: Request, next: Next) -> 
         inner.begin();
     }
     let response = next.run(request).await;
+    if let Some(hold) = inner.response_hold(operation) {
+        tokio::time::sleep(hold).await;
+    }
     if tracked {
         inner.end();
     }
@@ -617,6 +620,12 @@ async fn control(
         }
         "drop_connections" => {
             inner.close_connections();
+        }
+        // `{ "on": bool }`: replay stops and restarts answer as servers before #876 do once the
+        // egress is ending (`calls::stop_replay`).
+        "replay_egress_ending" => {
+            lock(&inner.calls).egress_ending =
+                request.get("on").and_then(Value::as_bool).unwrap_or(true);
         }
         "refuse_connections" => {
             lock(&inner.faults).refuse_connections = request

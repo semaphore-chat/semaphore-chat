@@ -7,6 +7,7 @@
 use super::{InstanceRolesEvent, InstanceRolesPage, delete_action, update_action};
 use crate::community_settings::common::{empty_line, list, loading_rows, row, tone_chip};
 use crate::community_settings::rules::{failure, needs, running};
+use crate::kit::IconButtonVariant;
 use crate::kit::{Alert, Button, Chip, Severity, Spinner, Variant, spacing, text};
 use crate::roles::rules::{actions_preview, permissions_count};
 use crate::theme::SemTheme;
@@ -52,12 +53,13 @@ impl InstanceRolesPage {
                 .items_start()
                 .gap(spacing(1.5))
                 .child(Alert::new(
-                    Severity::Error,
+                    "admin-roles-rows-alert-1",
+                    Severity::Danger,
                     format!("Failed to load instance roles: {}", error.message),
                 ))
                 .child(
                     Button::new("admin-roles-retry", "Try again")
-                        .outlined()
+                        .soft()
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(InstanceRolesEvent::Retry))),
                 )
                 .into_any_element(),
@@ -169,7 +171,7 @@ impl InstanceRolesPage {
                 format!("Delete {}", role.name),
                 delete_block(self, role),
                 false,
-                Some(sem.error),
+                Some(IconButtonVariant::Danger),
                 cx.listener(move |page, _, _, cx| page.ask_delete(&delete_id, cx)),
             )
         };
@@ -192,12 +194,17 @@ impl InstanceRolesPage {
                 format!("Edit {}", role.name),
                 edit_block(self, role),
                 false,
-                Some(sem.primary),
+                Some(IconButtonVariant::Soft),
                 cx.listener(move |page, _, window, cx| page.open_edit(&edit_id, window, cx)),
             ))
             .child(delete_button);
-        let error =
-            row_error.map(|message| div().w_full().child(Alert::new(Severity::Error, message)));
+        let error = row_error.map(|message| {
+            div().w_full().child(Alert::new(
+                "admin-roles-rows-alert-2",
+                Severity::Danger,
+                message,
+            ))
+        });
         let base = row(
             SharedString::from(format!("admin-role-{id}")),
             role.name.clone(),

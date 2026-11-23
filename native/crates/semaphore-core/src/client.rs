@@ -190,6 +190,9 @@ pub(crate) struct State {
     outbox: Vec<CoreEvent>,
     delivering: bool,
     has_services: bool,
+    /// A session was established while suspended, so its socket was never asked to connect:
+    /// the next reconnect that `resume` or `network_changed` decides on connects it instead.
+    pub(crate) connect_on_resume: bool,
 }
 
 impl State {
@@ -244,6 +247,7 @@ impl State {
             outbox: Vec::new(),
             delivering: false,
             has_services,
+            connect_on_resume: false,
         }
     }
 
@@ -630,6 +634,23 @@ impl Core {
     }
 
     fn deliver(&self, mut batch: Vec<CoreEvent>) {
+        /// A sink that panics (a foreign listener that threw) ends this delivery, and with it the
+        /// rest of its batch; it must not leave `delivering` set, or every later event would wait
+        /// in the outbox for good. The next change delivers what is queued.
+        struct Unwinding<'a>(&'a Core);
+        impl Drop for Unwinding<'_> {
+            fn drop(&mut self) {
+                if std::thread::panicking() {
+                    self.0
+                        .inner
+                        .state
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .delivering = false;
+                }
+            }
+        }
+        let _unwinding = Unwinding(self);
         loop {
             for event in batch {
                 self.inner.events.on_event(event);
@@ -853,7 +874,12 @@ impl Core {
         if plan.reconnect_socket
             && let Some(services) = self.services()
         {
-            services.realtime.resume(plan.refresh_token);
+            // A session that started while suspended has no socket to resume yet.
+            if std::mem::take(&mut self.lock().connect_on_resume) {
+                services.realtime.connect();
+            } else {
+                services.realtime.resume(plan.refresh_token);
+            }
         }
     }
 }

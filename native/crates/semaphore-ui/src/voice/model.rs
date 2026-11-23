@@ -95,6 +95,8 @@ pub trait VoiceController: Send + Sync {
     /// W4: the bar's (or the narrow bar's "more") Capture, shown while the replay buffer records:
     /// the owner opens the capture dialog.
     fn open_capture(&self) {}
+    /// B11: the call bar's room name: show the call view (the room's route).
+    fn open_call_view(&self) {}
     /// W4: a right-click (or long press) on someone's tile, at `position` in the window: the owner
     /// opens a `ParticipantMenu` there.
     fn open_participant_menu(

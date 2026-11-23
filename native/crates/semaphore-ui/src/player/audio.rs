@@ -173,11 +173,13 @@ impl AudioPlayer {
         };
         let action = match failure {
             Failure::Unsupported => Button::new("player-open-external", "Open externally")
+                .text()
                 .start_icon(IconName::OpenInNew)
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.emit_for_file(cx, |file_id| PlayerViewEvent::OpenExternally { file_id })
                 })),
             Failure::Retryable => Button::new("player-retry", "Retry")
+                .text()
                 .start_icon(IconName::Refresh)
                 .on_click(cx.listener(|view, _, _, cx| {
                     view.playback.retry();

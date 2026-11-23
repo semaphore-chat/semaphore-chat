@@ -238,7 +238,7 @@ impl AuthScreen {
                     ),
                 )
                 .child(
-                    div().w_full().mb(spacing(2.)).child(Alert::new(
+                    div().w_full().mb(spacing(2.)).child(Alert::new("auth-alert-1", 
                         Severity::Info,
                         "This server isn't set up yet. Set it up in a browser first, then sign in here.",
                     )),
@@ -246,8 +246,8 @@ impl AuthScreen {
                 .child(
                     div().w_full().mb(spacing(2.)).child(
                         Button::new("auth-setup-open", "Open in browser")
-                            .contained()
-                            .size(ButtonSize::Large)
+                            .primary()
+                            .size(ButtonSize::Lg)
                             .full_width()
                             .start_icon(IconName::OpenInBrowser)
                             .on_click(move |_, _, cx| {
@@ -301,8 +301,7 @@ impl AuthScreen {
                             error.clone().filter(|_| !testing).unwrap_or_else(|| {
                                 "Enter the full URL including https://".to_owned()
                             }),
-                        )
-                        .surface(sem.background_default),
+                        ),
                 )
                 .child(
                     TextField::new(
@@ -311,8 +310,7 @@ impl AuthScreen {
                         "Server Name (Optional)",
                     )
                     .placeholder("My Semaphore Chat Server")
-                    .helper("A friendly name to identify this server")
-                    .surface(sem.background_default),
+                    .helper("A friendly name to identify this server"),
                 )
                 .when(testing, |form| {
                     form.child(
@@ -330,7 +328,7 @@ impl AuthScreen {
                 })
                 .child(
                     Button::new("auth-connect", "Connect")
-                        .contained()
+                        .primary()
                         .full_width()
                         .disabled(!can_connect)
                         .on_click(move |_, _, cx| {
@@ -408,13 +406,14 @@ impl AuthScreen {
         };
         let browser_available = browser != BrowserLogin::Unavailable;
         let login = Button::new("auth-login", "Login")
+            .text()
             .full_width()
             .loading(signing_in)
             .on_click(submit);
         let login = if browser_available {
-            login.outlined()
+            login.soft()
         } else {
-            login.contained()
+            login.primary()
         };
         let reset_view = view.clone();
         let register_view = view.clone();
@@ -437,17 +436,17 @@ impl AuthScreen {
                 .child(text(Variant::H5, "Login").mb(spacing(2.)))
                 .when(failed, |form| {
                     form.child(div().w_full().mb(spacing(2.)).child(Alert::new(
-                        Severity::Error,
+                        "auth-alert-2",
+                        Severity::Danger,
                         "Login failed. Please try again.",
                     )))
                 })
                 .when_some(notice.filter(|_| !failed), |form, notice| {
-                    form.child(
-                        div()
-                            .w_full()
-                            .mb(spacing(2.))
-                            .child(Alert::new(Severity::Info, notice)),
-                    )
+                    form.child(div().w_full().mb(spacing(2.)).child(Alert::new(
+                        "auth-alert-3",
+                        Severity::Info,
+                        notice,
+                    )))
                 })
                 .child(div().mb(spacing(2.)).child(server_line))
                 .when(browser_available, |form| {
@@ -456,11 +455,11 @@ impl AuthScreen {
                             Some((Severity::Info, "Sign-in was cancelled in the browser."))
                         }
                         BrowserLogin::TimedOut => Some((
-                            Severity::Error,
+                            Severity::Danger,
                             "The browser didn't finish signing in in time. Try again.",
                         )),
                         BrowserLogin::Failed => Some((
-                            Severity::Error,
+                            Severity::Danger,
                             "Couldn't sign in through the browser. Try again.",
                         )),
                         _ => None,
@@ -474,20 +473,12 @@ impl AuthScreen {
                     ))
                     .child(or_divider(&sem))
                 })
-                .child(
-                    div().w_full().mb(spacing(2.)).child(
-                        TextField::new("auth-username", &self.username, "Username")
-                            .required(true)
-                            .surface(sem.background_default),
-                    ),
-                )
-                .child(
-                    div().w_full().mb(spacing(2.)).child(
-                        TextField::new("auth-password", &self.password, "Password")
-                            .required(true)
-                            .surface(sem.background_default),
-                    ),
-                )
+                .child(div().w_full().mb(spacing(2.)).child(
+                    TextField::new("auth-username", &self.username, "Username").required(true),
+                ))
+                .child(div().w_full().mb(spacing(2.)).child(
+                    TextField::new("auth-password", &self.password, "Password").required(true),
+                ))
                 .child(div().w_full().mb(spacing(2.)).child(login))
                 .when(password_reset, |form| {
                     form.child(div().mb(spacing(1.)).child(link(
@@ -665,7 +656,7 @@ fn browser_panel(
                         .text_color(sem.text_secondary)
                         .text_center(),
                     )
-                    .child(Button::new("auth-browser-cancel", "Cancel").on_click(
+                    .child(Button::new("auth-browser-cancel", "Cancel").ghost().on_click(
                         move |_, _, cx| {
                             view.update(cx, |_, cx| cx.emit(AuthEvent::CancelBrowserSignIn))
                                 .ok();
@@ -679,11 +670,11 @@ fn browser_panel(
         .flex()
         .flex_col()
         .gap(spacing(1.))
-        .children(error.map(|(severity, message)| Alert::new(severity, message)))
+        .children(error.map(|(severity, message)| Alert::new("auth-alert-4", severity, message)))
         .child(
             Button::new("auth-browser", "Sign in with browser")
-                .contained()
-                .size(ButtonSize::Large)
+                .primary()
+                .size(ButtonSize::Lg)
                 .full_width()
                 .start_icon(IconName::OpenInBrowser)
                 .on_click(move |_, _, cx| {

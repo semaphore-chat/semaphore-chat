@@ -38,6 +38,18 @@ impl Core {
         result
     }
 
+    /// Nothing is on screen in the main column any more (a phone showing a list instead of the
+    /// chat): the conversation's window is hidden, and its new messages count as unread and notify
+    /// again. [`Core::open_conversation`] puts it back on screen.
+    /// The same path as [`Core::close_conversation`], for whatever is main.
+    pub fn close_main_conversation(&self) {
+        self.write(|state, _| {
+            if let Some(main) = state.main_conversation.clone() {
+                state.close(&main);
+            }
+        });
+    }
+
     /// Loads older rows, sent as `ListOp::Insert { index: 0, .. }`. A no-op at the start.
     pub async fn load_older(&self, conversation: Conversation) -> Result<(), CoreError> {
         let begun = self.write(|state, _| {
@@ -121,6 +133,26 @@ impl Core {
                 .windows
                 .get(&conversation)
                 .is_none_or(|window| !window.is_detached_from_live_edge())
+        })
+    }
+
+    /// The conversation left the screen: core stops treating it as read as it arrives (no unread
+    /// bump skipped, no notification marked read for it) until it is opened again, which sends its
+    /// rows as a reset again. A no-op for a conversation that isn't the one on screen. For the main
+    /// column it does what [`Core::close_main_conversation`] does (one path, `State::close`).
+    pub fn close_conversation(&self, conversation: Conversation) {
+        self.write(|state, _| state.close(&conversation));
+    }
+
+    /// Whether the oldest row loaded is the conversation's first, so [`Core::load_older`] has
+    /// nothing left to load: a UI shows the conversation's start there. False before the first
+    /// page has loaded. Read it again after `CoreEvent::MessagesChanged`.
+    pub fn at_history_start(&self, conversation: Conversation) -> bool {
+        self.read(|state| {
+            state
+                .windows
+                .get(&conversation)
+                .is_some_and(|window| window.at_history_start())
         })
     }
 

@@ -23,6 +23,25 @@ Card, Sheet, Dock, DockDivider, DockItem, Stack, CallStack, and the chat pieces
 MessageRow, MessageText, ListSeparator, ReactionChip, Composer, JumpToLatest,
 ChatPane, MessageQuote, AttachmentTile, LinkCard, TypingLine and SuggestionList.
 
+The Android app's Compose kit (`native/android/kit`) has the pieces its first
+screens need, with the same names and options in Compose's style (enums for
+the variants, lambdas for the handlers, slots for `leading` and `trailing`):
+Text, Button, Icon, IconButton, TextField, ListRow, Avatar (with the
+`readableBackground` ink and the speaking ring), AvatarStack, Badge, Pill,
+Skeleton, Spinner, Alert, Island, Card, Sheet (a bottom sheet that takes the
+system Back while open) and Dock, DockDivider and DockItem. They take the touch values in [Tokens and colour](tokens-and-colour.md)
+("Touch density"). Their stories are in
+`native/android/kit/src/test/.../stories/KitStories.kt` (ids `kit-text`,
+`kit-button`, `kit-icon-button`, `kit-text-field`, `kit-list-row`,
+`kit-avatar`, `kit-avatar-stack`, `kit-badge`, `kit-pill`, `kit-skeleton`,
+`kit-spinner`, `kit-alert`, `kit-surfaces`, `kit-dock`, `kit-sheet` and the
+sample screen `kit-sign-in`). The app's screens are in `native/android/screens`,
+with stories in `ScreenStories.kt` (ids `screen-*`), and
+`native/scripts/android-ui-review.sh` renders both.
+On Android, Avatar shows initials only for now (pictures come with the
+authenticated file fetch), and Button and IconButton leave out the web's
+`aria-disabled`, `onUnavailablePress`, `current` and `hold`.
+
 ## Rules every component follows
 
 - **Props are a closed list.** A component takes only the variants and sizes
@@ -503,9 +522,6 @@ apart, so the ring is whole and covers no one's initials; the stack is its own
 stacking context, so it never paints over anything outside it. (Avatar and MediaTile say ", speaking" in their
 names; the stack says "is talking" because it names a group.)
 
-Web kit only so far; the native kit has not caught up (see
-[Extending the system](extending.md#the-native-kit-is-catching-up)).
-
 |Prop|Values|Default|Meaning|
 |---|---|---|---|
 |`people`|a list of `name`, and optionally `src`, `colour` and `speaking`|none (required)|Who is in the group. `speaking` draws the speaking ring on that avatar and adds them to the name.|
@@ -587,10 +603,24 @@ Stories: `kit-media-tile--kinds`, `kit-media-tile--kinds-light`,
 `kit-media-tile--kinds-tinted`, `kit-media-tile--speaking`,
 `kit-media-tile--speaking-light`, `kit-media-tile--long-label`,
 `kit-media-tile--small-tiles`, `kit-media-tile--small-tiles-light`,
-`kit-media-tile--phone-pair`.
+`kit-media-tile--phone-pair`. The native kit adds `kit-media-tile--speaking-cropped`,
+`kit-media-tile--speaking-cropped-light`, `kit-media-tile--blank-label`,
+`kit-media-tile--blank-label-light` and `kit-media-tile--long-label-light`.
 
-Web kit only so far; the native kit has not caught up (see
-[Extending the system](extending.md#the-native-kit-is-catching-up)).
+**In the native kit** the tile is `MediaTile::new(id, label, kind)` with
+`.speaking(..)`, `.on_surface(..)` and `.fit(..)`, and the video is a slot, not
+a ref: `.video(|slot| ...)` returns the element that paints the frames (a
+`canvas` over the call's frames). The tile lays it out over its whole box,
+under the caption chip, and hands it a `VideoSlot` with the `fit` and the corner
+`radius`. The fit is `Contain` for a `screen` and `Cover` for a `camera`;
+`.fit(VideoFit::Contain)` shows a focused camera whole. The tile clips the
+element to its box and paints its own corner masks over it, so a frame painted
+square or oversized (cropped to cover) comes out rounded; the speaking ring is
+drawn after the masks, so it is always whole. Pass the slot only while the track
+is live; an `avatar` tile never builds it. A blank label draws no line under the
+avatar and no chip over video. GPUI has no container queries, so the avatar
+steps are chosen from the tile's laid-out width in the same frame, at the same
+widths as the web's.
 
 ## Badge
 
@@ -747,9 +777,6 @@ Stories: `kit-alert--severities`, `kit-alert--severities-light`,
 `kit-alert--long-text`, `kit-alert--secondary-action`,
 `kit-alert--secondary-action-light`, `kit-alert--secondary-action-long`,
 `kit-alert--secondary-action-one-long`, `kit-alert--one-line`, `kit-alert--one-line-light`.
-
-Web kit only so far; the native kit has not caught up (see
-[Extending the system](extending.md#the-native-kit-is-catching-up)).
 
 ## LoadState
 
@@ -1104,8 +1131,10 @@ it. Layout only: no surface colour, no padding, no landmark.
 |`surface`|content|none|The call's video and what it offers, above the bar, bounded and scrolling.|
 |`summary`|content|none|One line that stands in for `surface` while the keyboard is up. Without it nothing does.|
 
-Web kit only so far; the native kit has not caught up (see
-[Extending the system](extending.md#the-native-kit-is-catching-up)).
+Both kits have it. The native `CallStack` goes in `ThreeIslands::call_bar`; it
+has no on-screen keyboard, so it takes `summary` and never draws it. Native
+stories: `kit-call-stack-bounded`, `kit-call-stack-bounded-light`,
+`kit-call-stack-bar-only`.
 
 Stories: `kit-call-stack--bounded`, `kit-call-stack--bounded-light`,
 `kit-call-stack--keyboard`, `kit-call-stack--bar-only`.
@@ -1113,10 +1142,20 @@ Stories: `kit-call-stack--bounded`, `kit-call-stack--bounded-light`,
 ## Chat pieces
 
 The pieces a conversation is built from: MessageRow, MessageText,
-ListSeparator, ReactionChip, Composer and JumpToLatest. They are web only so
-far; the native kit follows (issue #805). They hold no chat logic: the screen
-brings the data, the message list's scrolling and roving focus, drafts,
-mentions and sending.
+ListSeparator, ReactionChip, Composer and JumpToLatest. They hold no chat logic:
+the screen brings the data, the message list's scrolling and roving focus,
+drafts, mentions and sending.
+
+The native kit (`native/crates/semaphore-ui/src/kit/chat/`) has MessageRow,
+ChatPane, MessageText, ListSeparator, ReactionChip, JumpToLatest, MessageQuote,
+AttachmentTile, LinkCard, TypingLine, Composer and SuggestionList, with the
+same names, props and words (B7 parts 1 to 3; each piece's **Native** note says
+where it differs). The pure
+rules are shared Rust: `semaphore_design::chat` (counts, the typing line, the
+jump control's words, image boxes, which mention addresses stay in the app, the
+composer's caps and button names) and
+`semaphore_core::links::check_link` (the link check and its label). A native
+story id is the web id with `--` written `-` (`kit-message-text-segments`).
 
 ### MessageRow
 
@@ -1209,6 +1248,18 @@ Stories: `kit-message-row--states`, `kit-message-row--states-light`,
 `kit-message-row--actions-light`, `kit-message-row--editing`,
 `kit-message-row--editing-light`, `kit-message-row--toolbar-tab-order`.
 
+**Native.** `focus` is a `RowFocus` (the row's `FocusHandle`, from the list,
+and `tab_stop`); the list moves focus between rows. The row's controls read
+`RowTabScope`, the native `RowTabScopeContext`: the kit's Button and IconButton
+and the chat pieces skip Tab outside the list's Tab stop row and a row focus is
+in, and a control in a slot that is not a kit piece reads
+`RowTabScope::active(cx)`. The toolbar (and a continued row's gutter time)
+shows on hover and while focus is in the row, which includes a Menu opened
+from the toolbar. `onOpenActions` gets `OpenActionsRequest::Pointer` with the
+window position for a right-click and `Keyboard` for Enter, the Menu key and
+Shift+F10 on the row itself; the desktop has no long press, so `Touch` is never
+sent.
+
 ### MessageText
 
 A message's words, drawn from segments the chat data layer has already parsed.
@@ -1249,6 +1300,21 @@ messages are drawn at text size, as in the classic chat.
 
 Stories: `kit-message-text--segments`, `kit-message-text--segments-light`,
 `kit-message-text--segments-tinted`.
+
+**Native.** GPUI lays a paragraph out as one run of text, so a link or a
+pressable mention is not an element: each gets a hidden focusable node over its
+first line, with the link's or the mention's name, so Tab and a screen reader
+reach it and Enter or Space follows it; its focus ring is drawn around its
+words on every line. A link is pressable only with `on_link`, which gets the
+checked address: the screen decides where it goes (a message on this server, or
+the browser), and the kit never opens anything itself. A `\` in an address is
+written `%5C`. There is no text selection in
+the native MessageText yet: the old message list's selection stays until the
+chat screen is converted (B13). A channel mention with an internal `href` is
+pressable only with `on_mention`: the kit has no router. Inline code is drawn
+at the body size (a run cannot change size), the text is laid out left to
+right (GPUI has no bidi), and a custom emoji whose picture cannot be drawn is a
+quiet square rather than its `:name:`.
 
 ### ListSeparator
 
@@ -1299,6 +1365,9 @@ count. Pill was not made a toggle: it is a static tag and has no pressed state.
 
 Stories: `kit-reaction-chip--states`, `kit-reaction-chip--states-light`,
 `kit-reaction-chip--states-tinted`.
+
+**Native.** `aria-disabled` is `unavailable(true)`. Who reacted is asked for by
+a right-click, the Menu key or Shift+F10: the desktop has no long press.
 
 ### Composer
 
@@ -1376,6 +1445,28 @@ Inside a MessageRow (inline editing) the field owns its keys: ↑, ↓, Home, En
 and Escape move its caret or cancel the edit and never reach the list's roving
 focus.
 
+**Native.** `Composer::new(id, label, state)` takes the screen's
+`Entity<TextareaState>`: the draft, caret, undo and input method stay with the
+screen, and the composer sets how far the field grows (`cap`, from
+`semaphore_design::chat::cap_rows`). `value`/`onChange` are that state, and
+`onKeyDown` is `on_key`: it gets a `ComposerKey` (↑, ↓, Enter with or without
+Shift, Tab, Escape), taken with `capture_action` before the field's own
+handlers, and returns true to claim the key. While the field has marked text
+(an input method composing) neither `on_key` nor a submit runs. `onCaretMove`
+is `on_caret_move`, called when the field's text or selection changes.
+`dropTarget` is `drop_target(label)`, given while files are over the
+conversation (ChatPane's `on_files_over`); `emoji`, `attachments` and
+`suggestions` take elements. `attach_unavailable` and Send with nothing to send
+read as unavailable, but `onSendUnavailablePress`, `onAttachUnavailablePress`
+and `onPasteFiles` are web kit only so far, and so is `popup` (the field's
+`aria-activedescendant`; the native list marks its active option selected).
+Toasts stay clear of it through the layout templates (the `ToastRegion` sits
+above what is pinned to the pane's foot), so it has no clearance of its own. Stories: `kit-composer-states`, `kit-composer-states-light`,
+`kit-composer-states-tinted`, `kit-composer-mention-list`,
+`kit-composer-mention-list-light`, `kit-composer-mention-list-tinted`,
+`kit-composer-mention-list-loading`, `kit-composer-at-cap`,
+`kit-composer-at-phone-cap`, `kit-composer-at-keyboard-cap`.
+
 ### JumpToLatest
 
 The floating control that takes the reader back to the newest message.
@@ -1426,6 +1517,17 @@ Stories: `kit-chat-pane--conversation`, `kit-chat-pane--conversation-light`,
 `kit-chat-pane--conversation-tinted`, `kit-chat-pane--with-composer`,
 `kit-chat-pane--covered`, `kit-chat-pane--covered-light`,
 `kit-chat-pane--long-history` (2,000 rows on the list core: the performance check).
+
+**Native.** The drop zone is `on_drop_files` (the paths) and `on_files_over`
+(true while files are over the conversation, false when they leave or drop).
+Under a `cover` the conversation is still rendered and laid out but not
+prepainted or painted, so it is not drawn, focusable, pressable or in the
+accessibility tree; a list that must keep its scroll under the cover keeps its
+`ListState` or `ScrollHandle` in the screen. A covered conversation still lays
+out, so the screen should not leave animated states (spinners, progress) under
+a cover. `announcement` is a polite live
+node, silent under a cover. `kit-chat-pane-long-history` draws its 2,000 rows in GPUI's `list`
+with roving focus (the last row is the Tab stop; the arrows move it).
 
 ### MessageQuote
 
@@ -1490,6 +1592,15 @@ Stories: `kit-attachment-tile--states`, `kit-attachment-tile--states-light`,
 `kit-attachment-tile--queued-light`, `kit-attachment-tile--media-states`,
 `kit-attachment-tile--media-states-light`.
 
+**Native.** A video or audio file plays through `player`, a builder that gets a
+`PlayerSlot` (the box and its corner radius), the pattern of MediaTile's
+`video`: the screen brings the player (`semaphore-player`) once the reader has
+pressed Play, in place of the web's `src`. `width` and `height` are `size(w,
+h)`. `remote` changes nothing (a native request sends no Referer). Queued and
+uploading tiles are `on_remove`, `progress`, `error` and `on_retry`. Moving
+focus from Play to the player is web kit only so far. Native also has
+`kit-attachment-tile-press-to-play`.
+
 ### LinkCard
 
 A link's preview under a message (MessageRow's `attachments`): the site with
@@ -1503,7 +1614,9 @@ picture.
 link with a picture.
 
 The whole card is one link that opens in a new tab ("The ridge loop, Trailheads,
-opens in a new tab"), with no opener and no Referer. Only an http or https
+opens in a new tab"; natively the card is a link only with `on_link`, which gets
+the checked address, and is named "The ridge loop, Trailheads", since the
+screen decides where it opens), with no opener and no Referer. Only an http or https
 address without a user name is a link (the same check as MessageText); anything
 else is drawn as a plain group. The picture sits in a box of fixed shape
 (1.91:1, the shape preview pictures are made for), so it never changes the
@@ -1525,6 +1638,10 @@ its row; the message list follows the growth when the reader is at the bottom.
 Stories: `kit-link-card--states`, `kit-link-card--states-light`,
 `kit-link-card--states-tinted`.
 
+**Native.** `imageSrc` and `iconSrc` are `image` and `icon`, an image source:
+one given by address must pass the link's check (and is drawn at its parsed
+address); a picture the screen already decoded is drawn as it is.
+
 ### TypingLine
 
 Who is typing, one quiet line at the bottom of the message list (ChatPane's
@@ -1540,6 +1657,8 @@ while nobody types.
 Stories: `kit-typing-line--states`, `kit-typing-line--states-light`,
 `kit-typing-line--states-tinted`.
 
+**Native.** The line is a status node named by its words.
+
 ### SuggestionList
 
 The suggestions a composer offers while the reader types a mention
@@ -1549,7 +1668,7 @@ through the field's `aria-activedescendant`), Enter or Tab picks and Escape
 closes, all in the screen's keys. A press on an option picks it without taking
 focus from the field, so the on-screen keyboard stays up. A person shows their
 avatar, anything else (`@here`, a mention group) an icon; a long name gives way.
-About six rows show, then it scrolls. Web only so far (native follows, #805).
+About six rows show, then it scrolls.
 
 **Use it when** a field offers completions as the reader types. **Do not use
 it** for a list of actions (use Menu) or a choice in a form (use SelectField).
@@ -1566,6 +1685,13 @@ it** for a list of actions (use Menu) or a choice in a form (use SelectField).
 
 Stories: `kit-composer--mention-list`, `kit-composer--mention-list-light`,
 `kit-composer--mention-list-tinted`, `kit-composer--mention-list-loading`.
+
+**Native.** `SuggestionList::new(id, label, options, active_index)` with
+`active_index` an `Option<usize>` (the web's -1 is `None`); a `Suggestion` is
+`Suggestion::new(key, label)` with `detail`, `avatar(src, colour)` or `icon`.
+There is no `optionId`: the field does not point at the active option, which is
+marked selected and kept in view as it moves. `loading` gives the list the
+description "busy".
 
 ## Which overlay
 
@@ -1866,7 +1992,7 @@ part is something people jump to, and then pick the element with `as`:
 |`label`|text|none|Names the region for screen readers. Required for `nav` and `aside`, not allowed for `div`.|
 |`padding`|`none`, `md`, `lg`|`lg`|The space inside. Use `none` when the content brings its own, such as a list of rows.|
 |`scroll`|true, false|false|The island fills the height its parent gives it, and its content scrolls inside it, never the page.|
-|`footer`|content|none|A block that stays at the island's foot while the content above it scrolls (the user's own card in the left island). It sits inside the island's padding, a small gap below the content. Pass `null` while there is nothing to show: the island keeps its structure, so its content is never rebuilt. A footer taller than the island is cut off (the body shrinks to nothing first), and it adds no safe-area inset of its own. Web kit only so far; the native kit has not caught up (see [Extending the system](extending.md#the-native-kit-is-catching-up)).|
+|`footer`|content|none|A block that stays at the island's foot while the content above it scrolls (the user's own card in the left island). It sits inside the island's padding, a small gap below the content. Pass `null` while there is nothing to show: the island keeps its structure, so its content is never rebuilt. A footer taller than the island is cut off (the body shrinks to nothing first), and it adds no safe-area inset of its own. Both kits have it (native: `Island::footer`).|
 |`id`|text|none|The id of the element.|
 
 Without `scroll`, whatever is wider or taller than the island is cut off. With

@@ -82,6 +82,7 @@ export type {
 } from './behaviour/hosts/loadState';
 export type { DialogCloseReason, SheetCloseReason } from './overlays/modal';
 export { ESCAPE_PRIORITY, useScreenEscape, useScreenFocusTarget } from './behaviour/hosts/overlay';
+export { useSystemBack } from './behaviour/hosts/systemBack';
 export { useAnnounce } from './behaviour/hosts/announce';
 export { useToastClearance, useToasts } from './behaviour/hosts/toasts';
 export { useKitPalette } from './theme/useKitPalette';

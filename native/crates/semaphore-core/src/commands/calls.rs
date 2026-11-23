@@ -26,7 +26,7 @@ use crate::client::{Core, Effect, State};
 use crate::model::{
     Conversation, ErrorView, IncomingCallView, JoinFailure, LoadState, LocalShare,
     MediaDiagnostics, MessageLink, OsNotification, REPLAY_AUDIO_WAIT_MS, RING_MS, ReplayState,
-    SoundCue, UserView, ViewKey, VoiceDiagnosticEvent, VoiceRoom, VoiceStatus,
+    SoundCue, UserView, ViewKey, VoiceDiagnosticEvent, VoiceJoinOptions, VoiceRoom, VoiceStatus,
 };
 use crate::platform::{CoreError, CoreEvent, KeepAwake};
 use crate::resync::unavailable;
@@ -115,6 +115,10 @@ pub struct W4State {
     pub(crate) replay_audio_wait: Option<(String, u64)>,
     /// The video track whose audio wait ran out: it records without.
     pub(crate) replay_audio_waived: Option<String>,
+    /// The share's video track whose start the server refused (400), and when it's asked again.
+    pub(crate) replay_retry: Option<(String, u64)>,
+    /// How many times this share's start has been asked again (`REPLAY_RETRY_DELAYS_MS`).
+    pub(crate) replay_retries: usize,
     pub(crate) clips_busy: Vec<String>,
     /// Participant volumes set this session, by identity.
     pub(crate) volumes: HashMap<String, u32>,
@@ -578,6 +582,8 @@ impl State {
             self.w4.replay_done_for = None;
             self.w4.replay_audio_waived = None;
             self.w4_audio_wait(None);
+            self.w4_replay_retry(None);
+            self.w4.replay_retries = 0;
             if self.w4.replay_live {
                 self.w4.replay_live = false;
                 self.w4_replay_op(ReplayOp::Stop);
@@ -592,6 +598,9 @@ impl State {
             self.w4_audio_wait(None);
             return;
         }
+        // Another share: a retry waiting for the one before is dropped.
+        self.w4_replay_retry(None);
+        self.w4.replay_retries = 0;
         let audio_pending = self.voice.local.screen_audio == LocalShare::On
             && tracks.audio_sid.is_none()
             && !audio_failed
@@ -615,6 +624,17 @@ impl State {
         self.voice.replay = ReplayState::Starting;
         self.view_changed(ViewKey::Voice);
         self.w4_replay_op(ReplayOp::Start(self.call));
+    }
+
+    /// Sets (or clears) the start the server refused and when it's asked again, as
+    /// `VoiceView::replay_retry_at_ms` shows it.
+    pub(crate) fn w4_replay_retry(&mut self, retry: Option<(String, u64)>) {
+        let at = retry.as_ref().map(|(_, at)| *at);
+        self.w4.replay_retry = retry;
+        if self.voice.replay_retry_at_ms != at {
+            self.voice.replay_retry_at_ms = at;
+            self.view_changed(ViewKey::Voice);
+        }
     }
 
     fn w4_audio_wait(&mut self, wait: Option<(String, u64)>) {
@@ -682,6 +702,16 @@ impl Core {
     /// a blocked 1:1 DM is the server's refusal.
     pub async fn join_dm_call(&self, dm_group_id: String) -> Result<(), CoreError> {
         self.join_room(VoiceRoom::Dm { dm_group_id }, None).await
+    }
+
+    /// Joins a DM's call as Retry chose: muted and deafened as the call it replaces was.
+    pub async fn join_dm_call_with(
+        &self,
+        dm_group_id: String,
+        options: VoiceJoinOptions,
+    ) -> Result<(), CoreError> {
+        self.join_room(VoiceRoom::Dm { dm_group_id }, Some(options))
+            .await
     }
 
     /// The call ringing now, if any (`ViewKey::IncomingCall`).

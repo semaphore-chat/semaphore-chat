@@ -1,67 +1,62 @@
-//! The app shell: community rail, channel list, channel header, members panel, the resizable columns
-//! between them, and the connection banner. Measures and colours come from `CommunityToggle`,
-//! `ChannelList`, `ChannelRow`, `CommunityPage`, `ChannelMessageContainer` and `MemberList`.
+//! The app shell: the Lounge frame (design §4, epic #848 B10). `AppFrame` with the banner row
+//! (connection, update) around `ThreeIslands`: the dock and the community's left island (or the
+//! inbox's), the centre, and the members island or the side panel on the right, with the call
+//! slot. The pieces are `lounge`'s views; `frame` reads the source and builds them.
 //!
-//! The middle column belongs to other units: the shell draws what [`ContentSlot`] returns for the
-//! route. It reads through [`ShellSource`] and tells its owner what happened through [`ShellEvent`].
+//! The centre belongs to other units: the shell draws what [`ContentSlot`] returns for the route,
+//! under the channel header. It reads through [`ShellSource`] and tells its owner what happened
+//! through [`ShellEvent`].
 
 mod faces;
 #[cfg(feature = "stories")]
 pub mod fixtures;
-mod members;
-mod phone;
-mod press;
-mod rail;
-mod sidebar;
+mod frame;
+#[cfg(test)]
+mod frame_tests;
+pub mod lounge;
+pub(crate) mod press;
 mod source;
 #[cfg(feature = "stories")]
 pub mod stories_impl;
 
+use crate::kit::PhonePane;
+use frame::pane_for;
 pub use source::{CoreSource, Load, MemberRow, RailCounts, ShellSource};
 
-use crate::kit::LiveElement;
-use crate::kit::{Button, Chip, Icon, IconButton, Paper, Spinner, Variant, on_core_event, text};
+use crate::kit::{Icon, IconButton, Paper, Variant, on_core_event, text};
 use crate::nav::{NavModel, Route};
-use crate::theme::{FONT_FAMILY, SemTheme};
+use crate::theme::SemTheme;
 pub(crate) use faces::{community_avatar, user_avatar};
-use gpui_kit::accesskit::Live;
-use gpui_kit::base::TestSupportExt as _;
-use gpui_kit::component::{ResizableState, h_resizable, resizable_panel};
+use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{ChannelKind, ChannelRow, CommunityRow, SessionState, ViewKey};
+use semaphore_core::model::{
+    ChannelKind, ChannelRow, CommunityRow, SessionState, ViewKey, VoiceRoom, VoiceView,
+};
 use semaphore_core::{ConnectionState, CoreEvent};
 use semaphore_design::Icon as IconName;
 use std::cell::Cell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
-/// From `constants/layout.ts`.
-pub const RAIL_WIDTH: f32 = 80.;
-pub const RAIL_EXPANDED_WIDTH: f32 = 160.;
+/// From `constants/layout.ts`: the width of the old channel sidebar, which some stories still
+/// frame their views at.
 pub const CHANNEL_SIDEBAR_WIDTH: f32 = 280.;
-pub const MEMBER_LIST_WIDTH: f32 = 240.;
-/// `useResponsive`: under this the members panel doesn't fit inline (`isNarrowDesktop`).
-pub const NARROW_DESKTOP: f32 = 1024.;
 /// `DEVICE_BREAKPOINTS.PHONE`: under this, one pane at a time.
 pub const PHONE: f32 = 600.;
-/// `SIDE_PANEL_WIDTH`: the docked pins, search and thread panel.
+/// `SIDE_PANEL_WIDTH`: the pins, search and thread panel's drawer below wide.
 pub const SIDE_PANEL_WIDTH: f32 = 400.;
-/// `DEVICE_BREAKPOINTS.DESKTOP`: from here up the side panel docks beside the messages; narrower
-/// desktop windows draw it as a drawer, and the phone layout as a full-screen layer.
-pub const DOCKED_PANEL: f32 = 1200.;
 
-/// Draws the middle column for a route. Messages (U9) and the composer (U10) arrive here.
+/// Draws the centre for a route. Messages (U9) and the composer (U10) arrive here.
 pub type ContentSlot = Rc<dyn Fn(&ContentProps, &mut Window, &mut App) -> AnyElement>;
-/// Draws under the columns when there's something to show: the voice bar (U11).
-pub type VoiceBarSlot = Rc<dyn Fn(&mut Window, &mut App) -> Option<AnyElement>>;
-/// Draws the update card over the bottom-left corner, when there's an update to talk about.
+/// Draws the frame's call slot (B11): the call bar with the call surface above it while there is a
+/// call, the voice notice after one, or nothing.
+pub type VoiceBarSlot = Rc<dyn Fn(&mut Window, &mut App) -> Option<crate::kit::CallSlot>>;
+/// Draws the update card in the frame's banner row, when there's an update to talk about.
 pub type UpdateBannerSlot = Rc<dyn Fn(&mut Window, &mut App) -> Option<AnyElement>>;
 
-/// Draws the sidebar column for a route outside a community: the DM list and friends on
-/// `/direct-messages`. `None` leaves the route without one. On a phone the shell shows what it
-/// returns in place of the middle column, so the owner returns `None` there for a route whose
-/// content should show instead (an open conversation).
+/// Draws the inbox's left island, outside a community: the DM list and friends. `None` leaves it
+/// with a placeholder.
 pub type RouteSidebarSlot =
     Rc<dyn Fn(&RouteSidebarProps, &mut Window, &mut App) -> Option<AnyElement>>;
 
@@ -69,8 +64,6 @@ pub type RouteSidebarSlot =
 #[derive(Debug, Clone)]
 pub struct RouteSidebarProps {
     pub route: Route,
-    /// The phone layout: the sidebar would fill the pane between the app bar and the navigation.
-    pub phone: bool,
 }
 
 /// What the shell knows when asking for the middle column.
@@ -79,21 +72,49 @@ pub struct ContentProps {
     pub route: Route,
     pub channel: Option<ChannelRow>,
     pub community: Option<CommunityRow>,
+    /// Whether the middle column is drawn now. On a phone one pane shows at a time: with the left
+    /// pane in front the route stays, but this column and the stage in it aren't on screen.
+    pub centre_drawn: bool,
     /// The shell just appeared or navigated: the owner moves keyboard focus into what it shows (the
     /// composer), as it does on opening another conversation. Set on the first drawing of a channel
     /// after it, even when the conversation is the one already open: the shell's first render, and
     /// a click on a rail or channel row, took the focus.
     pub take_focus: bool,
+    /// What the owner draws is on screen. False while a phone shows the left pane, and while the
+    /// shell draws the community home in its place: the owner draws nothing then, and shows no
+    /// conversation, so nothing is marked read or counted as seen.
+    pub shown: bool,
+}
+
+impl ContentProps {
+    /// Whether the middle column is showing the call's own view: the route is the room of the call
+    /// that's up, *and* the centre is drawn. A phone's left pane can leave the route on the call
+    /// while the stage isn't on screen; then nothing of the call is drawn, so the frame's call
+    /// slot must keep the call bar.
+    pub fn call_stage_drawn(&self, voice: &VoiceView) -> bool {
+        if !self.centre_drawn {
+            return false;
+        }
+        match (&self.route, &self.channel, &voice.room) {
+            (_, Some(channel), _) => voice.channel_id.as_deref() == Some(channel.id.as_str()),
+            (Route::DirectMessage { dm_group_id }, _, Some(VoiceRoom::Dm { dm_group_id: id })) => {
+                id == dm_group_id
+            }
+            _ => false,
+        }
+    }
 }
 
 /// What the owner acts on. Core's commands are the owner's to call, so stories need no core.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShellEvent {
     Navigated(Route),
-    /// A voice row was pressed.
+    /// A voice room's Join: the owner joins it, from here (design PA-2).
     JoinVoice {
         channel_id: String,
     },
+    /// A voice room's Leave.
+    LeaveVoice,
     OpenNotifications,
     OpenAccountMenu,
     OpenCommunitySettings {
@@ -122,7 +143,8 @@ pub enum ShellEvent {
     OpenPins,
     /// The header's search button: likewise for the search panel.
     OpenSearch,
-    /// The drawer's scrim was clicked: the owner closes the side panel.
+    /// The side panel asked to close (Escape or the scrim of its drawer below wide, or Members
+    /// replacing it): the owner closes it.
     CloseSidePanel,
 }
 
@@ -130,17 +152,25 @@ pub struct Shell {
     pub(crate) source: Rc<dyn ShellSource>,
     pub(crate) nav: NavModel,
     pub(crate) connection: ConnectionState,
-    pub(crate) rail_expanded: bool,
-    pub(crate) members_open: bool,
-    /// Phone layout only: whether the rail is drawn over the list.
-    pub(crate) phone_rail_open: bool,
-    /// Phone layout only: the content pane instead of the channel list.
-    pub(crate) phone_content: bool,
-    /// Touch-list categories folded away: `ChannelCategoryList`'s chevrons.
-    pub(crate) collapsed: HashSet<&'static str>,
+    /// The right content: `None` until the user chooses (shown at wide, closed below).
+    pub(crate) right_open: Option<bool>,
+    /// Which pane a phone shows.
+    pub(crate) phone_pane: PhonePane,
+    /// The pane each Back entry was left on, in step with the history (`NavModel::depth`).
+    pub(crate) pane_back: Vec<PhonePane>,
+    /// The "All communities" sheet is open.
+    pub(crate) sheet_open: bool,
+    /// The community header's menu is open.
+    pub(crate) menu_open: bool,
+    /// The sheet's filter field.
+    pub(crate) filter: Entity<InputState>,
+    /// The left island's and the right content's scrolling parts.
+    pub(crate) left_scroll: ScrollHandle,
+    pub(crate) right_scroll: ScrollHandle,
+    /// The instance the user is on ("moss.social"), the sheet's heading.
+    pub(crate) instance_label: SharedString,
     /// `lastChannel`: the channel to reopen in each community.
     pub(crate) last_channel: HashMap<String, String>,
-    pub(crate) columns: Entity<ResizableState>,
     /// With nothing focused GPUI sends keys past the kit's root, and Tab does nothing, so the shell
     /// holds focus until the user moves it.
     pub(crate) focus: FocusHandle,
@@ -149,7 +179,7 @@ pub struct Shell {
     pub(crate) focus_content: Cell<bool>,
     pub(crate) content: ContentSlot,
     pub(crate) voice_bar: Option<VoiceBarSlot>,
-    /// The update card, drawn over the connection chip (W13).
+    /// The update card, in the frame's banner row (W13).
     pub(crate) update_banner: Option<UpdateBannerSlot>,
     /// How many pinned messages the header's badge shows. Fed by the owner.
     pub pinned_count: u32,
@@ -158,10 +188,6 @@ pub struct Shell {
     pub(crate) route_sidebar: Option<RouteSidebarSlot>,
     /// The channel header's notification level control. Set by the owner.
     pub(crate) header_accessory: Option<AnyView>,
-    /// W5: the phone layout was drawn last: a member row opens its menu on a long press.
-    pub(crate) touch: Cell<bool>,
-    /// W5: a press on a member row, and its timer.
-    pub(crate) member_press: Option<(press::Press, Task<()>)>,
 }
 
 impl EventEmitter<ShellEvent> for Shell {}
@@ -172,21 +198,28 @@ impl Shell {
         route: Route,
         content: ContentSlot,
         connection: ConnectionState,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let signed_in = matches!(source.session(), SessionState::SignedIn { .. });
         on_core_event(cx.entity().downgrade(), Self::on_core, cx);
+        let filter = crate::kit::text_state(window, cx, false);
+        cx.observe(&filter, |_, _, cx| cx.notify()).detach();
+        let phone_pane = pane_for(&route);
         let mut shell = Self {
             source,
             nav: NavModel::new(route, signed_in),
             connection,
-            rail_expanded: false,
-            members_open: false,
-            phone_rail_open: false,
-            phone_content: false,
-            collapsed: HashSet::new(),
+            right_open: None,
+            phone_pane,
+            pane_back: Vec::new(),
+            sheet_open: false,
+            menu_open: false,
+            filter,
+            left_scroll: ScrollHandle::new(),
+            right_scroll: ScrollHandle::new(),
+            instance_label: SharedString::default(),
             last_channel: HashMap::new(),
-            columns: cx.new(|_| ResizableState::default()),
             focus: cx.focus_handle(),
             took_focus: false,
             focus_content: Cell::new(true),
@@ -197,8 +230,6 @@ impl Shell {
             side_panel: None,
             route_sidebar: None,
             header_accessory: None,
-            touch: Cell::new(false),
-            member_press: None,
         };
         shell.settle_route();
         shell
@@ -214,25 +245,16 @@ impl Shell {
         self
     }
 
-    /// The update card in the bottom-left notice corner, above the connection chip.
+    /// The update card, in the frame's banner row under the connection notice.
     pub fn with_update_banner(mut self, slot: UpdateBannerSlot) -> Self {
         self.update_banner = Some(slot);
         self
     }
 
-    /// What the route sidebar slot draws for the route on screen.
-    pub(crate) fn route_sidebar(
-        &self,
-        phone: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        let slot = self.route_sidebar.clone()?;
-        let props = RouteSidebarProps {
-            route: self.nav.current().clone(),
-            phone,
-        };
-        slot(&props, window, cx)
+    /// The instance the user is on, the "All communities" sheet's heading ("moss.social").
+    pub fn with_instance_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.instance_label = label.into();
+        self
     }
 
     /// Draws `view` in the channel header in place of the notification level button, and in the
@@ -243,8 +265,8 @@ impl Shell {
         cx.notify();
     }
 
-    /// Shows `panel` beside the messages (docked, a drawer, or a full-screen layer on a phone,
-    /// by window width), or closes it. While open it takes the members panel's place.
+    /// Shows `panel` beside the messages (the right island at wide, a drawer below it, a
+    /// full-screen layer on a phone), or closes it. While open it takes the members' place.
     pub fn set_side_panel(&mut self, panel: Option<AnyView>, cx: &mut Context<Self>) {
         self.side_panel = panel;
         cx.notify();
@@ -254,63 +276,20 @@ impl Shell {
         self.side_panel.is_some()
     }
 
-    /// The side panel over a scrim that asks the owner to close it.
-    pub(crate) fn side_panel_drawer(
-        &self,
-        full_screen: bool,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        let panel = self.side_panel.clone()?;
-        let view = cx.entity().downgrade();
-        let sem = cx.sem();
-        let paper = sem.paper;
-        Some(
-            div()
-                .absolute()
-                .inset_0()
-                .child(
-                    div()
-                        .id("side-panel-scrim")
-                        .test_support()
-                        .absolute()
-                        .inset_0()
-                        .occlude()
-                        .bg(hsla(0., 0., 0., 0.5))
-                        .on_click(move |_, _, cx| {
-                            view.update(cx, |_, cx| cx.emit(ShellEvent::CloseSidePanel))
-                                .ok();
-                        }),
-                )
-                .child(
-                    div()
-                        .id("side-panel")
-                        .test_support()
-                        .absolute()
-                        .top_0()
-                        .bottom_0()
-                        .right_0()
-                        .when(full_screen, |this| this.left_0())
-                        .when(!full_screen, |this| {
-                            this.w(px(SIDE_PANEL_WIDTH)).max_w_full()
-                        })
-                        .occlude()
-                        .shadow_lg()
-                        .bg(paper)
-                        .child(panel),
-                )
-                .into_any_element(),
-        )
-    }
-
     pub fn nav(&self) -> &NavModel {
         &self.nav
     }
 
     pub fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {
+        let (depth, leaving) = (self.nav.depth(), self.phone_pane);
+        // The pane is the asked-for route's: a phone opening a community shows its home (the left
+        // pane) even though the route settles on a channel, as the web's phone home does.
+        self.phone_pane = pane_for(&route);
         self.nav.navigate(route);
+        self.keep_pane(depth, leaving);
         self.settle_route();
-        self.phone_rail_open = false;
-        self.phone_content = self.nav.current().channel_id().is_some();
+        self.sheet_open = false;
+        self.menu_open = false;
         self.focus_content.set(true);
         cx.emit(ShellEvent::Navigated(self.nav.current().clone()));
         cx.notify();
@@ -325,11 +304,17 @@ impl Shell {
 
     /// Back to where the user was before, as a page's Back or Close does; Home if nowhere.
     pub fn go_back(&mut self, cx: &mut Context<Self>) {
-        if !self.nav.go_back() {
+        let (depth, leaving) = (self.nav.depth(), self.phone_pane);
+        let back = self.nav.go_back();
+        if !back {
             self.nav.navigate(Route::Home);
         }
+        self.phone_pane = pane_for(self.nav.current());
+        // Back restores the pane the user left that entry on: the community's home, or its chat.
+        if let Some(pane) = self.keep_pane(depth, leaving) {
+            self.phone_pane = pane;
+        }
         self.settle_route();
-        self.phone_content = self.nav.current().channel_id().is_some();
         self.focus_content.set(true);
         cx.emit(ShellEvent::Navigated(self.nav.current().clone()));
         cx.notify();
@@ -337,14 +322,34 @@ impl Shell {
 
     /// `semaphore://` handed to us by the OS. A bad link does nothing, and returns false.
     pub fn open_deep_link(&mut self, raw: &str, cx: &mut Context<Self>) -> bool {
+        let (depth, leaving) = (self.nav.depth(), self.phone_pane);
         let handled = self.nav.open_deep_link(raw);
         if handled {
+            self.phone_pane = pane_for(self.nav.current());
+            self.keep_pane(depth, leaving);
             self.settle_route();
             self.focus_content.set(true);
             cx.emit(ShellEvent::Navigated(self.nav.current().clone()));
             cx.notify();
         }
         handled
+    }
+
+    /// Keeps [`Self::pane_back`] in step with the history after a move from `depth` entries: the
+    /// pane the user `left` goes with a new entry, and a step back returns the one it was left on.
+    fn keep_pane(&mut self, depth: usize, left: PhonePane) -> Option<PhonePane> {
+        let now = self.nav.depth();
+        let restored = if now > depth {
+            self.pane_back.push(left);
+            None
+        } else if now < depth {
+            self.pane_back.pop()
+        } else {
+            None
+        };
+        // Signing out clears the history; nothing else does without the shell.
+        self.pane_back.truncate(now);
+        restored
     }
 
     /// `CommunityPage`: a community with no channel selected goes to the last-viewed text channel,
@@ -376,6 +381,14 @@ impl Shell {
                 community_id,
                 channel_id,
             } => {
+                // A channel that isn't in the loaded list (deleted, or not the user's to see): a
+                // phone shows the community's list, not a centre that points at it.
+                if let Load::Ready(channels) = self.source.channels(&community_id)
+                    && !channels.iter().any(|channel| channel.id == channel_id)
+                {
+                    self.phone_pane = PhonePane::Left;
+                    return;
+                }
                 self.last_channel.insert(community_id, channel_id);
             }
             _ => {}
@@ -443,61 +456,73 @@ impl Shell {
         }
     }
 
-    /// The middle column. The owner draws it, except while the community itself isn't there to
-    /// draw: `CommunityPage`'s loading and `PageError` states.
+    /// The middle column. The owner draws it, except for the community home (B12): a community
+    /// with no channel chosen, and any community route while the communities load or fail.
     pub(crate) fn content_element(
         &self,
+        centre_drawn: bool,
+        members_shown: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if self.nav.current().community_id().is_some() {
-            match self.source.communities() {
-                Load::Loading => {
-                    return div()
-                        .size_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(Spinner::new("community-loading"))
-                        .into_any_element();
-                }
-                Load::Failed(_) => {
-                    return div()
-                        .size_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(error_state(
-                            "community-retry",
-                            "Couldn't load this community",
-                            "Check your connection and try again.",
-                            false,
-                            cx,
-                        ))
-                        .into_any_element();
-                }
-                Load::Ready(_) => {}
-            }
-        }
+        let home = self.nav.current().community_id().is_some()
+            && (!matches!(self.source.communities(), Load::Ready(_))
+                || match self.nav.current() {
+                    Route::Community { .. } => true,
+                    Route::Channel { .. } => self.channel().is_none(),
+                    _ => false,
+                });
         let channel = self.channel();
+        let shown = centre_drawn && !home;
         // Kept until a channel is drawn: a route still loading has nothing to focus yet.
-        let take_focus = channel.is_some() && self.focus_content.take();
+        let take_focus = channel.is_some() && shown && self.focus_content.take();
         let props = ContentProps {
             route: self.nav.current().clone(),
             channel,
             community: self.community(),
+            centre_drawn,
             take_focus,
+            shown,
         };
-        (self.content)(&props, window, cx)
+        // The owner is told even when what it draws isn't on screen, so it can stop showing a
+        // conversation.
+        let content = (self.content)(&props, window, cx);
+        match (home, self.nav.current().community_id()) {
+            (true, Some(community_id)) if centre_drawn => {
+                let community_id = community_id.to_owned();
+                self.community_home(&community_id, members_shown, cx)
+                    .into_any_element()
+            }
+            _ if !shown => div().into_any_element(),
+            _ => content,
+        }
     }
 
     /// The channel header, or `None` when the route has no channel.
-    fn header(&self, narrow: bool, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
+    /// The channel header. On a phone it leads with Back to the left pane; its Members button
+    /// shows or hides the members at every width (`right_shown`: whether they are showing), and
+    /// replaces an open side panel with them.
+    /// Shows the members, the action of the header's Members button and the community header's
+    /// members button. They replace an open side panel, as on the web: the owner closes it.
+    pub(crate) fn show_members(&mut self, cx: &mut Context<Self>) {
+        self.right_open = Some(true);
+        if self.side_panel.is_some() {
+            cx.emit(ShellEvent::CloseSidePanel);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn header(
+        &self,
+        phone: bool,
+        right_shown: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement + use<>> {
         let channel = self.channel()?;
         let sem = cx.sem();
         let pinned = self.pinned_count;
-        let (secondary, primary_badge) = (sem.text_secondary, sem.primary);
-        let icon_color = sem.action_active;
+        let (secondary, primary_badge, on_primary_badge) =
+            (sem.text_secondary, sem.primary, sem.primary_contrast);
         Some(
             Paper::new()
                 .w_full()
@@ -508,6 +533,7 @@ impl Shell {
                 .items_center()
                 .justify_between()
                 .gap(px(8.))
+                .when(phone, |header| header.child(self.phone_back(cx)))
                 .child(
                     div()
                         .flex()
@@ -521,15 +547,9 @@ impl Shell {
                             row.child(Icon::new(IconName::VolumeUp).size(18.).color(secondary))
                         })
                         .child(
-                            text(
-                                Variant::H6,
-                                match channel.kind {
-                                    ChannelKind::Voice => channel.name.clone(),
-                                    _ => format!("# {}", channel.name),
-                                },
-                            )
-                            .font_weight(FontWeight(600.))
-                            .truncate(),
+                            text(Variant::H6, header_title(channel.kind, &channel.name))
+                                .font_weight(FontWeight(600.))
+                                .truncate(),
                         )
                         .when(channel.is_private, |row| {
                             row.child(Icon::new(IconName::Lock).size(18.).color(secondary))
@@ -550,8 +570,7 @@ impl Shell {
                                         IconName::PushPin,
                                         format!("Pinned messages ({pinned})"),
                                     )
-                                    .tiny()
-                                    .color(icon_color)
+                                    .small()
                                     .on_click(
                                         cx.listener(|_, _, _, cx| cx.emit(ShellEvent::OpenPins)),
                                     ),
@@ -569,15 +588,14 @@ impl Shell {
                                             .justify_center()
                                             .rounded_full()
                                             .bg(primary_badge)
-                                            .text_color(rgb(0xffffff))
+                                            .text_color(on_primary_badge)
                                             .child(text(Variant::Caption, pinned.to_string())),
                                     )
                                 }),
                         )
                         .child(
                             IconButton::new("header-search", IconName::Search, "Search messages")
-                                .tiny()
-                                .color(icon_color)
+                                .small()
                                 .on_click(
                                     cx.listener(|_, _, _, cx| cx.emit(ShellEvent::OpenSearch)),
                                 ),
@@ -589,315 +607,37 @@ impl Shell {
                                 IconName::AlternateEmail,
                                 "Channel notifications",
                             )
-                            .small_with_large_icon()
-                            .color(icon_color)
+                            .small()
                             .into_any_element(),
                         })
-                        .when(narrow, |row| {
+                        .child({
                             let view = cx.entity().downgrade();
-                            row.child(
-                                IconButton::new("members-toggle", IconName::People, "Members")
-                                    .small_with_large_icon()
-                                    .color(icon_color)
-                                    .selected(self.members_open)
-                                    .on_click(move |_, _, cx| {
-                                        view.update(cx, |shell, cx| {
-                                            shell.members_open = !shell.members_open;
+                            IconButton::new("members-toggle", IconName::People, "Members")
+                                .small()
+                                .selected(right_shown)
+                                .on_click(move |_, _, cx| {
+                                    view.update(cx, |shell, cx| {
+                                        if shell.side_panel.is_some() || !right_shown {
+                                            shell.show_members(cx);
+                                        } else {
+                                            shell.right_open = Some(false);
                                             cx.notify();
-                                        })
-                                        .ok();
-                                    }),
-                            )
+                                        }
+                                    })
+                                    .ok();
+                                })
                         }),
                 ),
         )
     }
-
-    /// `MemberListDrawerButton`'s drawer: the panel over a scrim that closes it.
-    pub(crate) fn members_drawer(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let view = cx.entity().downgrade();
-        div()
-            .absolute()
-            .inset_0()
-            .child(
-                div()
-                    .id("members-scrim")
-                    .test_support()
-                    .absolute()
-                    .inset_0()
-                    .occlude()
-                    .bg(hsla(0., 0., 0., 0.5))
-                    .on_click(move |_, _, cx| {
-                        view.update(cx, |shell, cx| {
-                            shell.members_open = false;
-                            cx.notify();
-                        })
-                        .ok();
-                    }),
-            )
-            .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .right_0()
-                    .occlude()
-                    .shadow_lg()
-                    .child(self.members_panel(cx)),
-            )
-    }
-
-    /// The bottom-left corner's notices, stacked: the update card (when there is one), then the
-    /// connection chip. One column, so the two never overlap.
-    pub(crate) fn notices(
-        &self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        let update = self
-            .update_banner
-            .as_ref()
-            .and_then(|slot| slot(window, cx));
-        let connection = self.connection_chip(cx);
-        if update.is_none() && connection.is_none() {
-            return None;
-        }
-        Some(
-            div()
-                .absolute()
-                .left(px(16.))
-                .right(px(16.))
-                .bottom(px(16.))
-                .flex()
-                .flex_col()
-                .items_start()
-                .gap(px(8.))
-                .children(update)
-                .children(connection)
-                .into_any_element(),
-        )
-    }
-
-    fn connection_chip(&self, cx: &App) -> Option<AnyElement> {
-        let sem = cx.sem();
-        let label = match self.connection {
-            ConnectionState::Connected | ConnectionState::Suspended => return None,
-            ConnectionState::Disconnected => "Reconnecting...",
-            ConnectionState::Offline => "You're offline",
-        };
-        let warning = sem.warning;
-        Some(
-            // The web's `OfflineBanner`/connection strip is `role="status"`: polite.
-            div()
-                .id("connection-banner")
-                .test_support()
-                .role(Role::Status)
-                .aria_label(label)
-                .aria_live(Live::Polite)
-                .child(
-                    Chip::new(label)
-                        .icon(Spinner::new("connection-spinner").size(14.).color(warning))
-                        .colors(sem.paper, warning, warning),
-                )
-                .into_any_element(),
-        )
-    }
-
-    pub(crate) fn body_ground(&self, cx: &App) -> Div {
-        let sem = cx.sem();
-        div()
-            .relative()
-            .size_full()
-            .font_family(FONT_FAMILY)
-            .text_color(sem.text_primary)
-            .bg(sem.background_default)
-            .when(sem.body_band > px(0.), |this| {
-                this.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .right_0()
-                        .h(sem.body_band)
-                        .bg(sem.body.background()),
-                )
-            })
-    }
-}
-
-impl Render for Shell {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !self.took_focus {
-            self.took_focus = true;
-            window.focus(&self.focus, cx);
-        }
-        let width = f32::from(window.viewport_size().width);
-        self.touch.set(width < PHONE);
-        if width < PHONE {
-            return self
-                .render_phone(window, cx)
-                .track_focus(&self.focus)
-                .into_any_element();
-        }
-
-        let narrow = width < NARROW_DESKTOP;
-        let in_community = self.nav.current().community_id().is_some();
-        let docked = self.side_panel.clone().filter(|_| width >= DOCKED_PANEL);
-        let drawer = if docked.is_none() {
-            self.side_panel_drawer(false, cx)
-        } else {
-            None
-        };
-        let panel_open = self.side_panel.is_some();
-        let show_members = in_community && !narrow && !panel_open;
-        let overlay_members = in_community && narrow && self.members_open && !panel_open;
-        let divider = cx.sem().divider;
-
-        let sidebar = self.sidebar(window, cx);
-        let content = self.content_element(window, cx);
-        let header = self.header(narrow, cx);
-        let voice_bar = self.voice_bar.clone().and_then(|slot| slot(window, cx));
-
-        let main = div()
-            .relative()
-            .size_full()
-            .flex()
-            .flex_col()
-            .children(header)
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .child(div().flex_1().min_w_0().h_full().child(content))
-                    .when(show_members, |row| row.child(self.members_panel(cx)))
-                    .when_some(docked, |row, panel| {
-                        row.child(
-                            div()
-                                .id("side-panel")
-                                .test_support()
-                                .w(px(SIDE_PANEL_WIDTH))
-                                .flex_shrink_0()
-                                .h_full()
-                                .border_l_1()
-                                .border_color(divider)
-                                .child(panel),
-                        )
-                    }),
-            );
-
-        let columns = match sidebar {
-            Some(sidebar) => h_resizable("shell-columns")
-                .with_state(&self.columns)
-                .child(
-                    resizable_panel()
-                        .size(px(CHANNEL_SIDEBAR_WIDTH))
-                        .size_range(px(220.)..px(320.))
-                        .child(sidebar),
-                )
-                .child(resizable_panel().child(main))
-                .into_any_element(),
-            None => main.into_any_element(),
-        };
-
-        self.body_ground(cx)
-            .track_focus(&self.focus)
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .child(self.rail(cx))
-                    .child(div().flex_1().min_w_0().h_full().child(columns))
-                    .when(overlay_members, |this| this.child(self.members_drawer(cx)))
-                    .children(drawer)
-                    // In here, so it always clears the voice bar, as `BottomChromeContext` does.
-                    .children(self.notices(window, cx)),
-            )
-            .children(voice_bar)
-            .into_any_element()
-    }
-}
-
-/// `ErrorState` in `ListState`, compact and regular.
-pub(crate) fn error_state(
-    id: &'static str,
-    title: &str,
-    description: &str,
-    compact: bool,
-    cx: &mut Context<Shell>,
-) -> Div {
-    let sem = cx.sem();
-    let circle = if compact { 56. } else { 96. };
-    let error = sem.error;
-    let tint = error.opacity(if sem.is_dark { 0.16 } else { 0.1 });
-    let view = cx.entity().downgrade();
-    let (primary, secondary) = (sem.text_primary, sem.text_secondary);
-    div()
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .px(px(if compact { 16. } else { 24. }))
-        .py(px(if compact { 24. } else { 48. }))
-        .child(
-            div()
-                .size(px(circle))
-                .mb(px(if compact { 12. } else { 20. }))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_full()
-                .bg(tint)
-                .child(
-                    Icon::new(IconName::Error)
-                        .size(if compact { 32. } else { 48. })
-                        .color(error),
-                ),
-        )
-        .child(
-            text(
-                if compact {
-                    Variant::Subtitle2
-                } else {
-                    Variant::H6
-                },
-                title.to_owned(),
-            )
-            .font_weight(FontWeight(600.))
-            .text_color(primary)
-            .mb(px(4.))
-            .text_center(),
-        )
-        .child(
-            text(
-                if compact {
-                    Variant::Caption
-                } else {
-                    Variant::Body2
-                },
-                description.to_owned(),
-            )
-            .text_color(secondary)
-            .max_w(px(300.))
-            .mb(px(if compact { 12. } else { 20. }))
-            .text_center(),
-        )
-        .child(
-            Button::new(id, "Try again")
-                .outlined()
-                .on_click(move |_, _, cx| {
-                    view.update(cx, |_, cx| cx.emit(ShellEvent::Retry)).ok();
-                }),
-        )
 }
 
 #[cfg(feature = "stories")]
 pub fn stories() -> Vec<crate::stories::Story> {
-    stories_impl::stories()
+    let mut all = stories_impl::stories();
+    all.extend(lounge::stories::stories());
+    all.extend(lounge::call::stories::stories());
+    all
 }
 
 /// A channel's header label: a text channel's hash and name, or a voice channel's name alone,

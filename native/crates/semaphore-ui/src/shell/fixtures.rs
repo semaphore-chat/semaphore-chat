@@ -143,6 +143,10 @@ impl ShellSource for FixtureSource {
     fn community_caps(&self, _community_id: &str) -> CommunityCaps {
         self.0.borrow().caps.unwrap_or_else(owner_caps)
     }
+
+    fn can_create_community(&self) -> bool {
+        true
+    }
 }
 
 impl Fixture {

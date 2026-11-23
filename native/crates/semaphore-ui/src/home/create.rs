@@ -139,7 +139,8 @@ impl Render for CreateCommunityForm {
                 .test_support()
                 .w_full()
                 .child(Alert::new(
-                    Severity::Error,
+                    "home-create-alert",
+                    Severity::Danger,
                     if message.is_empty() {
                         "Failed to create community. Please try again.".to_owned()
                     } else {
@@ -151,7 +152,7 @@ impl Render for CreateCommunityForm {
         let view = cx.weak_entity();
         let cancel = view.clone();
         let close = view.clone();
-        Dialog::new("Create Community")
+        Dialog::new("create-community-dialog", "Create Community")
             .width(width)
             .on_close(move |_, cx| {
                 close
@@ -199,6 +200,7 @@ impl Render for CreateCommunityForm {
             )
             .action(
                 Button::new("create-community-cancel", "Cancel")
+                    .ghost()
                     .disabled(busy)
                     .on_click(move |_, _, cx| {
                         cancel
@@ -215,7 +217,7 @@ impl Render for CreateCommunityForm {
                         "Create Community"
                     },
                 )
-                .contained()
+                .primary()
                 .loading(busy)
                 .disabled(busy || name.trim().is_empty())
                 .on_click(move |_, _, cx| {

@@ -17,7 +17,7 @@ TOOL="$NATIVE/scripts/ui-review.sh"
 UIR="$NATIVE/.ui-review"
 REPORT="$UIR/out/report.json"
 WORK="$(mktemp -d)"
-STORIES="about,kit-cjk,theme-swatches"
+STORIES="about,kit-cjk,theme-roles"
 EDITED="$NATIVE/crates/semaphore-ui/src/kit/stories.rs"
 BEFORE='"H5 · Japanese"'
 AFTER='"H5 · Japanese, edited"'
@@ -87,7 +87,7 @@ for size in ("desktop", "phone"):
         problems.append(f"kit-cjk at {size} has no composite")
     elif not os.path.exists(os.path.join(root, shots[0]["composite"])):
         problems.append(f"kit-cjk at {size}: no composite at {shots[0]['composite']}")
-for other in ("about", "theme-swatches"):
+for other in ("about", "theme-roles"):
     if stories.get(other, {}).get("status") != "unchanged":
         problems.append(f"{other} is {stories.get(other, {}).get('status')}, not unchanged")
 if problems:

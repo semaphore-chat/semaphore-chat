@@ -489,6 +489,21 @@ class OverlayStackTest(unittest.TestCase):
         self.open(layer("p", "popover", "gone", opener="b", opener_layer="gone"))
         self.assertEqual(self.m.state["layers"], [layer("p", "popover", opener="b")])
 
+    def test_r20_back_asks_only_the_topmost_and_never_stops_at_a_tooltip(self):
+        self.open(layer("s", "sheet"), layer("m", "menu", "s"), layer("t1", "tooltip"), layer("t2", "tooltip"))
+        self.assertEqual(
+            self.m.send("back"),
+            [request_close("t2", "back"), request_close("t1", "back"), request_close("m", "back")],
+        )
+        self.assertEqual(self.ids(), ["s", "m", "t1", "t2"])  # rule 12: nothing leaves until closed
+
+    def test_r21_back_with_no_layer_goes_to_the_platform(self):
+        self.assertEqual(self.m.send("back"), [{"passToPlatform": {}}])
+        self.open(layer("t", "tooltip"))
+        self.assertEqual(self.m.send("back"), [request_close("t", "back"), {"passToPlatform": {}}])
+        # Never the screen's Escape chain.
+        self.assertNotIn({"passToScreen": {"key": "Escape"}}, self.m.send("back"))
+
 
 class ConfirmDestructiveTest(unittest.TestCase):
     def setUp(self) -> None:

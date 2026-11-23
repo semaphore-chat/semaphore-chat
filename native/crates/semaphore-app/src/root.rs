@@ -24,7 +24,8 @@ use semaphore_platform_desktop::lifecycle::{self, OsEvent, OsWatcher};
 use semaphore_ui::Shell;
 use semaphore_ui::auth::{AuthEvent, AuthScreen, AuthStep};
 use semaphore_ui::kit::{
-    Button, Dialog, Menu, MenuItem, Spinner, Variant, emit_core_event, on_core_event, text,
+    Button, Dialog, Menu, MenuCloseReason, MenuItem, Spinner, Variant, emit_core_event,
+    on_core_event, text,
 };
 use semaphore_ui::messages::{LruImageCache, MediaRef};
 use semaphore_ui::nav::Route;
@@ -34,7 +35,7 @@ use semaphore_ui::theme::SemTheme as _;
 use semaphore_ui::voice::{
     PickerActions, PickerModel, PickerSource, PttAction, PttContext, PttInput, PttState,
     QualityLevel, VideoFrames, VoiceController, VoiceStage, VoiceStageModel, ptt_decide,
-    source_picker, voice_bar_element_with,
+    source_picker,
 };
 use std::rc::Rc;
 use std::sync::Arc;
@@ -102,7 +103,7 @@ pub struct AppRoot {
     os_watcher: Option<OsWatcher>,
     voice: Option<Arc<AppVoice>>,
     stage: Option<Entity<VoiceStage>>,
-    /// The window's video frames, for the float card (W4).
+    /// The window's video frames, for the stage and the call surface.
     frames: Option<Arc<VideoFrames>>,
     /// The voice channel's name, from when it was joined.
     voice_channel_name: String,
@@ -125,7 +126,7 @@ pub struct AppRoot {
     account: account::Account,
     /// W3: the signed-out pages (`onboarding`).
     onboarding: onboarding::Onboarding,
-    /// W4: incoming calls, DM calls, the participant menu, soundboard, float card, debug panel.
+    /// W4: incoming calls, DM calls, the participant menu, soundboard, the call slot, debug panel.
     calls: calls::Calls,
     /// W4: capture, the clip library and sharing (`replay`).
     replay: replay::Replay,
@@ -211,6 +212,10 @@ impl AppRoot {
                 this.ptt_release(cx);
             }
         });
+        // "Match system": the OS switching light and dark redraws the app in the other mode.
+        let appearance = cx.observe_window_appearance(window, |this, _, cx| {
+            this.refresh_appearance(cx);
+        });
         let settings = config.settings.clone();
         cx.set_global(crate::Seams {
             pick_files: config
@@ -242,7 +247,7 @@ impl AppRoot {
             .get()
             .theme
             .as_deref()
-            .and_then(semaphore_ui::theme::ThemeChoice::parse)
+            .and_then(semaphore_ui::theme::ThemeInput::parse)
         {
             semaphore_ui::theme::apply(choice, cx);
         }
@@ -312,7 +317,7 @@ impl AppRoot {
             root_focus,
             server_info: None,
             window: window.window_handle(),
-            _subscriptions: vec![activation, keys, focus_out],
+            _subscriptions: vec![activation, appearance, keys, focus_out],
         }
     }
 
@@ -860,7 +865,10 @@ impl AppRoot {
                 .size_full()
                 .object_fit(ObjectFit::Contain)
                 .into_any_element(),
-            MediaRef::Pending => Spinner::new("viewer-loading").into_any_element(),
+            MediaRef::Pending => Spinner::new("viewer-loading")
+                .size(40.)
+                .label("Loading")
+                .into_any_element(),
             _ => text(Variant::Body1, "This image can't be shown.").into_any_element(),
         };
         Some(
@@ -1079,6 +1087,11 @@ impl AppRoot {
                 self.drop_community();
                 self.drop_roles();
                 self.drop_moderation();
+                // This session's notices go with it: none waits on the sign-in screen.
+                let toasts = self.toasts();
+                for id in [replay::REPLAY_TOAST, account::INVITE_NOTICE] {
+                    toasts.dismiss(id, cx);
+                }
                 self.account_open = false;
                 let notice = (matches!(session, SessionState::SignedOut)
                     && core.last_sign_out() == Some(SignOutReason::Expired))
@@ -1136,6 +1149,18 @@ impl AppRoot {
             // UI freeze: WU's hub file.
             AuthEvent::OpenInBrowser { url } => self.u9_open_in_browser(url, cx),
             AuthEvent::ConnectServer { url, name } => {
+                if let Some(error) = semaphore_core::links::server_url_error(&url) {
+                    auth.update(cx, |auth, cx| {
+                        auth.set_step(
+                            AuthStep::ServerUrl {
+                                testing: false,
+                                error: Some(error.to_owned()),
+                            },
+                            cx,
+                        )
+                    });
+                    return;
+                }
                 auth.update(cx, |auth, cx| {
                     auth.set_step(
                         AuthStep::ServerUrl {
@@ -1271,72 +1296,46 @@ impl AppRoot {
         let shown = showing.clone();
         let content = Rc::new(
             move |props: &ContentProps, window: &mut Window, cx: &mut App| {
+                // A phone showing the left pane, or the shell's community home: no conversation is
+                // on screen, so none is marked read or counted as seen (B12).
+                if !props.shown {
+                    pane.update(cx, |pane, cx| pane.hide(cx));
+                    shown.set(false);
+                    return div().into_any_element();
+                }
                 let (element, stage_shown) =
                     content(&pane, &stage, &content_core, &root, props, window, cx);
                 shown.set(stage_shown);
-                if stage_shown {
-                    return element;
-                }
-                // WP: no float card over another voice channel's pre-join, whose joins sit where
-                // the card goes; the bar under the columns still shows the call.
-                let prejoin_shown = props.channel.as_ref().is_some_and(|channel| {
-                    channel.kind == ChannelKind::Voice
-                        && root
-                            .upgrade()
-                            .is_some_and(|root| root.read(cx).prejoin_shows(&channel.id))
-                });
-                if prejoin_shown {
-                    return element;
-                }
-                // W4: the call over the column while its stage isn't shown (wide windows).
-                let float = root
-                    .upgrade()
-                    .and_then(|root| root.update(cx, |root, cx| root.float_card(window, cx)));
-                match float {
-                    Some(float) => div()
-                        .relative()
-                        .size_full()
-                        .child(element)
-                        .child(float)
-                        .into_any_element(),
-                    None => element,
-                }
+                element
             },
         );
         let connection = core.connection();
         let route_sidebar = self.build_inbox(window, cx);
         let root_update_banner = self.update_banner_slot();
         let bar_root = cx.entity().downgrade();
+        let instance_label = self
+            .server
+            .as_ref()
+            .map(|(url, _)| server_label(url))
+            .unwrap_or_default();
         let shell = cx.new(|cx| {
-            // The call's bar under the columns, wherever the user is but the call's own channel.
+            // The frame's call slot (B11): the call bar, with the call surface above it, wherever
+            // the user is but the call's own view; the voice notice after a call.
             let bar: semaphore_ui::shell::VoiceBarSlot = Rc::new(move |window, cx| {
                 let root = bar_root.upgrade()?;
-                let (model, soundboard, controller) = {
-                    let root = root.read(cx);
-                    let model = root.stage_model();
-                    model.voice.room.as_ref()?;
-                    let controller: Arc<dyn VoiceController> = root.voice.clone()?;
-                    (model, root.soundboard_bar(), controller)
-                };
                 // The stage has a bar of its own.
-                if showing.get() {
-                    return None;
-                }
-                let narrow = window.viewport_size().width < px(600.);
-                Some(voice_bar_element_with(
-                    &model,
-                    &soundboard,
-                    narrow,
-                    controller,
-                ))
+                let stage_shown = showing.get();
+                root.update(cx, |root, cx| root.call_slot(stage_shown, window, cx))
             });
             Shell::new(
                 Rc::new(CoreSource(core.clone())),
                 Route::Home,
                 content,
                 connection,
+                window,
                 cx,
             )
+            .with_instance_label(instance_label)
             .with_voice_bar(bar)
             .with_route_sidebar(route_sidebar)
             .with_update_banner(root_update_banner)
@@ -1436,9 +1435,16 @@ impl AppRoot {
             ShellEvent::CreateCommunity => self.open_create_community(window, cx),
             ShellEvent::OpenProfile { user_id } => self.open_profile(user_id.clone(), window, cx),
             ShellEvent::OpenNotifications => self.toggle_centre(cx),
-            // WP: a voice row only selects its channel; the route shows the pre-join, whose Join
-            // joins (`prejoin.rs`), as the web's row does.
-            ShellEvent::JoinVoice { .. } => {}
+            // A voice room card's Join joins from where you are (design PA-2); its name opens
+            // the room's pre-join or call view.
+            ShellEvent::JoinVoice { channel_id } => {
+                self.join_from_card(channel_id.clone(), window, cx)
+            }
+            ShellEvent::LeaveVoice => {
+                if let Some(voice) = &self.voice {
+                    voice.leave();
+                }
+            }
             ShellEvent::OpenPins => {
                 if let Some(pane) = &self.pane {
                     pane.update(cx, |pane, cx| pane.toggle_pins(window, cx));
@@ -1486,29 +1492,46 @@ impl AppRoot {
         let profile = close.clone();
         let settings = close.clone();
         let about = close.clone();
-        let dialog = Dialog::new(format!("Signed in as {name}"))
+        let dialog = Dialog::new("signed-in-as-dialog", format!("Signed in as {name}"))
             .body(text(
                 Variant::Body2,
                 "Signing out forgets this session on this computer.",
             ))
+            // Cancel first: focus starts on the first action, so a stray Enter is safe.
             .action(
-                Button::new("account-profile", "Profile").on_click(move |_, _, cx| {
-                    profile
-                        .update(cx, |this, cx| {
-                            this.account_open = false;
-                            if let Some(me) = this.core().and_then(|core| match core.session() {
-                                SessionState::SignedIn { me } => Some(me.id),
-                                _ => None,
-                            }) {
-                                this.shell_navigate(Route::Profile { user_id: me }, cx);
-                            }
-                            cx.notify();
-                        })
-                        .ok();
-                }),
+                Button::new("account-cancel", "Cancel")
+                    .ghost()
+                    .on_click(move |_, _, cx| {
+                        cancel
+                            .update(cx, |this, cx| {
+                                this.account_open = false;
+                                cx.notify();
+                            })
+                            .ok();
+                    }),
             )
             .action(
-                Button::new("account-settings", "Settings").on_click(move |_, _, cx| {
+                Button::new("account-profile", "Profile")
+                    .text()
+                    .on_click(move |_, _, cx| {
+                        profile
+                            .update(cx, |this, cx| {
+                                this.account_open = false;
+                                if let Some(me) =
+                                    this.core().and_then(|core| match core.session() {
+                                        SessionState::SignedIn { me } => Some(me.id),
+                                        _ => None,
+                                    })
+                                {
+                                    this.shell_navigate(Route::Profile { user_id: me }, cx);
+                                }
+                                cx.notify();
+                            })
+                            .ok();
+                    }),
+            )
+            .action(Button::new("account-settings", "Settings").text().on_click(
+                move |_, _, cx| {
                     settings
                         .update(cx, |this, cx| {
                             this.account_open = false;
@@ -1516,8 +1539,8 @@ impl AppRoot {
                             cx.notify();
                         })
                         .ok();
-                }),
-            );
+                },
+            ));
         // UI freeze: WA's "Admin" entry (`InstanceAdminCaps::show_admin`).
         let dialog = match self.admin_account_action(cx) {
             Some(admin) => dialog.action(admin),
@@ -1525,8 +1548,9 @@ impl AppRoot {
         };
         dialog
             .action(
-                Button::new("account-about", "About Semaphore Chat").on_click(
-                    move |_, window, cx| {
+                Button::new("account-about", "About Semaphore Chat")
+                    .text()
+                    .on_click(move |_, window, cx| {
                         about
                             .update(cx, |this, cx| {
                                 this.account_open = false;
@@ -1534,22 +1558,11 @@ impl AppRoot {
                                 cx.notify();
                             })
                             .ok();
-                    },
-                ),
-            )
-            .action(
-                Button::new("account-cancel", "Cancel").on_click(move |_, _, cx| {
-                    cancel
-                        .update(cx, |this, cx| {
-                            this.account_open = false;
-                            cx.notify();
-                        })
-                        .ok();
-                }),
+                    }),
             )
             .action(
                 Button::new("account-sign-out", "Sign out")
-                    .contained()
+                    .primary()
                     .on_click(move |_, _, cx| {
                         sign_out.update(cx, |this, cx| this.sign_out(cx)).ok();
                     }),
@@ -1578,6 +1591,7 @@ impl AppRoot {
                 self.open_settings(semaphore_ui::settings::SettingsTab::VoiceVideo, cx)
             }
             VoiceRequest::OpenMore => self.more_open = true,
+            VoiceRequest::OpenCallView => self.open_call_view(cx),
             VoiceRequest::OpenPicker => self.picker = Some(PickerModel::loading()),
             // Only into a picker still open and still loading: a cancelled one stays closed.
             VoiceRequest::PickerSources(listed) => {
@@ -1665,60 +1679,77 @@ impl AppRoot {
         let this = cx.entity().downgrade();
         let (share, settings, close, done) =
             (this.clone(), this.clone(), this.clone(), this.clone());
+        let escape = this.clone();
         let capture = this;
         let shut = |root: &mut AppRoot, cx: &mut Context<AppRoot>| {
             root.more_open = false;
             cx.notify();
         };
-        Dialog::new("Call options")
+        Dialog::new("call-options-dialog", "Call options")
             .width(320.)
-            .body(Menu::new(
-                "Call options",
-                vec![
-                    MenuItem::new("more-share", share_label, move |_, cx| {
-                        share
-                            .update(cx, |root, cx| {
-                                shut(root, cx);
-                                if let Some(voice) = &root.voice {
-                                    voice.toggle_screen_share();
-                                }
-                            })
-                            .ok();
-                    })
-                    .disabled(!look.clickable()),
-                ]
-                .into_iter()
-                .chain(recording.then(|| {
-                    // W4: Capture, while the replay buffer records.
-                    MenuItem::new("more-capture", "Capture replay", move |window, cx| {
-                        capture
-                            .update(cx, |root, cx| {
-                                shut(root, cx);
-                                root.open_capture(window, cx);
-                            })
-                            .ok();
-                    })
-                }))
-                .chain([MenuItem::new(
-                    "more-settings",
-                    "Voice settings",
-                    move |_, cx| {
-                        settings
-                            .update(cx, |root, cx| {
-                                shut(root, cx);
-                                root.open_settings(
-                                    semaphore_ui::settings::SettingsTab::VoiceVideo,
-                                    cx,
-                                );
-                            })
-                            .ok();
-                    },
-                )])
-                .collect(),
-            ))
-            .action(Button::new("more-done", "Close").on_click(move |_, _, cx| {
-                done.update(cx, shut).ok();
-            }))
+            .body(
+                Menu::new(
+                    "Call options",
+                    vec![
+                        MenuItem::new("more-share", share_label, move |_, cx| {
+                            share
+                                .update(cx, |root, cx| {
+                                    shut(root, cx);
+                                    if let Some(voice) = &root.voice {
+                                        voice.toggle_screen_share();
+                                    }
+                                })
+                                .ok();
+                        })
+                        .disabled(!look.clickable()),
+                    ]
+                    .into_iter()
+                    .chain(recording.then(|| {
+                        // W4: Capture, while the replay buffer records.
+                        MenuItem::new("more-capture", "Capture replay", move |window, cx| {
+                            capture
+                                .update(cx, |root, cx| {
+                                    shut(root, cx);
+                                    root.open_capture(window, cx);
+                                })
+                                .ok();
+                        })
+                    }))
+                    .chain([MenuItem::new(
+                        "more-settings",
+                        "Voice settings",
+                        move |_, cx| {
+                            settings
+                                .update(cx, |root, cx| {
+                                    shut(root, cx);
+                                    root.open_settings(
+                                        semaphore_ui::settings::SettingsTab::VoiceVideo,
+                                        cx,
+                                    );
+                                })
+                                .ok();
+                        },
+                    )])
+                    .collect::<Vec<_>>(),
+                )
+                // The dialog's body, not a floating menu: not a layer of its own.
+                .inline()
+                .on_close({
+                    // Escape closes the dialog the menu is; Tab goes on to its Close button.
+                    move |reason, _, cx| {
+                        if reason == MenuCloseReason::Escape {
+                            escape.update(cx, shut).ok();
+                        }
+                    }
+                }),
+            )
+            .action(
+                Button::new("more-done", "Close")
+                    .ghost()
+                    .on_click(move |_, _, cx| {
+                        done.update(cx, shut).ok();
+                    }),
+            )
             .on_close(move |_, cx| {
                 close.update(cx, shut).ok();
             })
@@ -1761,7 +1792,7 @@ impl AppRoot {
                     .flex()
                     .gap(px(8.))
                     .child(
-                        Button::new("restore-sign-in", "Sign in again").on_click(move |_, _, cx| {
+                        Button::new("restore-sign-in", "Sign in again").text().on_click(move |_, _, cx| {
                             elsewhere
                                 .update(cx, |this, cx| {
                                     this.restore = Restore::Idle;
@@ -1773,7 +1804,7 @@ impl AppRoot {
                     )
                     .child(
                         Button::new("restore-retry", "Try again")
-                            .contained()
+                            .primary()
                             .on_click(move |_, window, cx| {
                                 let url = retry_url.clone();
                                 retry
@@ -1828,13 +1859,7 @@ fn content(
             .into_any_element()
     };
     let voice = core.voice();
-    let stage_shown = match (&props.route, &props.channel, &voice.room) {
-        (_, Some(channel), _) => voice.channel_id.as_deref() == Some(channel.id.as_str()),
-        (Route::DirectMessage { dm_group_id }, _, Some(VoiceRoom::Dm { dm_group_id: id })) => {
-            id == dm_group_id
-        }
-        _ => false,
-    };
+    let stage_shown = props.call_stage_drawn(&voice);
     let element = match (&props.route, &props.channel) {
         (_, Some(channel)) if channel.kind == ChannelKind::Text => {
             let conversation = props.route.conversation();
@@ -1877,20 +1902,18 @@ fn content(
                 .text_color(sem.text_secondary)
                 .child(text(Variant::H5, channel.name.clone()))
                 .child(text(Variant::Body1, "You're not in this call."))
-                .child(
-                    Button::new("voice-join", "Join voice")
-                        .contained()
-                        .on_click(move |_, _, cx| {
-                            let channel_id = channel_id.clone();
-                            join.update(cx, |root, cx| root.join_voice(channel_id, cx))
-                                .ok();
-                        }),
-                )
+                .child(Button::new("voice-join", "Join voice").primary().on_click(
+                    move |_, _, cx| {
+                        let channel_id = channel_id.clone();
+                        join.update(cx, |root, cx| root.join_voice(channel_id, cx))
+                            .ok();
+                    },
+                ))
                 .into_any_element()
         }
         (Route::DirectMessage { dm_group_id }, _) => root
             .upgrade()
-            .and_then(|root| inbox::dm_conversation(&root, dm_group_id, false, window, cx))
+            .and_then(|root| inbox::dm_conversation(&root, dm_group_id, window, cx))
             .unwrap_or_else(|| placeholder("Loading".into(), "")),
         (
             route @ (Route::Settings { .. }
@@ -1935,20 +1958,40 @@ fn content(
             "Your messages".into(),
             "Pick a conversation, or start a new one.",
         ),
-        (route, None) if route.community_id().is_some() => match &props.community {
-            Some(community) => placeholder(
-                format!("Welcome to {}", community.name),
-                "Select a channel from the sidebar to get started",
-            ),
-            None => placeholder("Loading".into(), ""),
-        },
-        _ => placeholder("Home".into(), "Pick a community from the rail."),
+        // A community with no channel chosen is the shell's community home (B12); another
+        // community route waits here for its screen.
+        (route, None) if route.community_id().is_some() => placeholder("Loading".into(), ""),
+        _ => placeholder("Home".into(), "Pick a community from the dock."),
     };
     (element, stage_shown)
 }
 
 impl Render for AppRoot {
+    /// The app under the window's behaviour host: kit overlays are layers of its stack, and focus
+    /// that has nowhere else to go is on the root's own handle.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sink = self.root_focus.clone();
+        // The window's toast area over the app, at its foot (the root fills the window). The
+        // shell's AppFrame places its own (in the main pane), so only the screens without one
+        // (sign-in, onboarding, the loader) get this.
+        let app = div()
+            .size_full()
+            .relative()
+            .child(self.render_app(window, cx))
+            .when(self.shell.is_none(), |app| {
+                app.child(semaphore_ui::kit::ToastRegion::new())
+            });
+        semaphore_ui::kit::BehaviourRoot::new(app).focus_sink(&sink)
+    }
+}
+
+impl AppRoot {
+    /// The window's toast queue (`kit::Toasts`): screens' notices go there, never drawn by hand.
+    pub(super) fn toasts(&self) -> semaphore_ui::kit::Toasts {
+        semaphore_ui::kit::Toasts::for_window(self.window)
+    }
+
+    fn render_app(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.reconcile(window, cx);
         // Window keys (push to talk above all) dispatch along the focus path. Nothing focused means
         // the window's root node, outside this view: give the root the focus so they reach here.
@@ -1974,7 +2017,7 @@ impl Render for AppRoot {
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(Spinner::new("app-restoring"))
+                .child(app_loader("app-restoring"))
                 .when_some(self.about.clone(), |root, about| root.child(about));
         }
         // Input anywhere in the window, for idle.
@@ -2002,7 +2045,6 @@ impl Render for AppRoot {
             overlays.extend(self.admin_overlays(cx));
             overlays.extend(self.media_overlays(cx));
             overlays.extend(self.u9_overlays(cx));
-            overlays.extend(self.prejoin_overlays(cx));
             return root
                 .child(shell.clone())
                 .children(overlays)
@@ -2030,7 +2072,55 @@ impl Render for AppRoot {
         root.flex()
             .items_center()
             .justify_center()
-            .child(Spinner::new("app-starting"))
+            .child(app_loader("app-starting"))
             .when_some(self.about.clone(), |root, about| root.child(about))
+    }
+}
+
+/// The full-window loader at start and while a session is restored: the old 40 px spinner, named
+/// "Loading" for a screen reader (the kit's spinner is decorative without a label).
+fn app_loader(id: &'static str) -> Spinner {
+    Spinner::new(id).size(40.).label("Loading")
+}
+
+#[cfg(test)]
+mod loader_tests {
+    use super::app_loader;
+    use core::prelude::v1::test;
+    use gpui_kit::test::{TestQueryExt as _, TestWindowExt as _};
+    use gpui_kit::*;
+
+    struct Loader;
+
+    impl Render for Loader {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(app_loader("app-starting"))
+        }
+    }
+
+    #[gpui_kit::test]
+    fn the_app_start_loader_is_a_status_named_loading(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            semaphore_ui::theme::init(cx);
+            semaphore_ui::kit::set_reduced_motion(true, cx);
+        });
+        let window = cx.add_window(|_, _| Loader);
+        let found = cx
+            .update_window(window.into(), |_, window, cx| {
+                window.render_frame(cx);
+                window
+                    .find_all_by_role(Role::Status)
+                    .iter()
+                    .map(|node| {
+                        (
+                            node.label().unwrap_or_default().to_owned(),
+                            node.bounds().size,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .expect("window");
+        assert_eq!(found, [("Loading".to_owned(), size(px(40.), px(40.)))]);
     }
 }

@@ -1,4 +1,4 @@
-// Semaphore Chat's Android client (D1). SPDX-License-Identifier: AGPL-3.0-only. See LICENSE.md.
+// Semaphore Chat's Android client. SPDX-License-Identifier: AGPL-3.0-only. See LICENSE.md.
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ValueSource
 import org.gradle.api.provider.ValueSourceParameters
@@ -23,10 +23,16 @@ android {
         versionCode = 1
         versionName = "0.0.0"
 
-        // Only the ABI native/scripts/android.sh builds: rust-toolchain.toml installs
-        // aarch64-linux-android, and cargo-ndk is asked for arm64-v8a alone.
+        // The instrumented test (src/androidTest) runs on the emulator
+        // (native/scripts/android-device-test.sh).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Only the ABIs native/scripts/android.sh built, which it passes as `-Psemaphore.abis`.
+        // Its default is arm64-v8a alone: cargo-ndk is asked for that, and the image carries the
+        // Rust targets it needs (x86_64-linux-android for the emulator as well).
+        val abis = providers.gradleProperty("semaphore.abis").getOrElse("arm64-v8a")
         ndk {
-            abiFilters += "arm64-v8a"
+            abiFilters += abis.split(',').map { it.trim() }.filter { it.isNotEmpty() }
         }
     }
 
@@ -42,9 +48,65 @@ android {
     sourceSets.getByName("main") {
         // Both are written by native/scripts/android.sh before Gradle starts, and both live under
         // app/build/ so nothing generated is source: the uniffi Kotlin bindings, and the cargo-ndk
-        // libraries (libsemaphore_ffi.so and JNA's) in jniLibs/<abi>/.
+        // library (libsemaphore_mobile.so) in jniLibs/<abi>/.
         java.srcDir(layout.buildDirectory.dir("generated/uniffi"))
         jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs"))
+        // open_source_licences.txt, written by openSourceLicences below.
+        assets.srcDir(layout.buildDirectory.dir("generated/licenceAssets"))
+    }
+}
+
+/**
+ * The notices the bundled design files must travel with, as one text asset
+ * (`assets/open_source_licences.txt`): the fonts' SIL Open Font License (design/fonts) and the
+ * icons' licence (design/icons). An "Open source licences" screen can show it later.
+ */
+abstract class OpenSourceLicences : DefaultTask() {
+    @get:InputFiles
+    abstract val notices: ConfigurableFileCollection
+
+    @get:OutputFile
+    abstract val output: RegularFileProperty
+
+    @TaskAction
+    fun write() {
+        val text = notices.files.sortedBy { it.path }.joinToString("\n\n") { file ->
+            val title = when (file.parentFile.name) {
+                "fonts" -> "Fonts: Figtree and Bricolage Grotesque"
+                "icons" -> "Icons: Lucide"
+                else -> file.parentFile.name
+            }
+            "$title\n${"=".repeat(title.length)}\n\n${file.readText().trim()}"
+        }
+        output.get().asFile.apply { parentFile.mkdirs() }.writeText(text + "\n")
+    }
+}
+
+val openSourceLicences by tasks.registering(OpenSourceLicences::class) {
+    // This is the app module, so ../../../ is the repository root.
+    notices.from(
+        layout.projectDirectory.file("../../../design/fonts/LICENSE-OFL.txt"),
+        layout.projectDirectory.file("../../../design/icons/LICENSE"),
+    )
+    output.set(layout.buildDirectory.file("generated/licenceAssets/open_source_licences.txt"))
+}
+tasks.named("preBuild") { dependsOn(openSourceLicences) }
+
+// The JVM test (src/test): the generated bindings over a host build of libsemaphore_mobile.so,
+// against semaphore-fake-server. native/scripts/android.sh passes where both are; without them the
+// test is skipped, and android.sh fails a run that skipped it.
+android.testOptions.unitTests.all { test ->
+    for (name in listOf("hostLibDir", "fakeServer", "channelId", "authorId")) {
+        providers.gradleProperty("semaphore.$name").orNull?.let {
+            test.systemProperty("semaphore.$name", it)
+        }
+    }
+    providers.gradleProperty("semaphore.hostLibDir").orNull?.let {
+        test.systemProperty("jna.library.path", it)
+    }
+    test.testLogging {
+        events("passed", "skipped", "failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
 
@@ -84,6 +146,10 @@ val rustlsAndroidVersion = providers.of(RustlsAndroidVersion::class.java) {
 }
 
 dependencies {
+    // The Compose kit: the theme, the density, the fonts and the components (native/android/kit).
+    implementation(project(":kit"))
+    // The screens, fed plain models by CoreStore (native/android/screens).
+    implementation(project(":screens"))
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.material3:material3")
@@ -95,7 +161,21 @@ dependencies {
     // are written against kotlinx.coroutines. Compose brings it in transitively; declared here
     // because the bindings need it.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    // The JVM half of rustls-platform-verifier: SemaphoreApp hands it to the Rust TLS verifier
-    // through libsemaphore_ffi.so's initSemaphoreNative. Version from Cargo.lock, as above.
+    // The JVM half of rustls-platform-verifier: SemaphoreApp (through NativeLib) hands it to the Rust TLS verifier
+    // through libsemaphore_mobile.so's nativeInit. Version from Cargo.lock, as above.
     implementation("org.rustls:rustls-platform-verifier:${rustlsAndroidVersion.get()}")
+
+    // The JVM test: JUnit, and JNA's plain jar, which carries the desktop libjnidispatch the @aar
+    // above leaves out.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("net.java.dev.jna:jna:5.15.0")
+
+    // The instrumented test (src/androidTest): JUnit on the device, and the runner that gives it
+    // InstrumentationRegistry (its arguments come from `adb shell am instrument -e`).
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    // The device flow test drives the real screens through Compose's test rule.
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }

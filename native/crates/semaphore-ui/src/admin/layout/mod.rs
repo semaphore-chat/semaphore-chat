@@ -178,7 +178,8 @@ impl AdminShell {
                 let colour = if locked.is_some() {
                     sem.text_disabled
                 } else if !phone && page == self.page {
-                    sem.primary
+                    // The selected row is the accent pill: its ink reads on it.
+                    sem.role.on_accent
                 } else {
                     sem.action_active
                 };

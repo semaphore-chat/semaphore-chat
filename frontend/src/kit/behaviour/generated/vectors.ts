@@ -10704,6 +10704,463 @@ export const behaviourVectors = {
           },
         ],
       },
+      {
+        name: 'back closes the innermost first, then goes to the platform',
+        params: {},
+        initial: {
+          layers: [],
+        },
+        steps: [
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 's',
+                  kind: 'sheet',
+                  opener: 'attachButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 's',
+                  kind: 'sheet',
+                  opener: 'attachButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 'm',
+                  kind: 'menu',
+                  opener: 'moreButton',
+                  openerLayer: 's',
+                  parent: 's',
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 's',
+                  kind: 'sheet',
+                  opener: 'attachButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+                {
+                  id: 'm',
+                  kind: 'menu',
+                  opener: 'moreButton',
+                  openerLayer: 's',
+                  parent: 's',
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              back: {},
+            },
+            state: {
+              layers: [
+                {
+                  id: 's',
+                  kind: 'sheet',
+                  opener: 'attachButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+                {
+                  id: 'm',
+                  kind: 'menu',
+                  opener: 'moreButton',
+                  openerLayer: 's',
+                  parent: 's',
+                },
+              ],
+            },
+            effects: [
+              {
+                requestClose: {
+                  id: 'm',
+                  reason: 'back',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              closed: {
+                focus: 'inside',
+                id: 'm',
+                openerPresent: true,
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 's',
+                  kind: 'sheet',
+                  opener: 'attachButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [
+              {
+                restoreFocus: {
+                  to: 'moreButton',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              back: {},
+            },
+            state: {
+              layers: [
+                {
+                  id: 's',
+                  kind: 'sheet',
+                  opener: 'attachButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [
+              {
+                requestClose: {
+                  id: 's',
+                  reason: 'back',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              closed: {
+                focus: 'inside',
+                id: 's',
+                openerPresent: true,
+              },
+            },
+            state: {
+              layers: [],
+            },
+            effects: [
+              {
+                restoreFocus: {
+                  to: 'attachButton',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              back: {},
+            },
+            state: {
+              layers: [],
+            },
+            effects: [
+              {
+                passToPlatform: {},
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'a tooltip never takes the Back',
+        params: {},
+        initial: {
+          layers: [],
+        },
+        steps: [
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 'v',
+                  kind: 'dialog',
+                  opener: 'image',
+                  openerLayer: null,
+                  parent: null,
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'v',
+                  kind: 'dialog',
+                  opener: 'image',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 't',
+                  kind: 'tooltip',
+                  opener: null,
+                  openerLayer: null,
+                  parent: 'v',
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'v',
+                  kind: 'dialog',
+                  opener: 'image',
+                  openerLayer: null,
+                  parent: null,
+                },
+                {
+                  id: 't',
+                  kind: 'tooltip',
+                  opener: null,
+                  openerLayer: null,
+                  parent: 'v',
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              back: {},
+            },
+            state: {
+              layers: [
+                {
+                  id: 'v',
+                  kind: 'dialog',
+                  opener: 'image',
+                  openerLayer: null,
+                  parent: null,
+                },
+                {
+                  id: 't',
+                  kind: 'tooltip',
+                  opener: null,
+                  openerLayer: null,
+                  parent: 'v',
+                },
+              ],
+            },
+            effects: [
+              {
+                requestClose: {
+                  id: 't',
+                  reason: 'back',
+                },
+              },
+              {
+                requestClose: {
+                  id: 'v',
+                  reason: 'back',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              closed: {
+                focus: 'inside',
+                id: 't',
+                openerPresent: true,
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'v',
+                  kind: 'dialog',
+                  opener: 'image',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              closed: {
+                focus: 'inside',
+                id: 'v',
+                openerPresent: true,
+              },
+            },
+            state: {
+              layers: [],
+            },
+            effects: [
+              {
+                restoreFocus: {
+                  to: 'image',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 't2',
+                  kind: 'tooltip',
+                  opener: null,
+                  openerLayer: null,
+                  parent: null,
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 't2',
+                  kind: 'tooltip',
+                  opener: null,
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              back: {},
+            },
+            state: {
+              layers: [
+                {
+                  id: 't2',
+                  kind: 'tooltip',
+                  opener: null,
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [
+              {
+                requestClose: {
+                  id: 't2',
+                  reason: 'back',
+                },
+              },
+              {
+                passToPlatform: {},
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'a refused Back keeps the layer',
+        params: {},
+        initial: {
+          layers: [],
+        },
+        steps: [
+          {
+            event: {
+              open: {
+                layer: {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'deleteButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              },
+            },
+            state: {
+              layers: [
+                {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'deleteButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [],
+          },
+          {
+            event: {
+              back: {},
+            },
+            state: {
+              layers: [
+                {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'deleteButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [
+              {
+                requestClose: {
+                  id: 'd',
+                  reason: 'back',
+                },
+              },
+            ],
+          },
+          {
+            event: {
+              back: {},
+            },
+            state: {
+              layers: [
+                {
+                  id: 'd',
+                  kind: 'dialog',
+                  opener: 'deleteButton',
+                  openerLayer: null,
+                  parent: null,
+                },
+              ],
+            },
+            effects: [
+              {
+                requestClose: {
+                  id: 'd',
+                  reason: 'back',
+                },
+              },
+            ],
+          },
+        ],
+      },
     ],
   },
   toastQueue: {

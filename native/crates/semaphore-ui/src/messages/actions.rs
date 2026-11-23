@@ -247,7 +247,7 @@ pub(crate) fn render_reaction_tooltip(
         .py(px(4.))
         .rounded(px(4.))
         .bg(palette.tooltip_bg())
-        .text_color(rgb(0xffffff))
+        .text_color(palette.tip_text)
         .text_size(px(13.))
         .line_height(px(18.))
         .child(names)

@@ -20,6 +20,7 @@ from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import colour_ref  # noqa: E402  (the definition of the algorithm)
+import gen_icons  # noqa: E402  (the icon outputs, which `run` merges in)
 import gen_tokens as gen  # noqa: E402  (after the path fix above)
 from test_colour_ref import DEFAULT  # noqa: E402  (the approved mock-up palette)
 
@@ -123,7 +124,9 @@ class RealFileTest(unittest.TestCase):
                 "disabled": 0.5,
             },
         )
-        self.assertEqual(list(t)[-4:], ["icon", "avatar", "border", "state"])  # after the old groups
+        self.assertEqual(
+            list(t)[-5:], ["icon", "avatar", "border", "state", "density"]
+        )  # after the old groups
         self.assertEqual(t["avatar"], {"xs": 20, "sm": 28, "md": 36, "lg": 44, "xl": 64})
 
 
@@ -365,6 +368,66 @@ class ColourLoadTest(TempSource):
             self.load_colour()
 
 
+class DensityTest(TempSource):
+    """`density.touch`: a second value set for the control names, for touch clients."""
+
+    def test_real_touch_density(self):
+        touch = gen.load(REAL)["density"]["touch"]
+        self.assertEqual(touch["control"], {"sm": 40, "md": 48, "lg": 56})
+        self.assertEqual(touch["listRow"], {"md": 56, "lg": 72})
+        self.assertEqual(touch["hitArea"], 48)
+
+    def test_control_keys_must_match_the_control_group(self):
+        self.edit(delete("density.touch.control.lg"))
+        with self.assertRaisesRegex(gen.TokenError, r"^density\.touch\.control"):
+            self.load()
+        self.edit(set_value("density.touch.control.lg", 56))
+        self.edit(set_value("density.touch.control.xl", 64))
+        with self.assertRaisesRegex(gen.TokenError, r"^density\.touch\.control"):
+            self.load()
+
+    def test_fields_are_exact(self):
+        self.edit(set_value("density.touch.spacing", 4))
+        with self.assertRaisesRegex(gen.TokenError, r"^density\.touch"):
+            self.load()
+
+    def test_list_row_sizes_are_exact(self):
+        self.edit(set_value("density.touch.listRow.sm", 40))
+        with self.assertRaisesRegex(gen.TokenError, r"^density\.touch\.listRow"):
+            self.load()
+
+    def test_values_are_lengths(self):
+        self.edit(set_value("density.touch.hitArea", -48))
+        with self.assertRaisesRegex(gen.TokenError, r"^density\.touch\.hitArea"):
+            self.load()
+        self.edit(set_value("density.touch.hitArea", 48))
+        self.edit(set_value("density.touch.control.md", "48"))
+        with self.assertRaisesRegex(gen.TokenError, r"^density\.touch\.control\.md"):
+            self.load()
+
+    def test_rendered_in_every_client(self):
+        tokens = gen.load(REAL)
+        ts = gen.render_ts(tokens)
+        self.assertIn("  density: {\n    touch: {\n      control: { sm: 40, md: 48, lg: 56 },", ts)
+        self.assertIn("      listRow: { md: 56, lg: 72 },\n      hitArea: 48,", ts)
+        rs = gen.render_rs(tokens)
+        for line in (
+            "pub const DENSITY_TOUCH_CONTROL_SM: f32 = 40.0;",
+            "pub const DENSITY_TOUCH_CONTROL_LG: f32 = 56.0;",
+            "pub const DENSITY_TOUCH_LIST_ROW_MD: f32 = 56.0;",
+            "pub const DENSITY_TOUCH_LIST_ROW_LG: f32 = 72.0;",
+            "pub const DENSITY_TOUCH_HIT_AREA: f32 = 48.0;",
+        ):
+            self.assertIn(line, rs)
+        kt = gen.render_kt(tokens, gen.load_colour(REAL_COLOUR))
+        density = kt[kt.index("    object Density {") :]
+        self.assertIn("        object Touch {\n            object Control {", density)
+        self.assertIn("                val Md: Dp = 48.dp", density)
+        self.assertIn("            object ListRow {", density)
+        self.assertIn("                val Lg: Dp = 72.dp", density)
+        self.assertIn("            val HitArea: Dp = 48.dp", density)
+
+
 class FmtNumTest(unittest.TestCase):
     def test_fmt_num(self):
         self.assertEqual(
@@ -455,6 +518,147 @@ class RenderRsTest(unittest.TestCase):
         tokens = gen.load(REAL)
         tokens["motion"]["fast"] = 120.0
         self.assertIn("pub const MOTION_FAST_MS: u32 = 120;", gen.render_rs(tokens))
+
+
+# The object each source group becomes inside `object Tokens`.
+KT_OBJECTS = {group: gen._kt_pascal(group) for group in gen.GROUPS}
+
+
+class RenderKtTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tokens = gen.load(REAL)
+        self.colour = gen.load_colour(REAL_COLOUR)
+        self.rendered = gen.render_kt(self.tokens, self.colour)
+
+    def block(self, name: str) -> str:
+        """The body of one nested group object."""
+        match = re.search(
+            rf"^    object {name} \{{\n(.*?)^    \}}",
+            self.rendered,
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(match, name)
+        return match.group(1)
+
+    def members(self, name: str) -> list[str]:
+        return re.findall(r"^        val (\w+):", self.block(name), re.MULTILINE)
+
+    def test_kt_covers_every_rust_token(self):
+        # Every constant the Rust client gets, under its group's object in Kotlin style.
+        # Densities nest one level deeper; DensityTest covers them.
+        rust = gen.render_rs(self.tokens)
+        pairs = re.findall(r"^/// `([a-z]+)\.([A-Za-z0-9]+)`, ", rust, re.MULTILINE)
+        densities = re.findall(r"^/// `density\.", rust, re.MULTILINE)
+        self.assertEqual(
+            len(pairs) + len(densities), len(re.findall(r"^pub const ", rust, re.MULTILINE))
+        )
+        for group, key in pairs:
+            self.assertIn(
+                gen._kt_name(group, key), self.members(KT_OBJECTS[group]), f"{group}.{key}"
+            )
+        self.assertTrue(all(pair[0] in KT_OBJECTS for pair in pairs))
+
+    def test_kt_dimensions_are_dp_and_text_is_sp(self):
+        space = self.block("Space")
+        self.assertIn("val Lg: Dp = 16.dp", space)
+        self.assertIn("val TwoXs: Dp = 2.dp", space)
+        self.assertIn("val ThreeXl: Dp = 48.dp", space)
+        self.assertIn("val Full: Dp = 9999.dp", self.block("Radius"))
+        self.assertIn("val Phone: Dp = 600.dp", self.block("Breakpoint"))
+        self.assertIn("val Gutter: Dp = 16.dp", self.block("Layout"))
+        self.assertIn("size = 15.sp,", self.block("Text"))
+        self.assertIn("lineHeight = 22.sp,", self.block("Text"))
+
+    def test_kt_motion_is_milliseconds_and_state_is_alpha(self):
+        motion = self.block("Motion")
+        self.assertIn("val FastMs: Long = 120L", motion)
+        self.assertIn("val ToastActionMs: Long = 8000L", motion)
+        state = self.block("State")
+        self.assertIn("val Hover: Float = 0.04f", state)
+        self.assertIn("val Disabled: Float = 0.5f", state)
+
+    def test_kt_text_styles_resolve_font_and_weight(self):
+        text = self.block("Text")
+        self.assertIn('family = "Figtree",', text)
+        self.assertIn('family = "Bricolage Grotesque",', text)
+        self.assertIn("weight = FontWeight.W400,", text)
+        self.assertIn('val Heading: String = "Bricolage Grotesque"', self.block("Font"))
+
+    def test_kt_shadows_are_dp_and_alpha(self):
+        island = self.block("Shadow")
+        self.assertIn("y = 6.dp,", island)
+        self.assertIn("blur = 24.dp,", island)
+        self.assertIn("alpha = 0.35f,", island)
+        self.assertIn("alphaLight = 0.08f,", island)
+
+    def test_kt_colours_are_compose_colours(self):
+        self.assertIn("val Danger: Color = Color(0xFFFF6B7D)", self.block("Status"))
+        people = self.block("People")
+        self.assertIn("Color(0xFF6FB1F5)", people)
+        self.assertEqual(people.count("Color(0xFF"), len(self.colour["people"]["colours"]))
+
+    def test_kt_is_registered_for_the_check_mode(self):
+        self.assertEqual(
+            gen.OUTPUTS[gen.KT_OUTPUT]({"tokens": self.tokens, "colour": self.colour}),
+            self.rendered,
+        )
+
+    def test_kt_output_path_is_the_android_tokens_file(self):
+        self.assertEqual(
+            gen.KT_OUTPUT,
+            pathlib.Path(
+                "native/android/kit/src/main/java/app/semaphorechat/android/design/Tokens.kt"
+            ),
+        )
+
+    def test_kt_is_deterministic_and_headed(self):
+        self.assertEqual(
+            self.rendered, gen.render_kt(gen.load(REAL), gen.load_colour(REAL_COLOUR))
+        )
+        self.assertTrue(
+            self.rendered.startswith(
+                "// @generated by design/gen/gen_tokens.py from design/tokens.json "
+                "and design/colour.json.\n"
+                "// Do not edit by hand: change the source or the generator and re-run it.\n"
+                "// Regenerate with: python3 design/gen/gen_tokens.py\n"
+            )
+        )
+        self.assertIn("package app.semaphorechat.android.design\n", self.rendered)
+
+
+class KotlinLiteralTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tokens = gen.load(REAL)
+        self.colour = gen.load_colour(REAL_COLOUR)
+
+    def render(self) -> str:
+        return gen.render_kt(self.tokens, self.colour)
+
+    def test_two_keys_with_the_same_kotlin_name_fail(self):
+        self.tokens["space"]["twoXs"] = 3
+        with self.assertRaisesRegex(
+            gen.TokenError,
+            r"^space\.twoXs: Kotlin member 'TwoXs' is already used by 'space\.2xs'$",
+        ):
+            self.render()
+
+    def test_kt_string_escapes_the_kotlin_metacharacters(self):
+        self.assertEqual(gen._kt_string('a"b\\c$d'), '"a\\"b\\\\c\\$d"')
+
+    def test_a_dollar_in_a_font_is_escaped_in_both_places(self):
+        self.tokens["font"]["body"] = "Fig$tree"
+        rendered = self.render()
+        self.assertIn('val Body: String = "Fig\\$tree"', rendered)
+        self.assertIn('family = "Fig\\$tree",', rendered)
+
+    def test_a_whole_number_past_int_is_a_float_literal(self):
+        self.tokens["space"]["huge"] = 3000000000
+        self.assertIn("val Huge: Dp = 3000000000f.dp", self.render())
+
+    def test_a_number_beyond_float_range_is_an_error(self):
+        self.tokens["space"]["huge"] = 10**39
+        with self.assertRaisesRegex(gen.TokenError, r"^space\.huge: .*Float range"):
+            self.render()
 
 
 COLOUR_ENTRY = re.compile(
@@ -766,6 +970,21 @@ class RunTest(TempSource):
 
         self.assertEqual(gen.run(self.root, check=False), 0)
         self.assertFalse(asset.exists())
+
+
+class KotlinOutputCheckTest(TempSource):
+    def test_run_writes_then_check_covers_the_kotlin_outputs(self):
+        self.assertEqual(gen.run(self.root, check=False), 0)
+        for path in (gen.KT_OUTPUT, gen_icons.KT_OUTPUT):
+            self.assertTrue((self.root / path).is_file(), path)
+        self.assertEqual(gen.run(self.root, check=True), 0)
+
+        target = self.root / gen.KT_OUTPUT
+        target.write_text("stale\n", encoding="utf-8")
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertEqual(gen.run(self.root, check=True), 1)
+        self.assertIn(f"stale: {gen.KT_OUTPUT.as_posix()}", stderr.getvalue())
 
 
 class RunInvalidIconsTest(TempSource):

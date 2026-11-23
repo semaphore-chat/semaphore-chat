@@ -244,8 +244,7 @@ impl RolesPanel {
                     Tri::All => CheckState::Checked,
                 })
                 .disabled(busy || !any_grantable)
-                .hide_label()
-                .dense()
+                .label_hidden()
                 .on_toggle({
                     let entity = cx.weak_entity();
                     move |_, _, cx| {
@@ -313,7 +312,6 @@ impl RolesPanel {
                         checked,
                     )
                     .disabled(disabled)
-                    .dense()
                     .on_toggle(move |_, _, cx| {
                         if !disabled {
                             entity
@@ -322,7 +320,7 @@ impl RolesPanel {
                         }
                     });
                     if super::rules::action_label(action).is_some() {
-                        checkbox = checkbox.caption(action.clone());
+                        checkbox = checkbox.description(action.clone());
                     }
                     let checkbox: AnyElement = match &reason {
                         Some(reason) if editor.read_only.is_none() => with_tip(
@@ -414,7 +412,7 @@ impl RolesPanel {
                             "Cancel"
                         },
                     )
-                    .outlined()
+                    .soft()
                     .disabled(busy)
                     .on_click(cx.listener(|panel, _, _, cx| panel.close_editor(cx))),
                 )
@@ -424,7 +422,7 @@ impl RolesPanel {
                             SharedString::from(format!("role-editor-save{suffix}")),
                             save_label,
                         )
-                        .contained()
+                        .primary()
                         .start_icon(DesignIcon::Save)
                         .loading(busy)
                         .disabled(!can_save)
@@ -455,15 +453,15 @@ impl RolesPanel {
             .flex_col()
             .gap(spacing(2.))
             .child(heading)
-            .children(error.map(|error| Alert::new(Severity::Error, error.message)))
+            .children(error.map(|error| Alert::new("roles-editor-alert-1", Severity::Danger, error.message)))
             .children(read_only.clone().map(|reason| {
-                Alert::new(
+                Alert::new("roles-editor-alert-2", 
                     Severity::Info,
                     format!("You can't change this role. {reason}."),
                 )
             }))
             .when(editor.is_default && read_only.is_none(), |body| {
-                body.child(Alert::new(
+                body.child(Alert::new("roles-editor-alert-3", 
                     Severity::Info,
                     "You are editing a default role. You can modify permissions but cannot change the role name.",
                 ))
@@ -471,7 +469,7 @@ impl RolesPanel {
             .child(name)
             .child(text(Variant::H6, "Permissions").text_color(sem.text_primary))
             .when(count == 0 && read_only.is_none(), |body| {
-                body.child(Alert::new(
+                body.child(Alert::new("roles-editor-alert-4", 
                     Severity::Warning,
                     "Role must have at least one permission",
                 ))

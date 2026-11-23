@@ -338,7 +338,8 @@ impl VideoPlayer {
             ),
         };
         let download = Button::new("player-download", "Download")
-            .size(ButtonSize::Small)
+            .text()
+            .size(ButtonSize::Sm)
             .start_icon(IconName::Download)
             .on_click(cx.listener(|view, _, _, cx| {
                 view.emit_for_file(cx, |file_id| PlayerViewEvent::Download { file_id })
@@ -349,12 +350,11 @@ impl VideoPlayer {
                 .flex_wrap()
                 .justify_center()
                 .gap(px(8.))
-                .child(download.contained())
+                .child(download.primary())
                 .child(
                     Button::new("player-open-external", "Open externally")
-                        .size(ButtonSize::Small)
-                        .outlined()
-                        .color(white())
+                        .soft()
+                        .size(ButtonSize::Sm)
                         .start_icon(IconName::OpenInNew)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.emit_for_file(cx, |file_id| PlayerViewEvent::OpenExternally {
@@ -369,15 +369,15 @@ impl VideoPlayer {
                 .gap(px(8.))
                 .child(
                     Button::new("player-retry", "Retry")
-                        .size(ButtonSize::Small)
-                        .contained()
+                        .primary()
+                        .size(ButtonSize::Sm)
                         .start_icon(IconName::Refresh)
                         .on_click(cx.listener(|view, _, _, cx| {
                             view.playback.retry();
                             view.commanded(cx);
                         })),
                 )
-                .child(download.outlined().color(white())),
+                .child(download.soft()),
         };
         div()
             .id(match failure {

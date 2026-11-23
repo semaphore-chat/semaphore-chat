@@ -24,9 +24,7 @@ use crate::community_settings::rules::{
     Outcome, Pending, act, confirms_name, date_label, failure, grouped, needs, running,
 };
 use crate::dms::picker::DEBOUNCE;
-use crate::kit::{
-    Alert, Button, ButtonTone, Dialog, Severity, TextField, Variant, spacing, text, text_state,
-};
+use crate::kit::{Alert, Button, Dialog, Severity, TextField, Variant, spacing, text, text_state};
 use crate::messages::TimeFormat;
 use crate::panel::common::{design_icon, error_block};
 use crate::shell::community_avatar;
@@ -335,7 +333,7 @@ impl CommunitiesPage {
             .justify_center()
             .child(
                 Button::new("admin-communities-more", "Load more")
-                    .outlined()
+                    .soft()
                     .loading(self.view.loading_more)
                     .disabled(self.view.loading_more)
                     .on_click(cx.listener(|_, _: &ClickEvent, _, cx| {
@@ -482,8 +480,7 @@ impl CommunitiesPage {
                     }))
                     .child(locked_button(
                         Button::new("admin-community-delete", "Delete Community")
-                            .contained()
-                            .tone(ButtonTone::Danger)
+                            .danger()
                             .loading(busy)
                             .on_click(cx.listener(move |page, _, window, cx| {
                                 page.start_delete(&id, window, cx);
@@ -502,9 +499,12 @@ impl CommunitiesPage {
             LoadState::Loading => {
                 loading_rows("admin-community-detail-loading", "Loading community", 2)
             }
-            LoadState::Failed { error } => {
-                Alert::new(Severity::Error, error.message.clone()).into_any_element()
-            }
+            LoadState::Failed { error } => Alert::new(
+                "admin-communities-alert-1",
+                Severity::Danger,
+                error.message.clone(),
+            )
+            .into_any_element(),
             LoadState::Ready => match &detail.community {
                 Some(community) => self.detail_body(community, &detail, cx),
                 None => empty_line("This community is no longer there", cx).into_any_element(),
@@ -520,13 +520,18 @@ impl CommunitiesPage {
         let action = Self::delete_action(&community.id);
         let busy = running(&detail.op, &action);
         let matched = confirms_name(&self.delete_typed.read(cx).value(), &community.name);
-        let error = failure(&detail.op, &action)
-            .map(|error| Alert::new(Severity::Error, error.message.clone()));
+        let error = failure(&detail.op, &action).map(|error| {
+            Alert::new(
+                "admin-communities-alert-2",
+                Severity::Danger,
+                error.message.clone(),
+            )
+        });
         let cancel = cx.weak_entity();
         let close = cx.weak_entity();
         let confirm = cx.weak_entity();
         Some(
-            Dialog::new("Delete Community")
+            Dialog::new("delete-community-dialog", "Delete Community")
                 .width(480.)
                 .body(
                     div()
@@ -556,6 +561,7 @@ impl CommunitiesPage {
                 )
                 .action(
                     Button::new("admin-community-delete-cancel", "Cancel")
+                        .ghost()
                         .disabled(busy)
                         .on_click(move |_, _, cx| {
                             cancel
@@ -568,8 +574,7 @@ impl CommunitiesPage {
                 )
                 .action(
                     Button::new("admin-community-delete-confirm", "Delete Community")
-                        .contained()
-                        .tone(ButtonTone::Danger)
+                        .danger()
                         .disabled(!matched)
                         .loading(busy)
                         .on_click(move |_, _, cx| {

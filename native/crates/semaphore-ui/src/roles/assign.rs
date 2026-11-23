@@ -166,7 +166,8 @@ impl RoleAssignmentDialog {
         };
         if let Some(error) = failed {
             return Alert::new(
-                Severity::Error,
+                "roles-assign-alert-1",
+                Severity::Danger,
                 format!("Failed to load role information: {}", error.message),
             )
             .into_any_element();
@@ -206,9 +207,8 @@ impl RoleAssignmentDialog {
                     role.name.clone(),
                     on,
                 )
-                .caption(summary)
+                .description(summary)
                 .disabled(disabled)
-                .dense()
                 .on_toggle(move |_, _, cx| {
                     entity.update(cx, |dialog, cx| dialog.toggle(&id, cx)).ok();
                 })
@@ -250,12 +250,11 @@ impl RoleAssignmentDialog {
                         )
                     })
                     .when_some(self.role_failure(&role.id), |row, message| {
-                        row.child(
-                            div()
-                                .pl(px(54.))
-                                .pt(px(2.))
-                                .child(Alert::new(Severity::Error, message)),
-                        )
+                        row.child(div().pl(px(54.)).pt(px(2.)).child(Alert::new(
+                            "roles-assign-alert-2",
+                            Severity::Danger,
+                            message,
+                        )))
                     })
                     .when_some(block.filter(|_| !busy && whole.is_none()), |row, reason| {
                         row.child(div().pl(px(54.)).pt(px(2.)).child(locked_note(
@@ -273,7 +272,11 @@ impl RoleAssignmentDialog {
             .flex_col()
             .gap(spacing(1.5))
             .when_some(whole, |body, reason| {
-                body.child(Alert::new(Severity::Info, member_block(reason)))
+                body.child(Alert::new(
+                    "roles-assign-alert-3",
+                    Severity::Info,
+                    member_block(reason),
+                ))
             })
             .child(
                 text(
@@ -315,42 +318,46 @@ impl Render for RoleAssignmentDialog {
         let close = cx.weak_entity();
         let save = cx.weak_entity();
         div().relative().size_full().child(
-            Dialog::new(format!("Manage Roles for {}", self.member_name))
-                .width(if narrow { 360. } else { 520. })
-                .body(
-                    div()
-                        .id("role-assign-body")
-                        .max_h(px(if narrow { 480. } else { 520. }))
-                        .overflow_y_scroll()
-                        .child(body),
-                )
-                .action(
-                    Button::new("role-assign-cancel", "Cancel")
-                        .disabled(busy)
-                        .on_click(move |_, _, cx| {
-                            cancel
-                                .update(cx, |_, cx| cx.emit(RoleAssignmentEvent::Close))
-                                .ok();
-                        }),
-                )
-                .action(
-                    Button::new("role-assign-save", "Save Changes")
-                        .contained()
-                        .loading(busy)
-                        .disabled(!changed || busy)
-                        .on_click(move |_, _, cx| {
-                            save.update(cx, |dialog, cx| dialog.save(cx)).ok();
-                        }),
-                )
-                .on_close(move |_, cx| {
-                    close
-                        .update(cx, |dialog, cx| {
-                            if !dialog.busy() {
-                                cx.emit(RoleAssignmentEvent::Close)
-                            }
-                        })
-                        .ok();
-                }),
+            Dialog::new(
+                "manage-roles-for-dialog",
+                format!("Manage Roles for {}", self.member_name),
+            )
+            .width(if narrow { 360. } else { 520. })
+            .body(
+                div()
+                    .id("role-assign-body")
+                    .max_h(px(if narrow { 480. } else { 520. }))
+                    .overflow_y_scroll()
+                    .child(body),
+            )
+            .action(
+                Button::new("role-assign-cancel", "Cancel")
+                    .ghost()
+                    .disabled(busy)
+                    .on_click(move |_, _, cx| {
+                        cancel
+                            .update(cx, |_, cx| cx.emit(RoleAssignmentEvent::Close))
+                            .ok();
+                    }),
+            )
+            .action(
+                Button::new("role-assign-save", "Save Changes")
+                    .primary()
+                    .loading(busy)
+                    .disabled(!changed || busy)
+                    .on_click(move |_, _, cx| {
+                        save.update(cx, |dialog, cx| dialog.save(cx)).ok();
+                    }),
+            )
+            .on_close(move |_, cx| {
+                close
+                    .update(cx, |dialog, cx| {
+                        if !dialog.busy() {
+                            cx.emit(RoleAssignmentEvent::Close)
+                        }
+                    })
+                    .ok();
+            }),
         )
     }
 }

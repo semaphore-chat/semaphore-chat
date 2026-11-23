@@ -95,7 +95,7 @@ impl super::Rig {
                 let notice = self
                     .driver
                     .cx
-                    .update(|cx| app.read(cx).prejoin_notice().is_some());
+                    .update(|cx| app.read(cx).prejoin_notice(cx).is_some());
                 Ok(notice == *shown)
             }
             W9V::SeenNone => self

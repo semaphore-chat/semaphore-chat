@@ -1,6 +1,6 @@
 /**
  * The overlay stack: the layers floating above a screen, in the order they
- * opened. Escape, a press outside and Tab are decided here, once.
+ * opened. Escape, a press outside, Tab and the system Back are decided here, once.
  *
  * A direct port of the `overlayStack` reducers in `design/gen/behaviour_ref.py`;
  * the rule numbers below are that pattern's rules. Pure: it never mutates the
@@ -30,7 +30,7 @@ export interface State {
   layers: Layer[];
 }
 
-export type CloseReason = 'escape' | 'pressOutside' | 'scrim' | 'tab' | 'parentClosed';
+export type CloseReason = 'escape' | 'pressOutside' | 'scrim' | 'tab' | 'back' | 'parentClosed';
 
 /** An event is an object with exactly one key, its name. */
 export type Event =
@@ -38,17 +38,21 @@ export type Event =
   | { closed: { id: string; openerPresent: boolean; focus: FocusPosition } }
   | { escape: { composing: boolean; focusOwnsEscape: boolean } }
   | { pressOutside: { insideId: string | null } }
-  | { tab: Record<string, never> };
+  | { tab: Record<string, never> }
+  /** The system Back: Android's Back gesture or button, a browser's Back while a layer is open. */
+  | { back: Record<string, never> };
 
 export type Effect =
   | { requestClose: { id: string; reason: CloseReason } }
   | { restoreFocus: { to: string | null } }
-  | { passToScreen: { key: 'Escape' } };
+  | { passToScreen: { key: 'Escape' } }
+  /** Nothing under the tooltips took the Back: the platform goes back a screen. */
+  | { passToPlatform: Record<string, never> };
 
 /** The overlay stack has no settings. */
 export type Params = Record<string, never>;
 
-const EVENT_NAMES = ['open', 'closed', 'escape', 'pressOutside', 'tab'] as const;
+const EVENT_NAMES = ['open', 'closed', 'escape', 'pressOutside', 'tab', 'back'] as const;
 
 export const DEFAULT_PARAMS: Params = {};
 
@@ -146,6 +150,21 @@ export function stepOverlayStack(
       // Rule 9: a press outside a dialog or sheet is a press on its scrim.
       effects.push({ requestClose: { id: layer.id, reason: 'scrim' } });
       break;
+    }
+  } else if ('back' in event) {
+    const tooltips = layers.filter((layer) => layer.kind === 'tooltip').reverse();
+    const others = layers.filter((layer) => layer.kind !== 'tooltip');
+    // Rule 20: a tooltip never takes the Back: every tooltip is asked to close,
+    // topmost first, and the Back carries on.
+    for (const layer of tooltips) {
+      effects.push({ requestClose: { id: layer.id, reason: 'back' } });
+    }
+    if (others.length > 0) {
+      // Rule 20: Back asks the topmost layer under the tooltips to close, one per Back.
+      effects.push({ requestClose: { id: others[others.length - 1].id, reason: 'back' } });
+    } else {
+      // Rule 21: with no layer open under the tooltips, the platform goes back.
+      effects.push({ passToPlatform: {} });
     }
   } else if ('tab' in event) {
     // Rule 11: Tab closes a menu that is topmost under the tooltips; otherwise nothing.

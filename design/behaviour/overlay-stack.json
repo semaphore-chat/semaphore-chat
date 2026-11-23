@@ -1,6 +1,6 @@
 {
   "pattern": "overlayStack",
-  "doc": "The layers floating above a screen (tooltips, menus, popovers, dialogs and sheets), in the order they opened. Escape, a press outside and Tab are decided here, once, so no screen handles them by hand.",
+  "doc": "The layers floating above a screen (tooltips, menus, popovers, dialogs and sheets), in the order they opened. Escape, a press outside, Tab and the system Back are decided here, once, so no screen handles them by hand.",
   "params": {},
   "state": {
     "layers": "Layer[]: bottom first. Layer = {id: string, kind: tooltip | menu | popover | dialog | sheet, parent: string | null (the layer that owns it: it closes with that layer), opener: string | null (the element focus returns to), openerLayer: string | null (the layer the opener is in; null for the screen)}"
@@ -21,19 +21,21 @@
     "pressOutside": {
       "insideId": "string | null: the innermost layer the press landed in, or null for the screen. A press on a popover's anchor counts as inside the popover"
     },
-    "tab": {}
+    "tab": {},
+    "back": {}
   },
   "effects": {
     "requestClose": {
       "id": "string",
-      "reason": "escape | pressOutside | scrim | tab | parentClosed (a command: the owner must close it)"
+      "reason": "escape | pressOutside | scrim | tab | back | parentClosed (a command: the owner must close it)"
     },
     "restoreFocus": {
       "to": "string | null: an element or layer id; null is the screen's own focus target"
     },
     "passToScreen": {
       "key": "Escape"
-    }
+    },
+    "passToPlatform": {}
   },
   "rules": [
     "Layers stack in the order they open. A tooltip always sits on top: a layer that opens while a tooltip is showing goes just below the tooltips.",
@@ -54,7 +56,9 @@
     "Focus is never restored beneath an open dialog or sheet: when a layer closes below a dialog or sheet that is still open, no restoreFocus is emitted.",
     "When a layer closes, every layer whose opener was inside it takes over the closed layer's opener and openerLayer. So a dialog opened from a menu item returns focus to the button that opened the menu.",
     "Escape while an input method is composing text never reaches the stack: escape with composing does nothing. A focused control that uses Escape itself gets it first: escape with focusOwnsEscape does nothing here.",
-    "A layer opened with a parent or an openerLayer that is not in the stack is kept with that field set to null."
+    "A layer opened with a parent or an openerLayer that is not in the stack is kept with that field set to null.",
+    "The system Back (Android's Back gesture or button, a browser's Back while a layer is open) asks the topmost layer under the tooltips to close: requestClose(topmost, 'back'), one layer per Back, and the owner may refuse it as it may refuse Escape. Every tooltip is asked to close first, topmost first: unlike Escape, a tooltip never takes the Back.",
+    "Back with no layer open under the tooltips goes to the platform: passToPlatform, after any tooltips are asked to close. The platform goes back a screen (a native client pops its navigation; a browser already has). Back never runs the screen's Escape chain: it marks nothing as read."
   ],
   "scenarios": [
     {
@@ -847,6 +851,151 @@
             "openerPresent": true,
             "focus": "outside"
           }
+        }
+      ]
+    },
+    {
+      "name": "back closes the innermost first, then goes to the platform",
+      "covers": [
+        20,
+        21,
+        12,
+        14
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "s",
+              "kind": "sheet",
+              "parent": null,
+              "opener": "attachButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "m",
+              "kind": "menu",
+              "parent": "s",
+              "opener": "moreButton",
+              "openerLayer": "s"
+            }
+          }
+        },
+        {
+          "back": {}
+        },
+        {
+          "closed": {
+            "id": "m",
+            "openerPresent": true,
+            "focus": "inside"
+          }
+        },
+        {
+          "back": {}
+        },
+        {
+          "closed": {
+            "id": "s",
+            "openerPresent": true,
+            "focus": "inside"
+          }
+        },
+        {
+          "back": {}
+        }
+      ]
+    },
+    {
+      "name": "a tooltip never takes the Back",
+      "covers": [
+        20,
+        21,
+        1
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "v",
+              "kind": "dialog",
+              "parent": null,
+              "opener": "image",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "t",
+              "kind": "tooltip",
+              "parent": "v",
+              "opener": null,
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "back": {}
+        },
+        {
+          "closed": {
+            "id": "t",
+            "openerPresent": true,
+            "focus": "inside"
+          }
+        },
+        {
+          "closed": {
+            "id": "v",
+            "openerPresent": true,
+            "focus": "inside"
+          }
+        },
+        {
+          "open": {
+            "layer": {
+              "id": "t2",
+              "kind": "tooltip",
+              "parent": null,
+              "opener": null,
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "back": {}
+        }
+      ]
+    },
+    {
+      "name": "a refused Back keeps the layer",
+      "covers": [
+        20,
+        12
+      ],
+      "events": [
+        {
+          "open": {
+            "layer": {
+              "id": "d",
+              "kind": "dialog",
+              "parent": null,
+              "opener": "deleteButton",
+              "openerLayer": null
+            }
+          }
+        },
+        {
+          "back": {}
+        },
+        {
+          "back": {}
         }
       ]
     }

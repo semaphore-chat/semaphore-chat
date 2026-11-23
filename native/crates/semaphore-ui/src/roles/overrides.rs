@@ -435,7 +435,8 @@ impl Render for ChannelOverrides {
             LoadState::Failed { error } => {
                 return root
                     .child(Alert::new(
-                        Severity::Error,
+                        "roles-overrides-alert-1",
+                        Severity::Danger,
                         format!(
                             "Couldn't load this channel's permissions: {}",
                             error.message
@@ -474,6 +475,7 @@ impl Render for ChannelOverrides {
                         "Members can attach files",
                         choice.members_can_attach,
                     )
+                    .label_hidden()
                     .disabled(!self.view.editable || busy)
                     .on_change(move |on, _, cx| {
                         entity.update(cx, |view, cx| view.set_attach(on, cx)).ok();
@@ -485,8 +487,13 @@ impl Render for ChannelOverrides {
         });
         let posters = choice.card.has_posters().then(|| self.posters(&choice, cx));
         let custom = (choice.card == Card::Custom).then(|| self.custom_section(cx));
-        let error = failure(&self.view.op, &self.action())
-            .map(|error| Alert::new(Severity::Error, error.message.clone()));
+        let error = failure(&self.view.op, &self.action()).map(|error| {
+            Alert::new(
+                "roles-overrides-alert-2",
+                Severity::Danger,
+                error.message.clone(),
+            )
+        });
         root.when(!self.view.editable, |root| {
             root.child(locked_note(
                 "overrides-locked",
@@ -509,7 +516,7 @@ impl Render for ChannelOverrides {
         .child(
             div().flex().justify_end().child(
                 Button::new("overrides-save", "Save permissions")
-                    .contained()
+                    .primary()
                     .loading(busy)
                     .disabled(!dirty || busy || !self.view.editable)
                     .on_click(cx.listener(|view, _, _, cx| view.save(cx))),

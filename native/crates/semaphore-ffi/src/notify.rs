@@ -104,38 +104,43 @@ pub struct OsNotification {
 #[uniffi::export]
 impl SemaphoreCore {
     pub fn notifications(&self) -> NotificationList {
-        self.core.notifications()
+        self.sync(move |core| core.notifications())
     }
 
     pub async fn load_more_notifications(&self) -> Result<(), CoreError> {
-        self.core.load_more_notifications().await
+        self.run(move |core| async move { core.load_more_notifications().await })
+            .await
     }
 
     pub async fn mark_notification_read(&self, notification_id: String) -> Result<(), CoreError> {
-        self.core.mark_notification_read(notification_id).await
+        self.run(move |core| async move { core.mark_notification_read(notification_id).await })
+            .await
     }
 
     pub async fn mark_all_notifications_read(&self) -> Result<(), CoreError> {
-        self.core.mark_all_notifications_read().await
+        self.run(move |core| async move { core.mark_all_notifications_read().await })
+            .await
     }
 
     pub async fn dismiss_notification(&self, notification_id: String) -> Result<(), CoreError> {
-        self.core.dismiss_notification(notification_id).await
+        self.run(move |core| async move { core.dismiss_notification(notification_id).await })
+            .await
     }
 
     pub fn notification_settings(&self) -> NotificationSettingsView {
-        self.core.notification_settings()
+        self.sync(move |core| core.notification_settings())
     }
 
     pub async fn update_notification_settings(
         &self,
         patch: NotificationSettingsPatch,
     ) -> Result<(), CoreError> {
-        self.core.update_notification_settings(patch).await
+        self.run(move |core| async move { core.update_notification_settings(patch).await })
+            .await
     }
 
     pub fn channel_notify_level(&self, channel_id: String) -> ChannelNotifyLevelView {
-        self.core.channel_notify_level(channel_id)
+        self.sync(move |core| core.channel_notify_level(channel_id))
     }
 
     pub async fn set_channel_notify_level(
@@ -143,10 +148,11 @@ impl SemaphoreCore {
         channel_id: String,
         level: Option<NotifyLevel>,
     ) -> Result<(), CoreError> {
-        self.core.set_channel_notify_level(channel_id, level).await
+        self.run(move |core| async move { core.set_channel_notify_level(channel_id, level).await })
+            .await
     }
 
     pub fn badge_count(&self) -> u32 {
-        self.core.badge_count()
+        self.sync(move |core| core.badge_count())
     }
 }

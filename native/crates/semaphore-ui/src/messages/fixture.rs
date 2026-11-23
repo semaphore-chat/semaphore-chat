@@ -188,7 +188,7 @@ pub fn conversation() -> (Vec<MessageRow>, HashMap<i64, ReplyPreview>) {
         yesterday - 120 * MINUTE,
         Body::default()
             .text("Deploy notes are up: ")
-            .link("release checklist", "https://example.com/release")
+            .link("https://example.com/release", "https://example.com/release")
             .text(". Shout if I missed anything."),
     ));
     let mut row = message(

@@ -11,7 +11,9 @@
  * headless block in eslint.config.js and __tests__/shell/loungeImportBoundary.test.ts.
  */
 import { useEffect, useRef, type JSX } from 'react';
-import { KitProvider } from '../../kit';
+import { useLocation } from 'react-router-dom';
+import { KitProvider, useSystemBack } from '../../kit';
+import { setLayerEntryRunner, useSystemBackEnabled } from '../../data/systemBack';
 import { useAppearance } from '../../hooks/useAppearance';
 import type { LoungeChoice } from '../chooseShell';
 import { LoungeFrame } from './frame/LoungeFrame';
@@ -23,6 +25,17 @@ export interface LoungeRootProps {
   choice: LoungeChoice;
 }
 
+/** Android's Back (and a touch browser's Back) closes the top layer before it leaves the screen. */
+function SystemBack(): null {
+  const afterEntries = useSystemBack(useSystemBackEnabled(), useLocation().key);
+  // Navigations from inside a closing layer (a pinned jump, the jump's `?highlight=` clean-up) wait for its entry.
+  useEffect(() => {
+    setLayerEntryRunner(afterEntries);
+    return () => setLayerEntryRunner(null);
+  }, [afterEntries]);
+  return null;
+}
+
 export default function LoungeRoot({ choice }: LoungeRootProps): JSX.Element {
   const { baseColor, mode, intensity } = useAppearance();
   const root = useRef<HTMLDivElement>(null);
@@ -31,6 +44,7 @@ export default function LoungeRoot({ choice }: LoungeRootProps): JSX.Element {
   useEffect(() => leftLounge, []);
   return (
     <KitProvider base={baseColor} mode={mode} intensity={intensity}>
+      <SystemBack />
       {/* `display: contents`: a marker for tests and the bundle check, with no box of its own. */}
       <div ref={root} data-shell="lounge" data-lounge-root={LOUNGE_ROOT_MARKER} style={{ display: 'contents' }}>
         <LoungeFrame choice={choice} rootRef={root} />

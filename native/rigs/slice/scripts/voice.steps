@@ -4,6 +4,10 @@
 # window, as X11 or Windows would. Snaps named *-live-* carry video and aren't compared; 06-left is.
 
 app 1280 800
+# The sign-in screen first: right after start the app shows its spinner, with no Connect yet.
+wait idle
+wait core session signed-out within 5
+wait idle
 click auth-connect
 wait core label "Username" within 5
 click auth-username
@@ -15,8 +19,18 @@ wait core session signed-in
 wait core channel $ID(cc-general)
 wait core connection connected
 
-# Join: connected, the publisher seen, its video reaching a tile. The row shows the pre-join
-# (WP); its Join joins.
+# A room card's Join joins from where you are (design PA-2): #general stays on screen, the card
+# says "You're here", and its Leave leaves.
+click room-join-$ID(vc-squad)
+wait core voice connected within 30
+expect core channel $ID(cc-general)
+wait core element room-leave-$ID(vc-squad)
+click room-leave-$ID(vc-squad)
+wait core voice disconnected within 15
+wait core element room-join-$ID(vc-squad)
+
+# Join: connected, the publisher seen, its video reaching a tile. The room card's name opens the
+# pre-join (WP); its Join joins.
 click channel-$ID(vc-squad)
 wait core element voice-prejoin-join
 click voice-prejoin-join
@@ -74,13 +88,12 @@ wait core label "Turn on camera"
 
 # The settings page's camera test: the selected camera's picture in the preview, nothing published,
 # then Stop lets the camera go.
-click rail-account
+click user-card-menu
 wait core label "Settings"
 click account-settings
 click settings-tab-voice
 wait core route settings/voice
-# A wheel over the page (not the call's float card, which takes the wheel where it covers the
-# page) scrolls it down to the camera test.
+# A wheel over the page scrolls it down to the camera test.
 scroll voice-mic-test 0 -700
 # Not `wait idle`: in a call the page never holds still (the mic meter and speaking rings move).
 wait core element voice-camera-test
@@ -140,13 +153,29 @@ wait core label "Screen 1"
 click picker-cancel
 expect core voice screen off
 
-# Elsewhere in the app, the call's bar stays under the columns.
+# Elsewhere in the app, the call bar (B11) stays in the frame's call slot, with demo-peer's camera
+# offered above it: nothing is received until Watch.
 click channel-$ID(cc-general)
 wait core channel $ID(cc-general)
-wait core label "Share screen"
+wait core element call-bar
+wait core element call-bar-leave
+wait core surface shown
+wait core watching 0
 expect core voice connected
 tick 100
 snap 05-live-bar-elsewhere
+click call-watch-0
+wait core watching 1
+wait core element call-stop-watching
+wait core surface-frames within 30
+tick 100
+snap 05b-live-watching
+click call-stop-watching
+wait core watching 0
+# The room's name opens the call view.
+click call-bar-open
+wait core element voice-camera
+wait core surface hidden
 
 # A camera left on goes off with the call.
 click voice-camera
@@ -157,6 +186,9 @@ livekit remove $ID(vc-squad) $ID(me)
 wait core voice disconnected within 15
 wait core requests VoicePresenceController_leavePresence >= 1
 expect core voice camera off
+# Why it ended, in the call slot: a plain ending, nothing to retry.
+wait core element voice-notice
+expect core no-element voice-notice-action
 
 # A new call (through Squad Up's pre-join), then leaving it from the bar. LiveKit lists the
 # removed participant for a moment after the removal, and a rejoin before it goes is refused with

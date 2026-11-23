@@ -607,6 +607,11 @@ impl Window {
         self.apply_live_page(oldest_first.into_iter().rev().collect(), None);
     }
 
+    /// The oldest row loaded is the conversation's first: nothing older is left to load.
+    pub fn at_history_start(&self) -> bool {
+        self.loaded && self.at_start
+    }
+
     /// Takes the rows an older page should follow: `(token, or None at the start)`.
     pub fn older_cursor(&self) -> Option<Option<String>> {
         if self.at_start || !self.loaded {

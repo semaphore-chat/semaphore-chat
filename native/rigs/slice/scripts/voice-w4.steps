@@ -4,6 +4,13 @@
 # call has someone in it once the app answers. Snaps named *-live-* carry video and aren't compared.
 
 app 1280 800
+# The replay toasts go through the window's queue, which holds a toast while the window is
+# inactive: the user is at this window.
+window activate
+# The sign-in screen first: right after start the app shows its spinner, with no Connect yet.
+wait idle
+wait core session signed-out within 5
+wait idle
 click auth-connect
 wait core label "Username" within 5
 click auth-username
@@ -45,22 +52,33 @@ wait core element dm-call-in-call
 tick 100
 snap 01-live-dm-call
 
-# Elsewhere, the call floats over the column, with the bar under it.
+# Elsewhere, the call bar in the frame's call slot, and her camera offered above it (B11): Watch
+# shows it there, Stop watching stops it.
 click community-$ID(c-couch)
 click channel-$ID(cc-general)
 wait core channel $ID(cc-general)
-wait core float shown
-wait core label "Share screen"
+wait core element call-bar
+wait core surface shown
+wait core watching 0
 tick 100
-snap 02-live-float
+snap 02-live-surface
+click call-watch-0
+wait core watching 1
+wait core element call-stop-watching
+wait core surface-frames within 30
+tick 100
+snap 02b-live-watching
+click call-stop-watching
+wait core watching 0
 
 # Leaving from the bar: the inhibitor goes, the disconnected cue plays.
-click voice-leave
+click call-bar-leave
 wait core voice disconnected within 15
 wait core voice room none
 wait core keep-awake off
 wait core cue disconnected 1
-wait core float hidden
+wait core surface hidden
+expect core no-element voice-notice
 server dm_call_leave "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
 
 # 3. Squad Up: the soundboard. Rimshot (Ogg Opus, decoded built in) goes out on the published
@@ -97,7 +115,7 @@ wait core voice unmuted
 
 # 5. Push to talk: switched on in settings (the key captured there), the key opens the mic only
 # while it is held, with no mic click needed. The bar shows the held state.
-click rail-account
+click user-card-menu
 click account-settings
 click settings-tab-voice
 wait core route settings/voice
@@ -117,7 +135,7 @@ wait core engine ptt-pressed off
 
 # W19: the root takes the key in the capture phase, before the focused element sees it. Space as
 # the key (recorded by the settings' key box, which the root leaves every key to while it listens).
-click rail-account
+click user-card-menu
 click account-settings
 click settings-tab-voice
 wait core route settings/voice
@@ -128,10 +146,10 @@ click settings-close
 wait core no-element voice-ptt-key
 # The image viewer is a focused clickable (a click closes it), and GPUI turns a focused clickable's
 # Space release into a click: holding and releasing the key talks and leaves the viewer open. (The
-# picture is clicked near its corner: the call's float covers its middle.)
+# picture is clicked near its corner.)
 click channel-$ID(cc-general)
 wait core channel $ID(cc-general)
-wait core float shown
+wait core surface shown
 attach rigs/slice/fixtures/sketch.png
 type "ptt picture"
 press enter
@@ -214,6 +232,7 @@ wait core requests LivekitController_captureReplay >= 1
 wait core dialog capture closed
 wait core label "Recording saved"
 save-as replay.mp4
+# The toast sits above the stage's bar (the stage's ToastAnchor), so Capture is pressable at once.
 click voice-capture
 wait core dialog capture open
 click capture-target-download
@@ -222,7 +241,7 @@ wait core requests LivekitController_streamReplay >= 1
 wait core saved replay.mp4
 wait core dialog capture closed
 wait core label "Replay clip downloaded successfully!"
-# The toast sits over the bar's middle until it goes by itself.
+# It goes by itself (the queue's timer), and no later shot has it.
 tick 5000
 wait core no-element replay-toast
 
@@ -261,9 +280,15 @@ click capture-cancel
 wait core dialog capture closed
 wait core preview none
 wait core preview-players 0
-click voice-share
+# Elsewhere, your own share has Stop sharing in the call surface (B11).
+click channel-$ID(cc-general)
+wait core channel $ID(cc-general)
+wait core element call-stop-sharing
+click call-stop-sharing
 wait core voice screen off within 15
 wait core replay off within 15
+click channel-$ID(vc-squad)
+wait core element voice-share
 wait core no-element voice-capture
 
 # 8. Leaving.
@@ -271,7 +296,7 @@ click voice-leave
 wait core voice disconnected within 15
 wait core keep-awake off
 wait core label "Join voice"
-wait core float hidden
+wait core surface hidden
 wait idle
 shot 07-left
 
@@ -282,7 +307,7 @@ type "my clip"
 press enter
 wait core sent "my clip"
 # (My "ptt picture" from step 5 heads the group "my clip" joins, so its row has the author.)
-click-row message-author "ptt picture"
+click-row message/name "ptt picture"
 wait core profile-open $ID(me)
 click profile-view-page
 wait core route profile/$ID(me)

@@ -26,7 +26,7 @@ wait idle
 clock hold
 
 # 1. alexk, the owner: the account menu offers Admin, which opens the dashboard.
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 wait core element account-admin
 wait idle
@@ -221,7 +221,7 @@ wait idle
 shot 21-storage-over-90
 
 # 7. Priya, an instance owner now, sees Admin and every page; diego, who holds none, doesn't.
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -234,7 +234,7 @@ click auth-login
 wait core session signed-in
 wait core connection connected
 wait idle
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 wait core element account-admin
 click account-admin
@@ -275,9 +275,9 @@ wait core w6 page users
 wait core element admin-users-search
 wait idle
 shot 26-phone-users
-click phone-rail
-wait core element rail-account
-click rail-account
+click dock-all
+wait core element sheet-sign-out
+click sheet-sign-out
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -290,12 +290,11 @@ click auth-login
 wait core session signed-in
 wait core connection connected
 wait idle
-# He lands in a channel: back to the list first, where the app bar's rail button is.
-click phone-back
-wait core element phone-rail
-click phone-rail
-wait core element rail-account
-click rail-account
+# The dock is the phone's bottom bar, over the list or the channel alike.
+wait core element dock-all
+click dock-all
+wait core element sheet-sign-out
+click sheet-sign-out
 wait core label "Sign out"
 wait core no-element account-admin
 wait idle

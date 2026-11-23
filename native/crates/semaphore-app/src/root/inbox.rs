@@ -2,10 +2,9 @@
 //! settings, OS notifications and their sounds, the tray's count, deep links and idle.
 //!
 //! - **Routes.** `Route::DirectMessages` and `Route::DirectMessage` get the `DmSidebar` in the
-//!   shell's route sidebar slot; a DM opens in the same `ConversationPane` as a channel, under a
-//!   `DmHeader` (with search; pins and custom emoji are channel things, and the pane offers neither
-//!   without a community). On a phone the slot draws the open DM, since the shell only shows its
-//!   content for a channel.
+//!   shell's route sidebar slot (the inbox's left island); a DM opens in the same
+//!   `ConversationPane` as a channel, in the centre, under a `DmHeader` (with search; pins and
+//!   custom emoji are channel things, and the pane offers neither without a community).
 //! - **The centre** is the shell's side panel while open: it closes the pane's pins, search or
 //!   thread first, and the pane's next panel closes it.
 //! - **OS notifications.** `CoreEvent::Notify` goes to the [`Notifier`](semaphore_core::platform)
@@ -66,8 +65,6 @@ pub struct Raised {
 pub(super) struct Inbox {
     sidebar: Option<Entity<DmSidebar>>,
     header: Option<Entity<DmHeader>>,
-    /// The header's back arrow, as last set: set only on a change, since it's set while drawing.
-    header_back: Cell<Option<bool>>,
     centre: Option<Entity<NotificationCenter>>,
     centre_open: bool,
     loading_more: bool,
@@ -121,25 +118,15 @@ fn error_view(error: &CoreError) -> ErrorView {
 pub(super) fn dm_conversation(
     root: &Entity<AppRoot>,
     dm_id: &str,
-    phone: bool,
     window: &mut Window,
     cx: &mut App,
 ) -> Option<AnyElement> {
-    let (pane, header, focus, back_changed) = {
+    // On a phone the Lounge frame's centre leads with its own Back, so the header has none.
+    let (pane, header, focus) = {
         let root = root.read(cx);
         let header = root.inbox.header.clone()?;
-        let back_changed = root.inbox.header_back.get() != Some(phone);
-        root.inbox.header_back.set(Some(phone));
-        (
-            root.pane.clone()?,
-            header,
-            root.inbox.focus_dm.clone(),
-            back_changed,
-        )
+        (root.pane.clone()?, header, root.inbox.focus_dm.clone())
     };
-    if back_changed {
-        header.update(cx, |header, cx| header.set_back(phone, cx));
-    }
     let conversation = Conversation::DirectMessage {
         id: dm_id.to_owned(),
     };
@@ -265,7 +252,6 @@ impl AppRoot {
         self.inbox.header = Some(header);
         self.inbox.centre = Some(centre);
         self.inbox.level = Some(level);
-        self.inbox.header_back.set(None);
         self.inbox.centre_open = false;
         self.refresh_dms(cx);
         self.refresh_friends(cx);
@@ -275,10 +261,8 @@ impl AppRoot {
         Rc::new(
             move |props: &RouteSidebarProps, window: &mut Window, cx: &mut App| {
                 let root = root.upgrade()?;
+                let _ = window;
                 match &props.route {
-                    Route::DirectMessage { dm_group_id } if props.phone => {
-                        dm_conversation(&root, dm_group_id, true, window, cx)
-                    }
                     Route::DirectMessages | Route::DirectMessage { .. } => root
                         .read(cx)
                         .inbox
@@ -896,7 +880,7 @@ impl AppRoot {
                     .as_ref()
                     .map(|shell| shell.read(cx).nav().current().clone());
                 if let Some(Route::DirectMessage { dm_group_id }) = route {
-                    self.start_dm_call(dm_group_id, *video, cx);
+                    self.start_dm_call(dm_group_id, *video, window, cx);
                 }
             }
             // No members drawer yet: its button isn't offered.

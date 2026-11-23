@@ -79,6 +79,7 @@ pub struct Appearance {
     pub base: Rgb,
     pub match_system: bool,
     pub new_design: bool,
+    pub base_colour_settings: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -105,26 +106,29 @@ pub fn sessions_stale_ms() -> u64 {
 #[uniffi::export]
 impl SemaphoreCore {
     pub fn sessions(&self) -> SessionsView {
-        self.core.sessions()
+        self.sync(move |core| core.sessions())
     }
 
     pub async fn revoke_session(&self, session_id: String) -> Result<(), CoreError> {
-        self.core.revoke_session(session_id).await
+        self.run(move |core| async move { core.revoke_session(session_id).await })
+            .await
     }
 
     pub async fn revoke_other_sessions(&self) -> Result<u32, CoreError> {
-        self.core.revoke_other_sessions().await
+        self.run(move |core| async move { core.revoke_other_sessions().await })
+            .await
     }
 
     pub fn instance_permissions(&self) -> InstancePermissionsView {
-        self.core.instance_permissions()
+        self.sync(move |core| core.instance_permissions())
     }
 
     pub fn appearance(&self) -> AppearanceView {
-        self.core.appearance()
+        self.sync(move |core| core.appearance())
     }
 
     pub async fn update_appearance(&self, patch: AppearancePatch) -> Result<(), CoreError> {
-        self.core.update_appearance(patch).await
+        self.run(move |core| async move { core.update_appearance(patch).await })
+            .await
     }
 }

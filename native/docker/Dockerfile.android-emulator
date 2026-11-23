@@ -1,0 +1,59 @@
+# D4c: the x86_64 emulator, layered on the Android image, for
+# native/scripts/android-device-test.sh.
+#
+# A layer, not part of Dockerfile.android: the emulator's zip is ~350 MB and its system image
+# ~1 GB, and an ordinary APK build (native/scripts/android.sh) has no use for either. The
+# device-test script builds this image only when it needs it.
+#
+# Built by native/scripts/android-device-test.sh, which passes BASE (the Android image's tag). The
+# build context is native/.
+#
+# Pins: both packages are downloaded by their build-numbered URLs and checked against a sha256
+# below, like cmdline-tools and Gradle in Dockerfile.android. Google publishes only a sha1 for
+# them (in repository2-3.xml and sys-img/android/sys-img2-3.xml); the sha256 here is of the file
+# whose sha1 matches that XML when it was pinned. They are unpacked where sdkmanager would put
+# them, with the package.xml that avdmanager and the emulator read (android-emulator/*.xml, taken
+# from a one-time sdkmanager install; the licence text is left out). Moving a pin is a new URL, a
+# new sha256 and the revision in the matching package.xml.
+ARG BASE
+FROM ${BASE}
+
+# Emulator 37.3.10 (stable channel, repository2-3.xml): build 16970787.
+ARG EMULATOR_BUILD=16970787
+ARG EMULATOR_SHA256=a4405349d8a9c52136ab7861e5331dc40e85574bd91cb8889a298a2ff4c52e26
+# Android 14, the AOSP ("default") image, x86_64, revision 4: no Google APIs and no Play Store,
+# because the app must not depend on Google services.
+ARG SYSTEM_IMAGE_ZIP=x86_64-34_r04.zip
+ARG SYSTEM_IMAGE_SHA256=b57f6386af25b0fe5488e77196b43c03778c6760e6f4311611d090391b9cb2b3
+
+# What the emulator needs beyond the X, GL, ALSA, NSS and Mesa libraries the build image already
+# carries (the GPUI rig installed those). libbsd is QEMU's and the emulator's own libc++'s.
+# The dated archive mirror drops downloads now and then: retry, as Dockerfile.build does.
+RUN for attempt in 1 2 3 4; do \
+      pacman -S --noconfirm --needed libbsd libxext libxcursor libxi libpng bzip2 && break; \
+      if [ "$attempt" = 4 ]; then echo "pacman failed 4 times" >&2; exit 1; fi; \
+      echo "pacman attempt $attempt failed; retrying" >&2; \
+      sleep $((attempt * 20)); \
+    done \
+ && rm -rf /var/cache/pacman/pkg/*
+
+COPY docker/android-emulator/emulator-package.xml /tmp/emulator-package.xml
+COPY docker/android-emulator/system-image-package.xml /tmp/system-image-package.xml
+
+RUN set -eu; \
+    base=https://dl.google.com/android/repository; \
+    curl -fsSL "$base/emulator-linux_x64-${EMULATOR_BUILD}.zip" -o /tmp/emulator.zip; \
+    echo "${EMULATOR_SHA256}  /tmp/emulator.zip" | sha256sum -c -; \
+    curl -fsSL "$base/sys-img/android/${SYSTEM_IMAGE_ZIP}" -o /tmp/sysimg.zip; \
+    echo "${SYSTEM_IMAGE_SHA256}  /tmp/sysimg.zip" | sha256sum -c -; \
+    unzip -q /tmp/emulator.zip -d "$ANDROID_HOME"; \
+    mv /tmp/emulator-package.xml "$ANDROID_HOME/emulator/package.xml"; \
+    imgdir="$ANDROID_HOME/system-images/android-34/default"; \
+    mkdir -p "$imgdir"; \
+    unzip -q /tmp/sysimg.zip -d "$imgdir"; \
+    mv /tmp/system-image-package.xml "$imgdir/x86_64/package.xml"; \
+    rm -f /tmp/emulator.zip /tmp/sysimg.zip; \
+    "$ANDROID_HOME/emulator/emulator" -version | head -5
+
+# The AVD itself is created at run time, under the container's /tmp (ANDROID_AVD_HOME): it is
+# per-run state and dies with the container.

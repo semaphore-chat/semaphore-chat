@@ -75,6 +75,7 @@ GROUPS = (
     "avatar",
     "border",
     "state",
+    "density",
 )
 SCALAR_GROUPS = (
     "space",
@@ -93,6 +94,11 @@ SHADOW_FIELDS = ("x", "y", "blur", "alpha", "alphaLight")
 WEIGHTS = (400, 500, 600, 700)
 # Motion is written to Rust as `u32` milliseconds.
 MOTION_MAX = 2**32 - 1
+# A density is a second value set for some of the same token names, for one kind of
+# input: `density.touch` is what a touch-first client (Android) uses in place of the
+# pointer values. `control` repeats the `control` group's keys exactly.
+DENSITY_FIELDS = ("control", "listRow", "hitArea")
+DENSITY_LIST_ROW = ("md", "lg")
 KEY = re.compile(r"[a-z0-9][A-Za-z0-9]*")
 
 # `design/colour.json`: the derivation parameters. `ROLES` order is the order
@@ -143,8 +149,8 @@ USAGE = "usage: gen_tokens.py [--check]"
 
 # Output path relative to the repo root -> renderer taking the loaded source
 # documents (`{"tokens": ..., "colour": ..., "icons": ...}`).
-# The TypeScript and Rust renderers register themselves here; `run` merges in
-# the icon set's outputs, whose paths depend on the loaded icons.
+# The TypeScript, Rust and Kotlin renderers register themselves here; `run`
+# merges in the icon set's outputs, whose paths depend on the loaded icons.
 OUTPUTS: dict[Path, Callable[[dict], str]] = {}
 
 
@@ -333,6 +339,20 @@ def _shadow_group(group: object) -> None:
         _number(f"{path}.alphaLight", shadow["alphaLight"], maximum=1)
 
 
+def _density_group(group: object, control: dict) -> None:
+    for key, density in _mapping("density", group).items():
+        path = f"density.{key}"
+        _key(path, key)
+        density = _fields(path, density, DENSITY_FIELDS)
+        sizes = _exact(f"{path}.control", density["control"], tuple(control))
+        for size, value in sizes.items():
+            _number(f"{path}.control.{size}", value)
+        rows = _exact(f"{path}.listRow", density["listRow"], DENSITY_LIST_ROW)
+        for size, value in rows.items():
+            _number(f"{path}.listRow.{size}", value)
+        _number(f"{path}.hitArea", density["hitArea"])
+
+
 def validate(data: object) -> dict:
     """Check the parsed source against the schema and return it unchanged."""
     data = _mapping("design/tokens.json", data)
@@ -350,6 +370,8 @@ def validate(data: object) -> dict:
             _font_group(group)
         elif name == "text":
             _text_group(group, data["font"])
+        elif name == "density":
+            _density_group(group, data["control"])
         else:
             _shadow_group(group)
     return data
@@ -468,6 +490,19 @@ def _ts_group_lines(name: str, group: dict, fonts: dict) -> list[str]:
             lines.append(f"      cssLight: {_ts_string(_ts_shadow_css(shadow, 'alphaLight'))},")
             lines.append("    },")
         return lines
+    if name == "density":
+        lines = []
+        for key, density in group.items():
+            lines.append(f"    {_ts_key(key)}: {{")
+            for field in DENSITY_FIELDS:
+                value = density[field]
+                if isinstance(value, dict):
+                    inner = ", ".join(f"{_ts_key(k)}: {_ts_scalar(v)}" for k, v in value.items())
+                    lines.append(f"      {field}: {{ {inner} }},")
+                else:
+                    lines.append(f"      {field}: {_ts_scalar(value)},")
+            lines.append("    },")
+        return lines
     lines = []
     for key, value in group.items():
         if name == "text":
@@ -518,6 +553,7 @@ RS_UNITS = {
     "avatar": "px",
     "border": "px",
     "state": "alpha, 0 to 1",
+    "density": "px",
 }
 RS_STRUCTS = """\
 /// A text style: the resolved font family, px size and line height, and weight.
@@ -556,6 +592,22 @@ def _rs_name(group: str, key: str) -> str:
 
 def _rs_group_lines(name: str, group: dict, fonts: dict) -> list[str]:
     """One group's constants, each with a doc comment and followed by a blank line."""
+    if name == "density":
+        lines = []
+        for key, density in group.items():
+            for field in DENSITY_FIELDS:
+                value = density[field]
+                entries = value.items() if isinstance(value, dict) else [(None, value)]
+                for size, number in entries:
+                    token = f"{name}.{key}.{field}" + (f".{size}" if size else "")
+                    ident = _rs_name(name, f"{key}_{field}" + (f"_{size}" if size else ""))
+                    ident = ident.replace("__", "_")
+                    lines += [
+                        f"/// `{token}`, {RS_UNITS[name]}.",
+                        f"pub const {ident}: f32 = {_rs_float(number)};",
+                        "",
+                    ]
+        return lines
     lines = []
     for key, value in group.items():
         ident = _rs_name(name, key)
@@ -605,6 +657,249 @@ def render_rs(tokens: dict) -> str:
 
 
 OUTPUTS[RS_OUTPUT] = lambda sources: render_rs(sources["tokens"])
+
+KT_OUTPUT = Path(
+    "native/android/kit/src/main/java/app/semaphorechat/android/design/Tokens.kt"
+)
+KT_HEADER = (
+    "// @generated by design/gen/gen_tokens.py from design/tokens.json and design/colour.json.\n"
+    "// Do not edit by hand: change the source or the generator and re-run it.\n"
+    "// Regenerate with: python3 design/gen/gen_tokens.py"
+)
+# The unit each group's values carry, for the doc comment.
+KT_UNITS = {
+    "space": "dp",
+    "radius": "dp",
+    "control": "dp",
+    "font": "font family",
+    "text": "sp size and line height, font weight",
+    "shadow": "dp offsets and blur, alpha of black",
+    "motion": "ms",
+    "breakpoint": "dp",
+    "layout": "dp",
+    "icon": "dp",
+    "avatar": "dp",
+    "border": "dp",
+    "state": "alpha, 0 to 1",
+    "density": "dp",
+}
+# A Kotlin identifier cannot start with a digit, so a key that does spells its
+# digits out: `space.2xs` is `Space.TwoXs`.
+KT_DIGITS = ("Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine")
+# The groups nest inside one `Tokens` object rather than being top-level objects:
+# a screen imports Compose's own `Text`, `Icon` and `Surface` unqualified, and a
+# top-level object of the same name would make every such file ambiguous.
+# The palette's roles are derived per community by the core, so this file carries
+# only `colour.json`'s fixed colours, the status and people ones.
+
+
+def _kt_pascal(name: str) -> str:
+    """`space` -> `Space`, `2xs` -> `TwoXs`, `bodyXL` -> `BodyXL`."""
+    word = ""
+    while name[:1].isdigit():
+        word += KT_DIGITS[int(name[0])]
+        name = name[1:]
+    return word + name[:1].upper() + name[1:]
+
+
+def _kt_name(group: str, key: str) -> str:
+    """`text.bodyStrong` -> `BodyStrong`; motion carries its unit in the name."""
+    name = _kt_pascal(key)
+    return name + "Ms" if group == "motion" else name
+
+
+def _kt_string(value: str) -> str:
+    """A double-quoted Kotlin string literal, with `$`, `"` and `\\` escaped."""
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$")
+    return f'"{escaped}"'
+
+
+# `Int.dp`/`Int.sp` take an Int: a whole number outside that range would be a
+# Long literal (`3000000000.dp`) with no such extension, so it is written as a
+# Float, and a number beyond Float's range is rejected rather than emitted.
+KT_INT_MIN = -(2**31)
+KT_INT_MAX = 2**31 - 1
+KT_FLOAT_MAX = 3.4028234663852886e38
+
+
+def _kt_unit(value: int | float, unit: str, path: str) -> str:
+    """A `Dp`/`TextUnit` literal: an Int when it fits, a Float when it does not."""
+    if float(value).is_integer():
+        whole = int(value)
+        if KT_INT_MIN <= whole <= KT_INT_MAX:
+            return f"{whole}.{unit}"
+    if abs(value) > KT_FLOAT_MAX:
+        _fail(path, f"{fmt_num(value)} is beyond Kotlin's Float range, got {value!r}")
+    return f"{fmt_num(value)}f.{unit}"
+
+
+def _kt_dp(value: int | float, path: str) -> str:
+    """A `Dp` literal: `16.dp`, `2.5f.dp` (a fraction) and `3000000000f.dp` (past Int)."""
+    return _kt_unit(value, "dp", path)
+
+
+def _kt_sp(value: int | float, path: str) -> str:
+    """A `TextUnit` in sp: `15.sp`, and `12.5f.sp` for a fraction."""
+    return _kt_unit(value, "sp", path)
+
+
+def _kt_float(value: int | float) -> str:
+    """A Kotlin `Float` literal: `0.35f`, `1f`."""
+    return fmt_num(value) + "f"
+
+
+def _kt_colour(value: str) -> str:
+    """`#3DDC84` -> `Color(0xFF3DDC84)`: every design colour is opaque."""
+    return f"Color(0xFF{value[1:].upper()})"
+
+
+def _kt_group_lines(name: str, group: dict, fonts: dict) -> list[str]:
+    """One group's properties, each with a doc comment naming its source token."""
+    if name == "density":
+        lines = []
+        for key, density in group.items():
+            lines.append(f"        /** `{name}.{key}`: the values a {key} client uses for these names. */")
+            lines.append(f"        object {_kt_pascal(key)} {{")
+            for field in DENSITY_FIELDS:
+                value = density[field]
+                if isinstance(value, dict):
+                    lines.append(f"            object {_kt_pascal(field)} {{")
+                    for size, number in value.items():
+                        lines.append(f"                /** `{name}.{key}.{field}.{size}`, dp. */")
+                        lines.append(
+                            f"                val {_kt_pascal(size)}: Dp = "
+                            f"{_kt_dp(number, f'{name}.{key}.{field}.{size}')}"
+                        )
+                    lines.append("            }")
+                else:
+                    lines.append(f"            /** `{name}.{key}.{field}`, dp. */")
+                    lines.append(
+                        f"            val {_kt_pascal(field)}: Dp = "
+                        f"{_kt_dp(value, f'{name}.{key}.{field}')}"
+                    )
+            lines.append("        }")
+        return lines
+    lines = []
+    members: dict[str, str] = {}
+    for key, value in group.items():
+        member = _kt_name(name, key)
+        # Two keys can spell the same identifier (`2xs` and `twoXs` both give
+        # `TwoXs`); Kotlin would refuse the object, so say which pair.
+        if member in members:
+            _fail(
+                f"{name}.{key}",
+                f"Kotlin member '{member}' is already used by '{name}.{members[member]}'",
+            )
+        members[member] = key
+        path = f"{name}.{key}"
+        lines.append(f"        /** `{name}.{key}`, {KT_UNITS[name]}. */")
+        if name == "font":
+            lines.append(f"        val {member}: String = {_kt_string(value)}")
+        elif name == "text":
+            lines.append(f"        val {member}: TokenTextStyle = TokenTextStyle(")
+            lines += [
+                f"            family = {_kt_string(fonts[value['font']])},",
+                f"            size = {_kt_sp(value['size'], f'{path}.size')},",
+                f"            lineHeight = {_kt_sp(value['line'], f'{path}.line')},",
+                f"            weight = FontWeight.W{fmt_num(value['weight'])},",
+                "        )",
+            ]
+        elif name == "shadow":
+            lines.append(f"        val {member}: TokenShadow = TokenShadow(")
+            lines += [
+                f"            x = {_kt_dp(value['x'], f'{path}.x')},",
+                f"            y = {_kt_dp(value['y'], f'{path}.y')},",
+                f"            blur = {_kt_dp(value['blur'], f'{path}.blur')},",
+                f"            alpha = {_kt_float(value['alpha'])},",
+                f"            alphaLight = {_kt_float(value['alphaLight'])},",
+                "        )",
+            ]
+        elif name == "motion":
+            lines.append(f"        val {member}: Long = {fmt_num(value)}L")
+        elif name == "state":
+            lines.append(f"        val {member}: Float = {_kt_float(value)}")
+        else:
+            lines.append(f"        val {member}: Dp = {_kt_dp(value, path)}")
+    return lines
+
+
+def render_kt(tokens: dict, colour: dict) -> str:
+    """Render the Android client's token module: Compose `Dp`, `sp`, `Color` and ms."""
+    lines = [
+        KT_HEADER,
+        "",
+        "package app.semaphorechat.android.design",
+        "",
+        "import androidx.compose.ui.graphics.Color",
+        "import androidx.compose.ui.text.font.FontWeight",
+        "import androidx.compose.ui.unit.Dp",
+        "import androidx.compose.ui.unit.TextUnit",
+        "import androidx.compose.ui.unit.dp",
+        "import androidx.compose.ui.unit.sp",
+        "",
+        "/** A text style: the resolved font family, size and line height in sp, and weight. */",
+        "data class TokenTextStyle(",
+        "    val family: String,",
+        "    val size: TextUnit,",
+        "    val lineHeight: TextUnit,",
+        "    val weight: FontWeight,",
+        ")",
+        "",
+        "/** A black shadow: dp offsets and blur, and an alpha from 0 to 1. */",
+        "data class TokenShadow(",
+        "    val x: Dp,",
+        "    val y: Dp,",
+        "    val blur: Dp,",
+        "    val alpha: Float,",
+        "    /** The alpha in light mode, where the same shadow is far less opaque. */",
+        "    val alphaLight: Float,",
+        ")",
+        "",
+        "/**",
+        " * The design tokens, generated for the Android client.",
+        " *",
+        " * One object per group under [Tokens]: `tokens.space.lg` is `Tokens.Space.Lg`,",
+        " * `space.2xs` is `Tokens.Space.TwoXs` and `motion.fast` is `Tokens.Motion.FastMs`.",
+        " * Lengths are `Dp` and the web's px map 1:1, text sizes and line heights are `TextUnit`",
+        " * in sp, and durations are milliseconds.",
+        " *",
+        " * The palette's roles are derived by the client core and arrive through the FFI",
+        " * surface; only the fixed status colours and the frozen avatar colours are here.",
+        " */",
+        "object Tokens {",
+    ]
+    for name in GROUPS:
+        lines.extend(["", f"    object {_kt_pascal(name)} {{"])
+        lines.extend(_kt_group_lines(name, tokens[name], tokens["font"]))
+        lines.append("    }")
+    lines.extend(
+        [
+            "",
+            "    /** The fixed status colours, from `colour.status`. */",
+            "    object Status {",
+        ]
+    )
+    for name in COLOUR_STATUS:
+        lines.append(f"        /** `colour.status.{name}`. */")
+        lines.append(f"        val {_kt_pascal(name)}: Color = {_kt_colour(colour['status'][name])}")
+    lines.extend(
+        [
+            "    }",
+            "",
+            "    /**",
+            "     * The frozen avatar colours, from `colour.people.colours`: a person's is",
+            "     * `Colours[fnv1a32(utf8(id)) % Colours.size]`. Frozen: a change re-colours everyone.",
+            "     */",
+            "    object People {",
+            "        val Colours: List<Color> = listOf(",
+        ]
+    )
+    lines.extend(f"            {_kt_colour(value)}," for value in colour["people"]["colours"])
+    lines.extend(["        )", "    }", "}"])
+    return "\n".join(lines) + "\n"
+
+
+OUTPUTS[KT_OUTPUT] = lambda sources: render_kt(sources["tokens"], sources["colour"])
 
 
 COLOUR_VECTORS_OUTPUT = Path("design") / "vectors" / "colour.json"

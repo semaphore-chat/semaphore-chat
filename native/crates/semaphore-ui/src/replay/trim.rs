@@ -547,23 +547,26 @@ impl Render for TrimTimeline {
                 .flex_col()
                 .gap(px(8.))
                 .child(Alert::new(
-                    Severity::Error,
+                    "replay-trim-alert-1",
+                    Severity::Danger,
                     format!("Couldn't load the replay: {}", error.message),
                 ))
                 .child(
                     div().child(
                         Button::new("trim-retry", "Try again")
-                            .outlined()
+                            .soft()
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(TrimEvent::Retry))),
                     ),
                 )
                 .into_any_element(),
             (LoadState::Ready, None) if !self.session.active => Alert::new(
+                "replay-trim-alert-2",
                 Severity::Info,
                 "No replay yet. Start screen sharing to record a replay.",
             )
             .into_any_element(),
             (LoadState::Ready, None) => Alert::new(
+                "replay-trim-alert-3",
                 Severity::Info,
                 "Getting your replay ready — keep sharing your screen for a few seconds.",
             )

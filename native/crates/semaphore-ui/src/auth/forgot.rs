@@ -397,7 +397,7 @@ impl Render for ForgotPasswordScreen {
                     .test_support()
                     .w_full()
                     .mb(spacing(2.))
-                    .child(Alert::new(
+                    .child(Alert::new("auth-forgot-alert-1", 
                         Severity::Success,
                         "If an account with that email exists, we've sent a reset link. Open it to choose a new password, then sign in here.",
                     )),
@@ -424,8 +424,7 @@ impl Render for ForgotPasswordScreen {
                             &self.reset_link,
                             "Reset link or token",
                         )
-                        .error(self.link_error.is_some())
-                        .surface(sem.background_default);
+                        .error(self.link_error.is_some());
                         match self.link_error.clone() {
                             Some(message) => field.helper(message),
                             None => field,
@@ -433,7 +432,7 @@ impl Render for ForgotPasswordScreen {
                     })
                     .child(
                         Button::new("forgot-reset-open", "Continue")
-                            .outlined()
+                            .soft()
                             .full_width()
                             .on_click(
                                 cx.listener(|screen, _, _, cx| screen.open_pasted_link(cx)),
@@ -459,7 +458,8 @@ impl Render for ForgotPasswordScreen {
                     .w_full()
                     .mb(spacing(2.))
                     .child(Alert::new(
-                        Severity::Error,
+                        "auth-forgot-alert-2",
+                        Severity::Danger,
                         if message.is_empty() {
                             "Something went wrong. Please try again.".to_owned()
                         } else {
@@ -473,14 +473,13 @@ impl Render for ForgotPasswordScreen {
                         .required(true)
                         .disabled(self.busy)
                         .error(empty)
-                        .when(empty, |field| field.helper("Enter your email"))
-                        .surface(sem.background_default),
+                        .when(empty, |field| field.helper("Enter your email")),
                 ),
             )
             .child(
                 div().w_full().mb(spacing(2.)).child(
                     Button::new("forgot-submit", "Send reset link")
-                        .contained()
+                        .primary()
                         .full_width()
                         .loading(self.busy)
                         .on_click(cx.listener(|screen, _, _, cx| screen.submit(cx))),

@@ -5,7 +5,7 @@ pub mod ed25519;
 pub mod realtime;
 pub mod socket;
 
-pub use backend::{ClientInfo, ClientKind, HttpBackend};
+pub use backend::{ClientInfo, ClientKind, HttpBackend, RefreshesPaused};
 pub use realtime::SocketRealtime;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -50,8 +50,8 @@ fn ensure_tls_ready(is_android: bool, initialised: bool) -> Result<(), CoreError
 /// of the process, and calling it again does nothing. Until it has succeeded,
 /// [`tls_client_config`] (and so every REST client and socket) returns an error.
 ///
-/// `semaphore-ffi`'s `Java_app_semaphorechat_android_SemaphoreApp_initSemaphoreNative` is the JNI
-/// entry point the app's `Application` calls; a host that links this crate itself can call this directly.
+/// `semaphore-mobile`'s `Java_app_semaphorechat_android_NativeLib_nativeInit` is the JNI entry
+/// point the app calls; a host that links this crate itself can call this directly.
 #[cfg(target_os = "android")]
 pub fn init_android(
     env: &mut jni::Env<'_>,
@@ -140,10 +140,31 @@ pub fn http_client_with_timeouts(
         .tls_backend_preconfigured(tls)
         .connect_timeout(timeouts.connect)
         .read_timeout(timeouts.read)
+        .redirect(redirect_policy())
         .build()
         .map_err(|error| CoreError::Failed {
             message: error.to_string(),
         })
+}
+
+/// reqwest's default limit of 10 redirects, except that a redirect from `https` to `http` is
+/// never followed: the password or token in the request would be sent again in the clear, and
+/// the user was shown no warning because they typed `https`.
+fn redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let downgrade = attempt.url().scheme() == "http"
+            && attempt
+                .previous()
+                .last()
+                .is_some_and(|previous| previous.scheme() == "https");
+        if downgrade {
+            attempt.stop()
+        } else if attempt.previous().len() >= 10 {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    })
 }
 
 /// Opens a raw WebSocket; the Socket.IO framing belongs on top of this.
@@ -183,5 +204,24 @@ mod tests {
     #[test]
     fn other_targets_never_need_init() {
         assert!(ensure_tls_ready(false, false).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod client_code_tests {
+    use semaphore_core::backend::client_codes as core_codes;
+
+    /// Core reads semaphore-api's client-side codes by value, as it can't name that crate.
+    #[test]
+    fn core_and_the_api_crate_agree_on_the_client_codes() {
+        assert_eq!(core_codes::CLIENT_TLS, semaphore_api::error::CLIENT_TLS);
+        assert_eq!(
+            core_codes::CLIENT_UNREACHABLE,
+            semaphore_api::error::CLIENT_UNREACHABLE
+        );
+        assert_eq!(
+            core_codes::CLIENT_INVALID_RESPONSE,
+            semaphore_api::error::CLIENT_INVALID_RESPONSE
+        );
     }
 }

@@ -187,8 +187,8 @@ impl ModerationTab {
         on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> AnyElement {
         let button = Button::new(SharedString::from(id.clone()), label)
-            .outlined()
-            .size(ButtonSize::Small)
+            .soft()
+            .size(ButtonSize::Sm)
             .loading(busy)
             .disabled(!can_lift);
         if can_lift {
@@ -581,8 +581,8 @@ impl ModerationTab {
                             .into_any_element()
                     } else if more {
                         Button::new("log-more", "Load more")
-                            .outlined()
-                            .size(ButtonSize::Small)
+                            .soft()
+                            .size(ButtonSize::Sm)
                             .on_click(
                                 cx.listener(|_, _, _, cx| cx.emit(ModerationTabEvent::MoreLog)),
                             )
@@ -638,6 +638,7 @@ impl Render for ModerationTab {
             );
         let body: AnyElement = if !self.caps.view_bans && !self.caps.view_moderation_log {
             Alert::new(
+                "moderation-tab-alert",
                 Severity::Warning,
                 "You don't have permission to view moderation tools.",
             )

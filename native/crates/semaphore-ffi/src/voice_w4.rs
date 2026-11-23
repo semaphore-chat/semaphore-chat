@@ -33,34 +33,6 @@ impl semaphore_core::platform::KeepAwake for ForeignKeepAwake {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use semaphore_core::platform::KeepAwake;
-    use std::sync::{Arc, Mutex};
-
-    #[derive(Default)]
-    struct Host(Mutex<Vec<bool>>, bool);
-
-    impl KeepAwakeHost for Host {
-        fn set(&self, on: bool) -> bool {
-            self.0.lock().unwrap().push(on);
-            self.1
-        }
-    }
-
-    #[test]
-    fn keep_awake_reaches_the_foreign_host_and_its_refusal_comes_back() {
-        let host = Arc::new(Host(Mutex::new(Vec::new()), true));
-        let adapter = ForeignKeepAwake(host.clone());
-        adapter.set(true).unwrap();
-        adapter.set(false).unwrap();
-        assert_eq!(*host.0.lock().unwrap(), vec![true, false]);
-        let refusing = ForeignKeepAwake(Arc::new(Host(Mutex::new(Vec::new()), false)));
-        assert!(refusing.set(true).is_err());
-    }
-}
-
 #[uniffi::remote(Enum)]
 pub enum VoiceJoinMode {
     None,
@@ -281,27 +253,34 @@ pub struct VoiceDiagnosticsView {
 #[uniffi::export]
 impl SemaphoreCore {
     pub async fn join_dm_call(&self, dm_group_id: String) -> Result<(), CoreError> {
-        self.core.join_dm_call(dm_group_id).await
+        self.run(move |core| async move { core.join_dm_call(dm_group_id).await })
+            .await
     }
 
     pub fn incoming_call(&self) -> Option<IncomingCallView> {
-        self.core.incoming_call()
+        self.sync(move |core| core.incoming_call())
     }
 
     pub async fn accept_incoming_call(&self) -> Result<(), CoreError> {
-        self.core.accept_incoming_call().await
+        self.run(move |core| async move { core.accept_incoming_call().await })
+            .await
     }
 
     pub fn decline_incoming_call(&self) {
-        self.core.decline_incoming_call();
+        self.sync(move |core| {
+            core.decline_incoming_call();
+        })
     }
 
     pub fn expire_incoming_call(&self) {
-        self.core.expire_incoming_call();
+        self.sync(move |core| {
+            core.expire_incoming_call();
+        })
     }
 
     pub async fn server_mute(&self, identity: String, mute: bool) -> Result<(), CoreError> {
-        self.core.server_mute(identity, mute).await
+        self.run(move |core| async move { core.server_mute(identity, mute).await })
+            .await
     }
 
     pub async fn kick_member(
@@ -310,67 +289,81 @@ impl SemaphoreCore {
         user_id: String,
         reason: Option<String>,
     ) -> Result<(), CoreError> {
-        self.core.kick_member(community_id, user_id, reason).await
+        self.run(move |core| async move { core.kick_member(community_id, user_id, reason).await })
+            .await
     }
 
     pub fn voice_moderation_caps(&self, channel_id: String) -> VoiceModerationCaps {
-        self.core.voice_moderation_caps(channel_id)
+        self.sync(move |core| core.voice_moderation_caps(channel_id))
     }
 
     pub fn set_participant_volume(&self, identity: String, percent: u32) {
-        self.core.set_participant_volume(identity, percent);
+        self.sync(move |core| {
+            core.set_participant_volume(identity, percent);
+        })
     }
 
     pub fn set_screen_share_volume(&self, identity: String, percent: u32) {
-        self.core.set_screen_share_volume(identity, percent);
+        self.sync(move |core| {
+            core.set_screen_share_volume(identity, percent);
+        })
     }
 
     pub fn soundboard(&self, community_id: String) -> SoundboardView {
-        self.core.soundboard(community_id)
+        self.sync(move |core| core.soundboard(community_id))
     }
 
     pub async fn play_sound(&self, sound_id: String) -> Result<(), CoreError> {
-        self.core.play_sound(sound_id).await
+        self.run(move |core| async move { core.play_sound(sound_id).await })
+            .await
     }
 
     pub fn stop_sound(&self) {
-        self.core.stop_sound();
+        self.sync(move |core| {
+            core.stop_sound();
+        })
     }
 
     pub fn replay_session(&self) -> ReplaySessionView {
-        self.core.replay_session()
+        self.sync(move |core| core.replay_session())
     }
 
     pub async fn replay_preview(&self) -> Result<Vec<PreviewSegment>, CoreError> {
-        self.core.replay_preview().await
+        self.run(move |core| async move { core.replay_preview().await })
+            .await
     }
 
     pub async fn replay_segment(&self, segment: PreviewSegment) -> Result<Vec<u8>, CoreError> {
-        self.core.replay_segment(segment).await
+        self.run(move |core| async move { core.replay_segment(segment).await })
+            .await
     }
 
     pub async fn download_replay(&self, minutes: ReplayMinutes) -> Result<Vec<u8>, CoreError> {
-        self.core.download_replay(minutes).await
+        self.run(move |core| async move { core.download_replay(minutes).await })
+            .await
     }
 
     pub async fn capture_replay(&self, request: CaptureRequest) -> Result<CapturedClip, CoreError> {
-        self.core.capture_replay(request).await
+        self.run(move |core| async move { core.capture_replay(request).await })
+            .await
     }
 
     pub fn clips(&self) -> ClipsView {
-        self.core.clips()
+        self.sync(move |core| core.clips())
     }
 
     pub fn user_clips(&self, user_id: String) -> ClipsView {
-        self.core.user_clips(user_id)
+        self.sync(move |core| core.user_clips(user_id))
     }
 
     pub async fn set_clip_public(&self, clip_id: String, public: bool) -> Result<(), CoreError> {
-        self.core.set_clip_public(clip_id, public).await
+        self.run(move |core| async move { core.set_clip_public(clip_id, public).await })
+            .await
     }
 
     pub async fn delete_clip(&self, clip_id: String) -> Result<(), CoreError> {
-        self.core.delete_clip(clip_id).await
+        self.run(move |core| async move { core.delete_clip(clip_id).await })
+            .await
     }
 
     pub async fn share_clip(
@@ -378,28 +371,69 @@ impl SemaphoreCore {
         clip_id: String,
         destination: ClipDestination,
     ) -> Result<(), CoreError> {
-        self.core.share_clip(clip_id, destination).await
+        self.run(move |core| async move { core.share_clip(clip_id, destination).await })
+            .await
     }
 
     pub fn voice_diagnostics(&self) -> VoiceDiagnosticsView {
-        self.core.voice_diagnostics()
+        self.sync(move |core| core.voice_diagnostics())
     }
 
     pub fn voice_diagnostics_report(&self) -> String {
-        self.core.voice_diagnostics_report()
+        self.sync(move |core| core.voice_diagnostics_report())
     }
 
     pub fn expire_replay_audio_wait(&self) {
-        self.core.expire_replay_audio_wait();
+        self.sync(move |core| {
+            core.expire_replay_audio_wait();
+        })
+    }
+
+    pub fn retry_replay(&self) {
+        self.sync(move |core| {
+            core.retry_replay();
+        })
     }
 
     /// The host's sleep inhibitor, held while a call runs.
     pub fn set_keep_awake(&self, host: std::sync::Arc<dyn KeepAwakeHost>) {
-        self.core
-            .set_keep_awake(std::sync::Arc::new(ForeignKeepAwake(host)));
+        self.sync(move |core| {
+            core.set_keep_awake(std::sync::Arc::new(ForeignKeepAwake(host)));
+        })
     }
 
     pub async fn refresh_voice_diagnostics(&self) {
-        self.core.refresh_voice_diagnostics().await;
+        self.run(move |core| async move {
+            core.refresh_voice_diagnostics().await;
+        })
+        .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use semaphore_core::platform::KeepAwake;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct Host(Mutex<Vec<bool>>, bool);
+
+    impl KeepAwakeHost for Host {
+        fn set(&self, on: bool) -> bool {
+            self.0.lock().unwrap().push(on);
+            self.1
+        }
+    }
+
+    #[test]
+    fn keep_awake_reaches_the_foreign_host_and_its_refusal_comes_back() {
+        let host = Arc::new(Host(Mutex::new(Vec::new()), true));
+        let adapter = ForeignKeepAwake(host.clone());
+        adapter.set(true).unwrap();
+        adapter.set(false).unwrap();
+        assert_eq!(*host.0.lock().unwrap(), vec![true, false]);
+        let refusing = ForeignKeepAwake(Arc::new(Host(Mutex::new(Vec::new()), false)));
+        assert!(refusing.set(true).is_err());
     }
 }

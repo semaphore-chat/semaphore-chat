@@ -53,6 +53,7 @@ fn open_with_replies(
 ) -> (Entity<MessageList>, &mut VisualTestContext) {
     cx.update(|cx| {
         gpui_kit::init(cx);
+        crate::theme::init(cx);
         init(cx);
     });
     let (view, cx) = cx.add_window_view(move |_, cx| {
@@ -248,7 +249,7 @@ fn c_selection_survives_unmount_and_copies_everything_in_order(cx: &mut TestAppC
     let emoji: usize = (0..24u16)
         .map(|e| expected.matches(&format!(":{}:", emoji_name(e))).count())
         .sum();
-    let links = expected.matches("issue ").count();
+    let links = expected.matches("https://example.com/issues/").count();
     assert!(emoji > 10 && links > 5, "emoji {emoji}, links {links}");
 
     // Scroll far away. Every selected row is unmounted, and nothing about the selection changes.
@@ -376,7 +377,7 @@ fn link_row(seq: i64) -> MessageRow {
         NOW_MS - 60_000 + seq,
         Body::default()
             .text("see ")
-            .link("the docs page", "https://example.com/docs")
+            .link("https://example.com/docs", "https://example.com/docs")
             .text(" for more about this"),
     )
 }
@@ -420,7 +421,7 @@ fn a_shaky_click_still_opens_and_an_unsafe_link_never_does(cx: &mut TestAppConte
         2,
         fixture::me(),
         NOW_MS,
-        Body::default().link("click me", "javascript:alert(1)"),
+        Body::default().link("javascript:alert(1)", "javascript:alert(1)"),
     );
     let (view, cx) = open_list(cx, vec![link_row(1), unsafe_row], Rc::new(NoMedia));
     let events = record_events(&view, cx);
@@ -452,6 +453,109 @@ fn a_shaky_click_still_opens_and_an_unsafe_link_never_does(cx: &mut TestAppConte
     cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
     draw(cx);
     assert_eq!(opens(&events), 1, "javascript: must not reach the app");
+}
+
+/// Every link in a row is drawn by its checked label and opens its checked address: a lookalike
+/// host as punycode. `javascript:` and an address with a user name or password are plain text,
+/// and a press on them opens nothing.
+#[gpui_kit::test]
+fn links_draw_and_open_as_checked_and_refused_ones_open_nothing(cx: &mut TestAppContext) {
+    let lookalike = "https://\u{0430}pple.com/login";
+    let rows = vec![
+        fixture::message(
+            1,
+            fixture::me(),
+            NOW_MS - 3,
+            Body::default().text("go ").link(lookalike, lookalike),
+        ),
+        fixture::message(
+            2,
+            fixture::me(),
+            NOW_MS - 2,
+            Body::default().link("javascript:alert(1)", "javascript:alert(1)"),
+        ),
+        fixture::message(
+            3,
+            fixture::me(),
+            NOW_MS - 1,
+            Body::default().link(
+                "https://user:pw@example.com/",
+                "https://user:pw@example.com/",
+            ),
+        ),
+    ];
+    let (view, cx) = open_list(cx, rows, Rc::new(NoMedia));
+    let events = record_events(&view, cx);
+    let press = |seq: i64, byte: u32, cx: &mut VisualTestContext| {
+        let at = view
+            .read_with(cx, |view, _| view.point_of(Pos { seq, byte }))
+            .expect("painted");
+        cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+        draw(cx);
+    };
+    // The lookalike: the press lands on its label, which is drawn longer than it was written.
+    let label = "https://xn--pple-43d.com/login";
+    let painted = view.read_with(cx, |view, _| {
+        view.point_of(Pos { seq: 1, byte: 3 })
+            .zip(view.point_of(Pos {
+                seq: 1,
+                byte: 3 + lookalike.len() as u32,
+            }))
+    });
+    let (start, end) = painted.expect("painted");
+    let at = point((start.x + end.x) / 2., start.y);
+    cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+    draw(cx);
+    let opened: Vec<String> = events
+        .borrow()
+        .iter()
+        .filter_map(|event| match event {
+            MessageListEvent::OpenLink { url } => Some(url.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(opened, [label.to_owned()]);
+    // What is drawn: the link's own node is named by the label, and the laid-out words hold the
+    // label (in its isolate), never the lookalike.
+    cx.update(|window, _| {
+        use gpui_kit::test::TestQueryExt as _;
+        window.find_by_label(label);
+    });
+    let laid_out: String = view.read_with(cx, |view, _| {
+        let row = view.shared.rows.borrow().by_seq(1).cloned().unwrap();
+        view.shared
+            .prepared_for(&row)
+            .text
+            .plan
+            .blocks
+            .iter()
+            .map(|block| match block {
+                crate::kit::chat::text::Block::Inline { text, .. } => text.clone(),
+                crate::kit::chat::text::Block::Code(code) => code.clone(),
+            })
+            .collect()
+    });
+    assert_eq!(laid_out, format!("go \u{2066}{label}\u{2069}"));
+    // What is drawn and copied is the label, never the lookalike.
+    view.update(cx, |view, cx| view.select_all(cx));
+    let copied = selected(&view, cx);
+    assert!(copied.contains(&format!("go {label}")), "{copied:?}");
+    assert!(!copied.contains('\u{0430}'), "{copied:?}");
+    assert!(copied.contains("javascript:alert(1)"));
+    assert!(copied.contains("https://user:pw@example.com/"));
+    view.update(cx, |view, cx| view.set_selection(None, cx));
+
+    // The refused ones: plain text, and a press opens nothing.
+    press(2, 4, cx);
+    press(3, 10, cx);
+    let opens = events
+        .borrow()
+        .iter()
+        .filter(|event| matches!(event, MessageListEvent::OpenLink { .. }))
+        .count();
+    assert_eq!(opens, 1, "refused addresses must not reach the app");
 }
 
 // ------------------------------------------------------------------ multi-click and keyboard
@@ -1261,6 +1365,7 @@ fn a_row_reads_out_who_when_and_what() {
 fn a_press_on_the_scrollbar_does_not_start_a_selection(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_kit::init(cx);
+        crate::theme::init(cx);
         init(cx);
     });
     let (view, cx) = cx.add_window_view(move |_, cx| {
@@ -1406,6 +1511,7 @@ impl Render for EscapeWatcher {
 fn escape_with_nothing_to_do_propagates(cx: &mut TestAppContext) {
     cx.update(|cx| {
         gpui_kit::init(cx);
+        crate::theme::init(cx);
         init(cx);
     });
     let seen = Rc::new(std::cell::Cell::new(0usize));
@@ -1587,5 +1693,326 @@ fn a_channel_switch_drops_the_pending_batch(cx: &mut TestAppContext) {
     assert!(
         view.read_with(cx, |view, _| view.announcement().cloned())
             .is_none()
+    );
+}
+
+/// The slice rig's `click-text`: a drag that ends where it began, on a link to this server.
+#[gpui_kit::test]
+fn a_rig_click_on_an_in_app_link_opens_it(cx: &mut TestAppContext) {
+    let url = "http://127.0.0.1:3999/#/community/c1/channel/ch2?highlight=m3";
+    let text = format!("the lfg post: {url}");
+    let row = fixture::message(
+        1,
+        fixture::user("u-priya", "priya", None),
+        NOW_MS,
+        Body::default().text("the lfg post: ").link(url, url),
+    );
+    let (view, cx) = open_list(cx, vec![row], Rc::new(NoMedia));
+    let events = record_events(&view, cx);
+    let byte = text.find("/#/community").unwrap() as u32 + 3;
+    let at = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 1, byte }))
+        .expect("painted");
+    cx.update(|window, cx| window.drag(at, at, cx));
+    draw(cx);
+    assert!(
+        events
+            .borrow()
+            .contains(&MessageListEvent::OpenLink { url: url.into() }),
+        "{:?}",
+        events.borrow()
+    );
+}
+
+// ---- Review fixes (#909) ----
+
+fn opened_links(events: &Rc<RefCell<Vec<MessageListEvent>>>) -> usize {
+    events
+        .borrow()
+        .iter()
+        .filter(|event| matches!(event, MessageListEvent::OpenLink { .. }))
+        .count()
+}
+
+/// `https://example.com:443/é` is drawn `https://example.com/%C3%A9`: the same length, other
+/// bytes. A triple-click on its last glyph selects the line without slicing into the `é`.
+#[gpui_kit::test]
+fn a_triple_click_on_a_same_length_relabelled_link_selects_the_line(cx: &mut TestAppContext) {
+    let url = "https://example.com:443/\u{e9}";
+    let row = fixture::message(
+        1,
+        fixture::me(),
+        NOW_MS,
+        Body::default().text("see ").link(url, url),
+    );
+    let (view, cx) = open_list(cx, vec![row], Rc::new(NoMedia));
+    let at = view
+        .read_with(cx, |view, _| {
+            view.point_of(Pos {
+                seq: 1,
+                byte: 4 + 25,
+            })
+        })
+        .expect("painted");
+    let hit = view.read_with(cx, |view, _| view.hit(at)).unwrap();
+    let display = format!("see {url}");
+    assert!(display.is_char_boundary(hit.byte as usize), "{hit:?}");
+    click(at, 3, cx);
+    assert_eq!(selected(&view, cx), "see https://example.com/%C3%A9");
+}
+
+#[gpui_kit::test]
+fn shift_end_after_a_click_on_a_same_length_relabelled_link_selects_to_the_end(
+    cx: &mut TestAppContext,
+) {
+    let url = "https://example.com:443/\u{e9}";
+    let row = fixture::message(
+        1,
+        fixture::me(),
+        NOW_MS,
+        Body::default().text("see ").link(url, url).text(" ok"),
+    );
+    let (view, cx) = open_list(cx, vec![row], Rc::new(NoMedia));
+    let events = record_events(&view, cx);
+    let (start, end) = view
+        .read_with(cx, |view, _| {
+            view.point_of(Pos { seq: 1, byte: 4 })
+                .zip(view.point_of(Pos {
+                    seq: 1,
+                    byte: 4 + url.len() as u32,
+                }))
+        })
+        .expect("painted");
+    let at = point(start.x + (end.x - start.x) * 0.9, start.y);
+    click(at, 1, cx);
+    assert_eq!(opened_links(&events), 1, "a plain click follows the link");
+    cx.simulate_keystrokes("shift-end");
+    draw(cx);
+    // The caret was inside the link: the selection takes it whole, then runs to the end.
+    assert_eq!(selected(&view, cx), "https://example.com/%C3%A9 ok");
+}
+
+/// Main opened a link only on a plain single click. A double click selects a word, a triple
+/// click a line, and Shift extends a selection: none of them opens anything.
+#[gpui_kit::test]
+fn only_a_plain_single_click_opens_a_link(cx: &mut TestAppContext) {
+    let (view, cx) = open_list(cx, vec![link_row(1)], Rc::new(NoMedia));
+    let events = record_events(&view, cx);
+    let at = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 1, byte: 6 }))
+        .expect("painted");
+    click(at, 1, cx);
+    assert_eq!(opened_links(&events), 1);
+    click(at, 2, cx);
+    assert_eq!(
+        opened_links(&events),
+        1,
+        "a double click opens nothing more"
+    );
+    assert!(!selected(&view, cx).is_empty(), "it selects a word");
+    click(at, 3, cx);
+    assert_eq!(opened_links(&events), 1, "nor a triple click");
+    assert!(
+        selected(&view, cx).starts_with("see "),
+        "it selects the line"
+    );
+
+    // Shift+click extends a selection and opens nothing.
+    view.update(cx, |view, cx| view.set_selection(None, cx));
+    let from = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 1, byte: 0 }))
+        .unwrap();
+    // A short drag selects "se", then Shift+click inside the link extends it.
+    let drag_end = from + point(px(15.), px(0.));
+    cx.simulate_mouse_down(from, MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_move(drag_end, Some(MouseButton::Left), Modifiers::default());
+    cx.simulate_mouse_up(drag_end, MouseButton::Left, Modifiers::default());
+    draw(cx);
+    let to = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 1, byte: 10 }))
+        .unwrap();
+    let modified_click = |modifiers: Modifiers, cx: &mut VisualTestContext| {
+        cx.simulate_event(MouseDownEvent {
+            button: MouseButton::Left,
+            position: to,
+            modifiers,
+            click_count: 1,
+            first_mouse: false,
+        });
+        cx.simulate_event(MouseUpEvent {
+            button: MouseButton::Left,
+            position: to,
+            modifiers,
+            click_count: 1,
+        });
+        draw(cx);
+    };
+    modified_click(Modifiers::shift(), cx);
+    assert_eq!(selected(&view, cx), "see https:", "Shift+click extends");
+    assert_eq!(opened_links(&events), 1, "and opens nothing");
+    for modifiers in [Modifiers::command(), Modifiers::alt(), Modifiers::control()] {
+        modified_click(modifiers, cx);
+    }
+    assert_eq!(opened_links(&events), 1, "a modified click opens nothing");
+}
+
+fn bare_origin_row() -> MessageRow {
+    let url = "https://example.com";
+    fixture::message(
+        1,
+        fixture::me(),
+        NOW_MS,
+        Body::default().text("see ").link(url, url).text(" now ok"),
+    )
+}
+
+/// `https://example.com` is drawn `https://example.com/`: relabelled, so one unit for selection.
+#[gpui_kit::test]
+fn selection_takes_a_relabelled_link_whole(cx: &mut TestAppContext) {
+    let (view, cx) = open_list(cx, vec![bare_origin_row()], Rc::new(NoMedia));
+    let link_end = 4 + "https://example.com".len() as u32;
+    let (start, end) = view
+        .read_with(cx, |view, _| {
+            view.point_of(Pos { seq: 1, byte: 4 })
+                .zip(view.point_of(Pos {
+                    seq: 1,
+                    byte: link_end,
+                }))
+        })
+        .expect("painted");
+    let mid = point((start.x + end.x) / 2., start.y);
+
+    // A double click in the middle selects the link.
+    click(mid, 2, cx);
+    assert_eq!(selected(&view, cx), "https://example.com/");
+
+    // A drag from the middle to the right takes the link and what follows.
+    view.update(cx, |view, cx| view.set_selection(None, cx));
+    let row_end = view
+        .read_with(cx, |view, _| {
+            view.point_of(Pos {
+                seq: 1,
+                byte: link_end + 6,
+            })
+        })
+        .unwrap();
+    cx.simulate_mouse_down(mid, MouseButton::Left, Modifiers::default());
+    draw(cx);
+    cx.simulate_mouse_move(row_end, Some(MouseButton::Left), Modifiers::default());
+    draw(cx);
+    cx.simulate_mouse_up(row_end, MouseButton::Left, Modifiers::default());
+    draw(cx);
+    assert_eq!(selected(&view, cx), "https://example.com/ now o");
+
+    // From after " now", Shift+Left into the link crosses it in one step: the highlight and the
+    // copy move together.
+    let focus = view.read_with(cx, |view, _| view.focus_handle().clone());
+    cx.update(|window, cx| window.focus(&focus, cx));
+    view.update(cx, |view, cx| {
+        view.set_selection(
+            Some(Selection {
+                anchor: Pos {
+                    seq: 1,
+                    byte: link_end + 4,
+                },
+                cursor: Pos {
+                    seq: 1,
+                    byte: link_end,
+                },
+            }),
+            cx,
+        )
+    });
+    draw(cx);
+    cx.simulate_keystrokes("shift-left");
+    draw(cx);
+    let (cursor, highlighted, copied) = view.read_with(cx, |view, _| {
+        let selection = view.selection().unwrap();
+        let row = view.shared.rows.borrow().by_seq(1).cloned().unwrap();
+        let text = view.shared.prepared_for(&row).text.clone();
+        let range = selection.range_in(&row).unwrap();
+        let drawn: String = text
+            .plan
+            .blocks
+            .iter()
+            .map(|block| match block {
+                crate::kit::chat::text::Block::Inline { text, .. } => text.clone(),
+                crate::kit::chat::text::Block::Code(code) => code.clone(),
+            })
+            .collect();
+        let lit = drawn[text.map.range_to_drawn(range)].replace(['\u{2066}', '\u{2069}'], "");
+        (selection.cursor, lit, view.selected_text())
+    });
+    assert_eq!(cursor, Pos { seq: 1, byte: 4 }, "one step crosses the link");
+    assert_eq!(highlighted, "https://example.com/ now");
+    assert_eq!(copied, highlighted);
+}
+
+/// In a ChatPane the typing line floats over the list's foot; the list keeps its height free,
+/// so it never covers the last row.
+#[gpui_kit::test]
+fn the_typing_line_never_covers_the_last_row(cx: &mut TestAppContext) {
+    struct Pane {
+        list: Entity<MessageList>,
+    }
+    impl Render for Pane {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                crate::kit::ChatPane::new("chat")
+                    .typing(crate::kit::TypingLine::new(["ava"]))
+                    .composer(div().h(px(60.)))
+                    .list(self.list.clone()),
+            )
+        }
+    }
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::theme::init(cx);
+        init(cx);
+    });
+    let rows = (1..=40)
+        .map(|seq| {
+            fixture::message(
+                seq,
+                fixture::me(),
+                NOW_MS - 400_000 + seq * 1000,
+                Body::default().text("a plain line of words"),
+            )
+        })
+        .collect::<Vec<_>>();
+    let (pane, cx) = cx.add_window_view(move |_, cx| {
+        let list = cx.new(|cx| {
+            let mut list = MessageList::new(
+                ListData {
+                    me_id: "me".into(),
+                    rows,
+                    replies: HashMap::new(),
+                    status: ListStatus::Ready,
+                },
+                Rc::new(NoMedia),
+                ListOptions {
+                    time: TimeFormat::fixed(NOW_MS),
+                    scrollbar: false,
+                    ..ListOptions::default()
+                },
+                cx,
+            );
+            // As ConversationPane does.
+            list.set_bottom_room(px(crate::kit::TypingLine::HEIGHT), cx);
+            list
+        });
+        Pane { list }
+    });
+    draw(cx);
+    draw(cx);
+    let list = pane.read_with(cx, |pane, _| pane.list.clone());
+    let (_, last) = *list
+        .read_with(cx, |list, _| list.painted_blocks())
+        .last()
+        .expect("rows painted");
+    let typing = cx.update(|window, _| window.find("typing-line").bounds());
+    assert!(
+        last.bottom() <= typing.top(),
+        "last row {last:?} under the typing line {typing:?}"
     );
 }

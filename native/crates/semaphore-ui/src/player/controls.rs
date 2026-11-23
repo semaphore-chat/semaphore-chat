@@ -53,6 +53,7 @@ pub(crate) struct Ink {
     pub buffered: Hsla,
     pub played: Hsla,
     pub tip_bg: Hsla,
+    pub tip_text: Hsla,
 }
 
 impl Ink {
@@ -65,6 +66,7 @@ impl Ink {
             buffered: white.opacity(0.5),
             played: cx.sem().primary,
             tip_bg: black().opacity(0.85),
+            tip_text: white,
         }
     }
 
@@ -81,6 +83,7 @@ impl Ink {
                 a: 1.,
                 ..sem.tooltip_bg
             },
+            tip_text: sem.tooltip_text,
         }
     }
 }
@@ -163,7 +166,7 @@ pub(crate) fn scrubber<V: PlayerView>(
                     .py(px(2.))
                     .rounded(px(4.))
                     .bg(ink.tip_bg)
-                    .text_color(gpui_kit::white())
+                    .text_color(ink.tip_text)
                     .child(text(
                         Variant::Xs,
                         model::format_time(model::time_at(fraction, duration)),
@@ -304,7 +307,7 @@ pub(crate) fn volume_slider(state: &Entity<SliderState>) -> impl IntoElement {
         .flex_none()
         .w(px(64.))
         .mx(px(6.))
-        .child(Slider::new(state, "Volume"))
+        .child(Slider::new(state, "Volume").label_hidden())
 }
 
 /// The slider's state for a volume of 0.0 to 1.0, shown as 0 to 100.

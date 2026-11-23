@@ -105,6 +105,17 @@ fn host(
     host_mode(window, cx, ComposerMode::Send, "Type a message...", setup)
 }
 
+/// A plain channel composer, for the shell's story of a toast over the composer.
+pub(crate) fn story_composer(window: &mut Window, cx: &mut App) -> Entity<Composer> {
+    new_composer(
+        window,
+        cx,
+        ComposerMode::Send,
+        "Message #general",
+        |_, _, _| {},
+    )
+}
+
 fn new_composer(
     window: &mut Window,
     cx: &mut App,

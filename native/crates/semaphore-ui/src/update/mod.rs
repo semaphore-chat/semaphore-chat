@@ -100,7 +100,7 @@ impl UpdateStatus {
                 Severity::Success,
                 format!("Version {version} was downloaded. Install it with: {command}"),
             ),
-            Self::Failed { message, .. } => (Severity::Error, message.clone()),
+            Self::Failed { message, .. } => (Severity::Danger, message.clone()),
         }
     }
 
@@ -175,16 +175,14 @@ impl UpdateBanner {
         cx: &mut Context<Self>,
     ) -> Button {
         let view = cx.entity().downgrade();
-        let button = Button::new(id, label)
-            .size(ButtonSize::Small)
-            .on_click(move |_, _, cx| {
-                view.update(cx, |_, cx| cx.emit(event)).ok();
-            });
-        if contained {
-            button.contained()
-        } else {
-            button
-        }
+        let button =
+            Button::new(id, label)
+                .text()
+                .size(ButtonSize::Sm)
+                .on_click(move |_, _, cx| {
+                    view.update(cx, |_, cx| cx.emit(event)).ok();
+                });
+        if contained { button.primary() } else { button }
     }
 }
 
@@ -218,7 +216,7 @@ impl Render for UpdateBanner {
                 Severity::Success,
                 format!("Version {version} is downloaded."),
             ),
-            UpdateStatus::Failed { message, .. } => (Severity::Error, message.clone()),
+            UpdateStatus::Failed { message, .. } => (Severity::Danger, message.clone()),
             UpdateStatus::Unknown | UpdateStatus::Checking | UpdateStatus::UpToDate => {
                 return div().id("update-banner-empty").into_any_element();
             }
@@ -239,7 +237,7 @@ impl Render for UpdateBanner {
             .flex()
             .flex_col()
             .gap(px(8.))
-            .child(Alert::new(severity, message));
+            .child(Alert::new("update-alert", severity, message));
         match &status {
             UpdateStatus::Downloading { .. } => {
                 card = card.child(LinearProgress::new(
@@ -434,7 +432,7 @@ mod tests {
             }
             .summary()
             .0,
-            crate::kit::Severity::Error
+            crate::kit::Severity::Danger
         );
     }
 

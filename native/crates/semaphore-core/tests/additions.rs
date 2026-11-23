@@ -152,6 +152,33 @@ async fn load_newer_appends_until_the_edge_then_new_messages_land() {
 }
 
 #[tokio::test]
+async fn the_history_start_is_known_once_the_oldest_page_has_loaded() {
+    let rig = Rig::new().signed_in().await;
+    assert!(!rig.core.at_history_start(channel()), "nothing opened");
+    let short = Rig::new()
+        .signed_in()
+        .await
+        .open_channel(history("m", 5))
+        .await;
+    assert!(short.core.at_history_start(channel()));
+
+    let mut rig = Rig::new()
+        .signed_in()
+        .await
+        .open_channel(history("m", 60))
+        .await;
+    assert!(!rig.core.at_history_start(channel()));
+    let mut loads = 0;
+    while !rig.core.at_history_start(channel()) {
+        rig.core.load_older(channel()).await.unwrap();
+        rig.sync();
+        loads += 1;
+        assert!(loads < 10, "never reached the start");
+    }
+    assert_eq!(rig.rows.first().unwrap().id.as_deref(), Some("m-0"));
+}
+
+#[tokio::test]
 async fn load_newer_at_the_edge_asks_for_nothing() {
     let mut rig = Rig::new()
         .signed_in()

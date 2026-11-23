@@ -106,11 +106,11 @@ impl NotificationsPage {
 
     fn face(&self, row: &NotificationRow, cx: &App) -> Div {
         let sem = cx.sem();
-        // MUI's grey.500 for a read row, solid so the white icon stays legible.
-        let tint = if row.read {
-            rgb(0x9e9e9e).into()
+        // A read row's badge is neutral, an unread one the accent; each with its on-colour.
+        let (tint, ink) = if row.read {
+            (sem.chip_bg, sem.text_secondary)
         } else {
-            sem.primary
+            (sem.primary, sem.primary_contrast)
         };
         let icon = kind_icon(row.kind);
         div()
@@ -130,7 +130,7 @@ impl NotificationsPage {
                     .border_2()
                     .border_color(sem.paper)
                     .bg(tint)
-                    .child(design_icon(icon, 11., sem.primary_contrast)),
+                    .child(design_icon(icon, 11., ink)),
             )
     }
 
@@ -366,12 +366,12 @@ impl NotificationsPage {
                                 .flex()
                                 .flex_col()
                                 .gap(px(6.))
-                                .child(Skeleton::rect(
+                                .child(Skeleton::sized(
                                     ("notification-loading-name", index),
                                     relative(0.6),
                                     14.,
                                 ))
-                                .child(Skeleton::rect(
+                                .child(Skeleton::sized(
                                     ("notification-loading-text", index),
                                     relative(0.9),
                                     12.,
@@ -414,7 +414,7 @@ impl NotificationsPage {
                         ))
                         .child(
                             Button::new("notifications-refresh", "Refresh")
-                                .outlined()
+                                .soft()
                                 .on_click(cx.listener(|_, _, _, cx| {
                                     cx.emit(NotificationsPageEvent::Notification(
                                         NotificationEvent::Retry,
@@ -435,7 +435,7 @@ impl NotificationsPage {
                             .p(spacing(2.))
                             .child(
                                 Button::new("notifications-more", "Load more")
-                                    .outlined()
+                                    .soft()
                                     .on_click(cx.listener(|_, _, _, cx| {
                                         cx.emit(NotificationsPageEvent::Notification(
                                             NotificationEvent::LoadMore,
@@ -506,7 +506,8 @@ impl Render for NotificationsPage {
                 .py(spacing(0.5))
                 .child(
                     Button::new("notifications-mark-all", "Mark all as read")
-                        .size(ButtonSize::Small)
+                        .text()
+                        .size(ButtonSize::Sm)
                         .start_icon(DesignIcon::CheckCircle)
                         .on_click(cx.listener(|_, _, _, cx| {
                             cx.emit(NotificationsPageEvent::Notification(

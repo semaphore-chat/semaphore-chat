@@ -9,7 +9,8 @@ use semaphore_core::CoreError;
 use semaphore_core::model::{
     BrowserSignInFailure, BrowserSignInView, CreatedCommunity, ErrorView, InviteJoin,
     InvitePreview, InvitePreviewView, InviteSkipReason, JoinedCommunity, LoadState, NewCommunity,
-    RegisterForm, RegisterRequirements, RegistrationMode, ServerInfo, SkippedInviteCommunity,
+    ProbeOutcome, RegisterForm, RegisterRequirements, RegistrationMode, ServerInfo,
+    SkippedInviteCommunity,
 };
 
 #[uniffi::remote(Enum)]
@@ -30,6 +31,15 @@ pub struct ServerInfo {
     pub browser_sign_in: bool,
     pub gif_search: bool,
     pub needs_setup: bool,
+}
+
+#[uniffi::remote(Enum)]
+pub enum ProbeOutcome {
+    Ok { info: ServerInfo },
+    Unreachable { message: String },
+    TlsRefused { message: String },
+    NotSemaphore,
+    Failed { error: ErrorView },
 }
 
 #[uniffi::remote(Record)]
@@ -126,45 +136,59 @@ pub fn browser_sign_in_timeout_ms() -> u64 {
 #[uniffi::export]
 impl SemaphoreCore {
     pub fn register_requirements(&self) -> RegisterRequirements {
-        self.core.register_requirements()
+        self.sync(move |core| core.register_requirements())
+    }
+
+    /// Asks a server about itself before signing in (`Core::check_server`): a connect screen's
+    /// answer to the address typed. `Err` only when the core has no backend or has shut down.
+    pub async fn probe_server(&self, server_url: String) -> Result<ProbeOutcome, CoreError> {
+        self.run(move |core| async move { core.check_server(server_url).await })
+            .await
     }
 
     pub fn server_info(&self) -> Option<ServerInfo> {
-        self.core.server_info()
+        self.sync(move |core| core.server_info())
     }
 
     pub async fn register(&self, form: RegisterForm) -> Result<(), CoreError> {
-        self.core.register(form).await
+        self.run(move |core| async move { core.register(form).await })
+            .await
     }
 
     pub async fn accept_invite(&self, code: String) -> Result<InviteJoin, CoreError> {
-        self.core.accept_invite(code).await
+        self.run(move |core| async move { core.accept_invite(code).await })
+            .await
     }
 
     pub async fn forgot_password(&self, email: String) -> Result<(), CoreError> {
-        self.core.forgot_password(email).await
+        self.run(move |core| async move { core.forgot_password(email).await })
+            .await
     }
 
     pub fn invite_preview(&self, code: String) -> InvitePreviewView {
-        self.core.invite_preview(code)
+        self.sync(move |core| core.invite_preview(code))
     }
 
     pub async fn create_community(
         &self,
         community: NewCommunity,
     ) -> Result<CreatedCommunity, CoreError> {
-        self.core.create_community(community).await
+        self.run(move |core| async move { core.create_community(community).await })
+            .await
     }
 
     pub async fn start_browser_sign_in(&self) -> Result<String, CoreError> {
-        self.core.start_browser_sign_in().await
+        self.run(move |core| async move { core.start_browser_sign_in().await })
+            .await
     }
 
     pub fn cancel_browser_sign_in(&self) {
-        self.core.cancel_browser_sign_in();
+        self.sync(move |core| {
+            core.cancel_browser_sign_in();
+        })
     }
 
     pub fn browser_sign_in(&self) -> BrowserSignInView {
-        self.core.browser_sign_in()
+        self.sync(move |core| core.browser_sign_in())
     }
 }

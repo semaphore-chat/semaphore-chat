@@ -15,7 +15,7 @@
 //! holds (`set_reply_rows`), and any row there shows the list instead.
 
 #[cfg(feature = "stories")]
-mod stories;
+pub(crate) mod stories;
 #[cfg(test)]
 mod tests;
 
@@ -225,9 +225,9 @@ impl ThreadPane {
                 .flex()
                 .flex_col()
                 .gap(px(8.))
-                .child(Skeleton::rect("thread-parent-name", relative(0.4), 14.))
-                .child(Skeleton::rect("thread-parent-line", relative(0.9), 14.))
-                .child(Skeleton::rect("thread-parent-line-2", relative(0.7), 14.))
+                .child(Skeleton::sized("thread-parent-name", relative(0.4), 14.))
+                .child(Skeleton::sized("thread-parent-line", relative(0.9), 14.))
+                .child(Skeleton::sized("thread-parent-line-2", relative(0.7), 14.))
                 .into_any_element(),
             _ => div()
                 .h(px(height))
@@ -291,7 +291,7 @@ impl ThreadPane {
                 .flex_col()
                 .gap(spacing(2.))
                 .children((0..3usize).map(|index| {
-                    Skeleton::rect(("thread-reply-loading", index), relative(1.), 60.)
+                    Skeleton::sized(("thread-reply-loading", index), relative(1.), 60.)
                 }))
                 .into_any_element(),
             LoadState::Ready if self.info.reply_count == 0 && self.reply_rows == 0 => div()

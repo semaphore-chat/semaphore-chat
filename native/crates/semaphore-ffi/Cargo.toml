@@ -1,6 +1,6 @@
 [package]
 name = "semaphore-ffi"
-description = "Proves semaphore-core stays binding-friendly: a UniFFI surface that must keep compiling."
+description = "The UniFFI surface over semaphore-core, for the mobile apps."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,10 +11,12 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
 semaphore-core.workspace = true
+# The palette derivation, exported for the apps (src/design.rs). Pure Rust, no dependencies.
+semaphore-design.workspace = true
+# The host's runtime handle only: no runtime of its own and no C (`rt` and `time` are pure Rust).
+tokio = { workspace = true, features = ["rt", "time"] }
 uniffi = "0.32"
 
-[target.'cfg(target_os = "android")'.dependencies]
-# Android only: `SemaphoreApp` calls the JNI entry point below, which initialises
-# rustls-platform-verifier through semaphore-net. Desktop builds of this crate stay core-only.
-semaphore-net.workspace = true
-jni = { version = "0.22", default-features = false }
+[dev-dependencies]
+# src/design.rs reads the shared vectors, design/vectors/colour.json.
+serde_json.workspace = true

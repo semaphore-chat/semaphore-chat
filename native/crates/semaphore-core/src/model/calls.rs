@@ -9,6 +9,12 @@ pub const RING_MS: u64 = 30_000;
 /// alone, as the web's `useReplayBuffer` does.
 pub const REPLAY_AUDIO_WAIT_MS: u64 = 2_000;
 
+/// How long the replay buffer waits before asking the server again after it refused the start
+/// with a 400, one per retry; past the last it shows the failure. Servers before #876 answer 400
+/// "Could not stop the replay recorder" for up to a minute after a share ends (their reconcile
+/// runs each minute), so the waits reach past that.
+pub const REPLAY_RETRY_DELAYS_MS: [u64; 5] = [3_000, 8_000, 20_000, 40_000, 70_000];
+
 /// A DM or group DM call ringing for me. One at a time: a newer ring replaces it. It stops on
 /// accept, decline (local only: the caller isn't told), `expires_at_ms`, my joining that call on any
 /// device, the caller giving up (the call's presence empties), or sign-out.

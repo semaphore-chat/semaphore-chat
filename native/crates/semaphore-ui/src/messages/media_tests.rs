@@ -189,7 +189,7 @@ fn only_third_party_rs_calls_gif_or_link_image() {
         ("selection.rs", include_str!("selection.rs")),
         ("store.rs", include_str!("store.rs")),
         ("text.rs", include_str!("text.rs")),
-        ("text_element.rs", include_str!("text_element.rs")),
+        ("segments.rs", include_str!("segments.rs")),
         ("view.rs", include_str!("view.rs")),
     ];
     for (name, source) in sources {

@@ -2,7 +2,7 @@
 //! the tabs to tap into, with a back button. Also the pieces every tab is drawn with.
 
 use super::{SettingsScreen, SettingsShellEvent, SettingsTab};
-use crate::kit::{Button, ButtonSize, ListRow, Switch, Variant, spacing, text};
+use crate::kit::{ListRow, Switch, TabItem, Tabs, Variant, spacing, text};
 use crate::panel::common::{design_icon, icon_button, is_phone};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
@@ -72,7 +72,16 @@ impl SettingsScreen {
                 SharedString::from(format!("settings-tab-{}", tab.key())),
                 tab.label(),
             )
-            .leading(design_icon(tab_icon(tab), 22., sem.action_active))
+            .leading(design_icon(
+                tab_icon(tab),
+                22.,
+                // The selected row is the accent pill: its ink reads on it.
+                if !phone && tab == self.tab {
+                    sem.role.on_accent
+                } else {
+                    sem.action_active
+                },
+            ))
             .selected(!phone && tab == self.tab)
             .on_click(move |_, cx| {
                 view.update(cx, |screen, cx| screen.pick(tab, cx)).ok();
@@ -257,7 +266,8 @@ pub(super) fn switch_row(
         div()
             .flex_1()
             .min_w_0()
-            .pt(px(if caption.is_some() { 1. } else { 8. }))
+            // The label's first line centred on the switch's track, as the kit's own choice row.
+            .pt(spacing(1.))
             .flex()
             .flex_col()
             .child(text(Variant::Body1, label).text_color(sem.text_primary))
@@ -268,32 +278,30 @@ pub(super) fn switch_row(
     )
 }
 
-/// The web's exclusive `ToggleButtonGroup`: the chosen one filled, the rest outlined.
+/// The web's exclusive `ToggleButtonGroup`, as the kit's segmented tabs. Each option keeps the id
+/// `<id>-<label in kebab case>`.
 pub(super) fn segmented<T: Copy + PartialEq + 'static>(
     id: &'static str,
     options: &[(T, &'static str)],
     chosen: T,
     on_pick: impl Fn(T, &mut Window, &mut App) + 'static,
 ) -> Div {
-    let on_pick = std::rc::Rc::new(on_pick);
-    div()
-        .flex()
-        .flex_wrap()
-        .gap(spacing(1.))
-        .children(options.iter().map(|&(value, label)| {
-            let on_pick = on_pick.clone();
-            let button = Button::new(
-                SharedString::from(format!("{id}-{}", label.to_lowercase().replace(' ', "-"))),
-                label,
-            )
-            .size(ButtonSize::Small)
-            .on_click(move |_, window, cx| on_pick(value, window, cx));
-            if value == chosen {
-                button.contained()
-            } else {
-                button.outlined()
-            }
-        }))
+    let values: Vec<T> = options.iter().map(|&(value, _)| value).collect();
+    let items = options
+        .iter()
+        .map(|&(_, label)| {
+            TabItem::new(label).id(format!("{id}-{}", label.to_lowercase().replace(' ', "-")))
+        })
+        .collect();
+    let selected = values
+        .iter()
+        .position(|&value| value == chosen)
+        .unwrap_or(0);
+    div().flex().child(
+        Tabs::items(id, items, selected)
+            .segmented()
+            .on_select(move |index, window, cx| on_pick(values[index], window, cx)),
+    )
 }
 
 /// A label and its value on one line, the value at the right: the web's "App Version:" rows.

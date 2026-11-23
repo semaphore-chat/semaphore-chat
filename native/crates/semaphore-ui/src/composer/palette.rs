@@ -1,12 +1,12 @@
-//! The web client's colours and the icons the composer draws. Local until U8's theme lands: its
-//! `Palette::dark` becomes a read from the theme and nothing else changes.
+//! The composer's colours, read from the theme ([`Sem`]), and the icons it draws.
 
+use crate::theme::Sem;
 use gpui_kit::*;
-use semaphore_design::{Accent, Icon, Intensity, Mode, Rgba as Token, tokens};
+use semaphore_design::Icon;
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
-pub const BODY_FONT: &str = "Roboto";
+pub const BODY_FONT: &str = crate::theme::FONT_FAMILY;
 
 /// MUI's outlined small field: 16 px on a 23 px line, padded to 40 px for one line.
 pub const FIELD_TEXT: f32 = 16.;
@@ -35,6 +35,8 @@ pub struct Palette {
     pub icon_disabled: Hsla,
     pub primary: Hsla,
     pub primary_hover: Hsla,
+    /// Accent-coloured text: the `accentText` role.
+    pub link: Hsla,
     pub warning: Hsla,
     pub success: Hsla,
     pub error: Hsla,
@@ -42,45 +44,36 @@ pub struct Palette {
     pub avatar_bg: Hsla,
 }
 
-fn hsla(token: Token) -> Hsla {
-    rgba(token.0).into()
-}
-
 pub fn with_alpha(color: Hsla, a: f32) -> Hsla {
     Hsla { a, ..color }
 }
 
 impl Palette {
-    /// `generateTheme('dark', 'teal', 'minimal')`, the web's defaults.
+    /// The default theme's colours, for a composer drawn before it reads the theme.
     pub fn dark() -> Self {
-        Self::for_theme(crate::theme::ThemeChoice::new(
-            Mode::Dark,
-            Accent::Teal,
-            Intensity::Minimal,
-        ))
+        Self::from_sem(&Sem::default())
     }
 
-    /// `generateTheme(mode, accent, intensity)`.
-    pub fn for_theme(choice: crate::theme::ThemeChoice) -> Self {
-        let t = tokens(choice.mode, choice.accent, choice.intensity);
-        let primary = hsla(t.primary_main);
+    /// The theme's colours, under the names the composer was written against.
+    pub fn from_sem(sem: &Sem) -> Self {
         Self {
-            background: hsla(t.background_default),
-            paper: hsla(t.background_paper),
-            paper_border: with_alpha(primary, 0.08),
-            text: hsla(t.text_primary),
-            text_secondary: hsla(t.text_secondary),
-            divider: hsla(t.divider),
-            hover: hsla(t.action_hover),
-            selected: hsla(t.action_selected),
-            icon: hsla(t.action_active),
-            icon_disabled: hsla(t.action_disabled),
-            primary,
-            primary_hover: with_alpha(primary, 0.1),
-            warning: hsla(t.warning_main),
-            success: hsla(t.success_main),
-            error: hsla(t.error_main),
-            avatar_bg: hsla(t.grey_600),
+            background: sem.background_default,
+            paper: sem.paper,
+            paper_border: sem.paper_border,
+            text: sem.text_primary,
+            text_secondary: sem.text_secondary,
+            divider: sem.divider,
+            hover: sem.action_hover,
+            selected: sem.action_selected,
+            icon: sem.action_active,
+            icon_disabled: sem.action_disabled,
+            primary: sem.primary,
+            primary_hover: sem.icon_button_hover,
+            link: sem.link,
+            warning: sem.warning,
+            success: sem.success,
+            error: sem.error,
+            avatar_bg: crate::theme::color::hsla_of(sem.palette.grey_600),
         }
     }
 }

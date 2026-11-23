@@ -9,6 +9,7 @@ use super::model::{
 };
 use super::soundboard::SoundboardBar;
 use super::theme::{self, alpha};
+use crate::kit::ToastAnchor;
 use gpui_kit::*;
 use semaphore_core::model::ParticipantView;
 use semaphore_core::model::VoiceStatus;
@@ -96,6 +97,12 @@ impl VoiceStage {
             self.soundboard = soundboard;
             cx.notify();
         }
+    }
+
+    /// Something else (the call surface) asked core for other pictures: ask again for the stage's
+    /// the next time it draws, even if they're the same as before.
+    pub fn forget_demands(&mut self) {
+        *self.last_demands.borrow_mut() = None;
     }
 
     pub fn frames(&self) -> &Arc<VideoFrames> {
@@ -770,11 +777,14 @@ impl Render for VoiceStage {
             .flex_col()
             .bg(theme::page())
             .child(
+                // Toasts sit at the foot of the tiles, above the bar (its Capture and Leave).
                 div()
+                    .relative()
                     .flex_1()
                     .min_h_0()
                     .p(px(if narrow { 4. } else { 8. }))
-                    .child(body),
+                    .child(body)
+                    .child(ToastAnchor::new()),
             )
             .children(in_call.then(|| {
                 voice_bar(

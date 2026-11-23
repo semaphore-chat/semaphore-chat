@@ -1,9 +1,14 @@
 name: Native Android
 
-# D1's debug APK: native/scripts/android.sh builds the Android image (JDK, SDK, NDK, Gradle,
-# cargo-ndk and uniffi-bindgen), builds semaphore-ffi for aarch64-linux-android, generates the
-# Kotlin bindings and runs ./gradlew assembleDebug. Artifact only: this workflow creates no
-# release, pushes no tag and publishes nothing.
+# The debug APK: native/scripts/android.sh builds the Android image (JDK, SDK, NDK, Gradle,
+# cargo-ndk and uniffi-bindgen), builds semaphore-mobile for aarch64-linux-android, generates the
+# Kotlin bindings, checks the library exports what they call, runs the JVM test of the bindings
+# against semaphore-fake-server and runs ./gradlew assembleDebug. Artifact only: this workflow
+# creates no release, pushes no tag and publishes nothing.
+#
+# A second job runs the instrumented test on an x86_64 emulator
+# (native/scripts/android-device-test.sh). It has been run on this host's Docker and /dev/kvm, but
+# not on a GitHub runner: the first CI run is what proves the KVM rule below on that image.
 #
 # Like the other native-*.yml workflows there is no actions/cache step: the pinned image and the
 # Gradle and cargo caches are Docker volumes inside the run, and only the APK leaves it.
@@ -11,6 +16,10 @@ on:
   pull_request:
     paths:
       - 'native/**'
+      # The kit's fonts and the palette vectors its stories render with.
+      - 'design/fonts/**'
+      - 'design/vectors/**'
+      - 'design/tokens.json'
       - '.github/workflows/native-android.yml'
   workflow_dispatch:
 
@@ -42,4 +51,47 @@ jobs:
           name: semaphore-android-debug
           path: native/android/out/semaphore-android-debug.apk
           if-no-files-found: error
+          retention-days: 14
+
+  # The instrumented test on the x86_64 emulator: NativeLib's TLS initialisation,
+  # KeystoreSecretStore against the Android Keystore, and the core signing in, hearing a live
+  # message and restoring its session against semaphore-fake-server, all on the device.
+  # native/scripts/android-device-test.sh builds the emulator image, boots the emulator headless in
+  # a container and runs ./gradlew connectedDebugAndroidTest.
+  #
+  # KVM: GitHub's Linux runners do expose /dev/kvm, but only to root until the udev rule below
+  # widens the device node's mode. The rule is the one ReactiveCircus/android-emulator-runner's
+  # README documents for hardware-accelerated emulators on Linux runners; without it the emulator
+  # falls back to software emulation and the boot times out.
+  device-test:
+    name: Instrumented test on the x86_64 emulator
+    runs-on: ubuntu-latest
+    # The emulator image (a ~350 MB emulator and a ~1 GB system image) dominates the first run;
+    # the emulator build and boot come on top of the APK's build.
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Make /dev/kvm usable
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: Run the instrumented test
+        run: scripts/android-device-test.sh
+      # The per-test results and the device's logcat, when something fails.
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: semaphore-android-device-test-results
+          path: |
+            native/android/app/build/outputs/androidTest-results
+            native/android/app/build/reports/androidTests
+          if-no-files-found: ignore
           retention-days: 14

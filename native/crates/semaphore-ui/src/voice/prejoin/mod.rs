@@ -172,8 +172,8 @@ impl PreJoinPanel {
                 .gap(spacing(1.))
                 .child(
                     Button::new("voice-prejoin-listen", "Join to listen")
-                        .contained()
-                        .size(ButtonSize::Large)
+                        .primary()
+                        .size(ButtonSize::Lg)
                         .start_icon(IconName::Headphones)
                         .on_click(self.emit_join(true, cx)),
                 )
@@ -192,15 +192,15 @@ impl PreJoinPanel {
                 .gap(spacing(1.5))
                 .child(
                     Button::new("voice-prejoin-join", "Join voice")
-                        .contained()
-                        .size(ButtonSize::Large)
+                        .primary()
+                        .size(ButtonSize::Lg)
                         .start_icon(IconName::Mic)
                         .on_click(self.emit_join(false, cx)),
                 )
                 .child(
                     Button::new("voice-prejoin-join-muted", "Join muted")
-                        .outlined()
-                        .size(ButtonSize::Large)
+                        .soft()
+                        .size(ButtonSize::Lg)
                         .start_icon(IconName::MicOff)
                         .on_click(self.emit_join(true, cx)),
                 )
@@ -221,7 +221,11 @@ impl PreJoinPanel {
             .gap(spacing(1.));
         match count_label(&self.view) {
             None => line
-                .child(Skeleton::rect("voice-prejoin-count-loading", px(140.), 20.))
+                .child(Skeleton::sized(
+                    "voice-prejoin-count-loading",
+                    px(140.),
+                    20.,
+                ))
                 .into_any_element(),
             Some(label) => line
                 .child(text(Variant::Body1, label).text_color(sem.text_secondary))
@@ -230,8 +234,8 @@ impl PreJoinPanel {
                     |line| {
                         line.child(
                             Button::new("voice-prejoin-retry", "Try again")
-                                .outlined()
-                                .size(ButtonSize::Small)
+                                .soft()
+                                .size(ButtonSize::Sm)
                                 .start_icon(IconName::Refresh)
                                 .on_click(cx.listener(|_, _: &ClickEvent, _, cx| {
                                     cx.emit(PreJoinEvent::Retry)

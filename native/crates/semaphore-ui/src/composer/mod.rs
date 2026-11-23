@@ -26,6 +26,8 @@ mod view;
 
 #[cfg(feature = "stories")]
 mod stories;
+#[cfg(feature = "stories")]
+pub(crate) use stories::story_composer;
 #[cfg(test)]
 mod tests;
 

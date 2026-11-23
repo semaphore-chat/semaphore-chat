@@ -79,7 +79,7 @@
 //! `frames N`, `device ID|default` and `released` (no test runs and every fake camera closed),
 //! `engine vad N`, `soundboard playing ID|none`,
 //! `livekit track ROOM IDENTITY NAME` (LiveKit's server lists it), `livekit participant ROOM
-//! IDENTITY present|gone` (LiveKit's server lists them in the room at all), `float shown|hidden`, `saved NAME` (a download reached the
+//! IDENTITY present|gone` (LiveKit's server lists them in the room at all), `surface shown|hidden`, `watching N`, `saved NAME` (a download reached the
 //! run's `saved/NAME`). `save-as NAME` answers the next save dialog with `saved/NAME`. The step
 //! `mic tone on|off` makes the virtual mic play a tone; `clock hold|run` stops the scenario clock
 //! counting real time (only `tick` moves it), and starts it again. `tick N` also moves
@@ -155,8 +155,8 @@ const DEFAULT_WITHIN: Duration = Duration::from_secs(15);
 /// The longest a wait sits without news before looking again. Something always moves within this
 /// while work is in flight; it bounds a look at a condition nothing will announce.
 const LOOK_EVERY: Duration = Duration::from_millis(100);
-/// The shell's connection banner: the "Reconnecting…" or "You're offline" pill, drawn exactly
-/// while core's connection is `Disconnected` or `Offline` (`Shell::connection_banner`). A static
+/// The shell's connection banner: the "Reconnecting" or "You're offline" notice in the frame's
+/// banner row, drawn exactly while core's connection is `Disconnected` or `Offline` (`Shell::banners`). A static
 /// shot waits for it to go, so a transient reconnect cannot reach a compared shot.
 const CONNECTION_BANNER: &str = "connection-banner";
 
@@ -339,6 +339,8 @@ enum Condition {
     Reaction(String, String, u32),
     ThreadRows(usize),
     ThreadSent(String),
+    /// A thread reply containing this text is shown failed.
+    ThreadFailed(String),
     Subscribed(bool),
     UnreadAfter(String),
     Notice(String),
@@ -360,6 +362,8 @@ enum Condition {
     Dms(usize),
     /// An element with this id is drawn (`element ID`), or isn't (`no-element ID`).
     Element(String, bool),
+    /// `above A B`: both are drawn, and A's bottom edge is at or above B's top edge.
+    Above(String, String),
     /// W3's.
     Route(String),
     Theme(String),
@@ -456,8 +460,12 @@ enum W4 {
         identity: String,
         present: bool,
     },
-    /// `float shown|hidden`: the float card over the middle column.
-    Float(bool),
+    /// `surface shown|hidden`: the call surface in the frame's call slot (B11).
+    Surface(bool),
+    /// `watching N`: how many tracks the call surface shows (Watch).
+    Watching(usize),
+    /// `surface-frames`: every watched track has a frame to show, and frames came in since Watch.
+    SurfaceFrames,
     /// `saved NAME`: a download reached `<data dir>/saved/NAME`, not empty.
     Saved(String),
 }
@@ -512,6 +520,9 @@ enum RowGesture {
 
 #[derive(Debug, Clone, PartialEq)]
 enum Step {
+    /// `toast WORD`: a toast through the window's queue, as any screen shows one (B11: where it
+    /// sits, not who raised it). `toast off` dismisses it.
+    Toast(String),
     Shot(script::Step),
     /// `shot NAME while-away`: taken as the window is, even with the connection banner up.
     ShotWhileAway(script::Step),
@@ -705,6 +716,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
         }
         ["thread-rows", ">=", count] => Condition::ThreadRows(number(count)?),
         ["thread-sent", text] => Condition::ThreadSent((*text).into()),
+        ["thread-failed", text] => Condition::ThreadFailed((*text).into()),
         ["subscribed", "yes"] => Condition::Subscribed(true),
         ["subscribed", "no"] => Condition::Subscribed(false),
         ["unread-after", text] => Condition::UnreadAfter((*text).into()),
@@ -716,6 +728,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["search-hits", ">=", count] => Condition::SearchHits(number(count)?),
         ["element", id] => Condition::Element((*id).into(), true),
         ["no-element", id] => Condition::Element((*id).into(), false),
+        ["above", upper, lower] => Condition::Above((*upper).into(), (*lower).into()),
         ["dm", id] => Condition::Dm((*id).into()),
         ["notified", tag] => Condition::Notified((*tag).into()),
         ["withdrawn", tag] => Condition::Withdrawn((*tag).into()),
@@ -821,7 +834,11 @@ fn condition(words: &[&str]) -> Result<Condition> {
             identity: (*identity).into(),
             present: *state == "present",
         }),
-        ["float", state @ ("shown" | "hidden")] => Condition::W4(W4::Float(*state == "shown")),
+        ["surface", state @ ("shown" | "hidden")] => Condition::W4(W4::Surface(*state == "shown")),
+        ["surface-frames"] => Condition::W4(W4::SurfaceFrames),
+        ["watching", count] => Condition::W4(W4::Watching(
+            count.parse().map_err(|_| anyhow!("watching N"))?,
+        )),
         ["saved", name] => Condition::W4(W4::Saved((*name).into())),
         ["dialog", name, state @ ("open" | "closed")] => {
             dialog_element(name)?;
@@ -943,6 +960,7 @@ fn parse(source: &str) -> Result<Vec<Step>> {
                     .map_err(|_| at(anyhow!("share-volume percent")))?,
             },
             ["save-as", name] => Step::SaveAs((*name).into()),
+            ["toast", text] => Step::Toast((*text).into()),
             ["clock", state @ ("hold" | "run")] => Step::ClockHold(*state == "hold"),
             ["core", "revoke-other-sessions"] => Step::RevokeOtherSessions,
             ["pick-file", path] => Step::PickFile(PathBuf::from(path)),
@@ -1595,16 +1613,35 @@ impl Rig {
                 .load(std::sync::atomic::Ordering::Relaxed)
                 == *on);
         }
-        if let W4::Float(shown) = condition {
+        if let W4::Surface(shown) = condition {
             let found = self.driver.query(|window| {
                 window
-                    .try_find(ElementId::Name("float-card".into()))
+                    .try_find(ElementId::Name("call-surface".into()))
                     .is_some()
-                    || window
-                        .try_find(ElementId::Name("float-pill".into()))
-                        .is_some()
             })?;
             return Ok(found == *shown);
+        }
+        if let W4::SurfaceFrames = condition {
+            let app = self.app()?.clone();
+            return Ok(self.driver.cx.update(|cx| {
+                let root = app.read(cx);
+                let watched = root.watched_tracks();
+                root.stage().is_some_and(|stage| {
+                    let frames = stage.read(cx).frames().clone();
+                    // Frames that came in since Watch: the track is received again.
+                    !watched.is_empty()
+                        && watched.iter().all(|sid| frames.has_frame(sid))
+                        && frames.generation() >= root.watch_generation() + 10
+                })
+            }));
+        }
+        if let W4::Watching(count) = condition {
+            let app = self.app()?.clone();
+            let watched = self
+                .driver
+                .cx
+                .update(|cx| app.read(cx).watched_tracks().len());
+            return Ok(watched == *count);
         }
         let app = self.app()?.clone();
         // Every fake camera the rig started has let go, for `camera-test released`.
@@ -1686,7 +1723,9 @@ impl Rig {
                 | W4::LiveKitTrack { .. }
                 | W4::LiveKitParticipant { .. }
                 | W4::KeepAwake(_)
-                | W4::Float(_)
+                | W4::Surface(_)
+                | W4::Watching(_)
+                | W4::SurfaceFrames
                 | W4::Saved(_) => {
                     unreachable!("answered above")
                 }
@@ -1868,6 +1907,18 @@ impl Rig {
             let showing = self.driver.cx.update(|cx| app.read(cx).viewer_open());
             return Ok(showing == *open);
         }
+        if let Condition::Above(upper, lower) = condition {
+            let (upper, lower) = (
+                ElementId::Name(upper.clone().into()),
+                ElementId::Name(lower.clone().into()),
+            );
+            let edges = self.driver.query(|window| {
+                let upper = window.try_find(upper)?.bounds();
+                let lower = window.try_find(lower)?.bounds();
+                Some((upper.bottom(), lower.origin.y))
+            })?;
+            return Ok(edges.is_some_and(|(bottom, top)| bottom <= top));
+        }
         if let Condition::Element(id, drawn) = condition {
             let id = ElementId::Name(id.clone().into());
             let found = self.driver.query(|window| window.try_find(id).is_some())?;
@@ -1971,6 +2022,7 @@ impl Rig {
             | Condition::Reaction(..)
             | Condition::ThreadRows(_)
             | Condition::ThreadSent(_)
+            | Condition::ThreadFailed(_)
             | Condition::Subscribed(_)
             | Condition::UnreadAfter(_)
             | Condition::Notice(_)
@@ -1990,6 +2042,7 @@ impl Rig {
             | Condition::Friend(_)
             | Condition::Dms(_)
             | Condition::Element(..)
+            | Condition::Above(..)
             | Condition::Route(_)
             | Condition::Theme(_)
             | Condition::Engine(..)
@@ -2099,6 +2152,10 @@ impl Rig {
                         .any(|r| r.emoji == *emoji && r.count == *count && r.me)
                 }),
                 Condition::ThreadRows(count) => pane.thread_rows().len() >= *count,
+                Condition::ThreadFailed(text) => pane.thread_rows().iter().any(|row| {
+                    row.display.contains(text.as_str())
+                        && matches!(row.send_state, SendState::Failed { .. })
+                }),
                 Condition::ThreadSent(text) => pane.thread_rows().iter().any(|row| {
                     row.display.contains(text.as_str())
                         && row.id.is_some()
@@ -2189,7 +2246,10 @@ impl Rig {
                 }),
                 Condition::Theme(name) => cx
                     .try_global::<semaphore_ui::theme::Sem>()
-                    .is_some_and(|sem| sem.choice.name() == *name),
+                    // A name in either form: `dark-minimal-0d9488`, or the old `dark-teal-minimal`.
+                    .is_some_and(|sem| {
+                        semaphore_ui::theme::ThemeInput::parse(name) == Some(sem.input)
+                    }),
                 Condition::Engine(key, value) => {
                     let Some(voice) = root.app_voice() else {
                         return Some(false);
@@ -2247,6 +2307,7 @@ fn w1_condition(condition: &Condition) -> bool {
             | Condition::Reaction(..)
             | Condition::ThreadRows(_)
             | Condition::ThreadSent(_)
+            | Condition::ThreadFailed(_)
             | Condition::Subscribed(_)
             | Condition::UnreadAfter(_)
             | Condition::Notice(_)
@@ -2553,20 +2614,46 @@ impl Rig {
         offset: Option<(f32, f32)>,
     ) -> Result<()> {
         self.driver.settle()?;
-        let (rows, _, _) = self.rows()?;
+        // `thread:name`: a row of the thread pane's replies, not the conversation's.
+        let (name, rows) = match name.strip_prefix("thread:") {
+            Some(name) => {
+                let app = self.app()?.clone();
+                let rows = self.driver.cx.update(|cx| {
+                    app.read(cx)
+                        .pane()
+                        .map(|pane| pane.read(cx).thread_rows().to_vec())
+                        .unwrap_or_default()
+                });
+                (name, rows)
+            }
+            None => (name, self.rows()?.0),
+        };
         let seq = rows
             .iter()
             .rev()
             .find(|row| row.display.contains(text))
             .map(|row| row.seq)
             .ok_or_else(|| anyhow!("no row contains {text:?}"))?;
+        // `parent/child`: a part the kit names under the row's own id (`message/name` is the
+        // author's name in the kit's MessageRow).
+        let (parent, child) = match name.split_once('/') {
+            Some((parent, child)) => (parent, Some(child)),
+            None => (name, None),
+        };
         let id = ElementId::NamedInteger(
-            name.to_owned().into(),
+            parent.to_owned().into(),
             match index {
                 Some(index) => (seq as u64) << 8 | index,
                 None => seq as u64,
             },
         );
+        let id = match child {
+            Some(child) => ElementId::NamedChild(
+                std::sync::Arc::new(id),
+                SharedString::from(child.to_owned()),
+            ),
+            None => id,
+        };
         self.driver.update(|window, cx| match (gesture, offset) {
             (RowGesture::Click, Some((x, y))) => window.click_at(id, point(px(x), px(y)), cx),
             (RowGesture::Click, None) => window.click(id, cx),
@@ -2693,6 +2780,26 @@ impl Rig {
                         self.clock_moves.run(elapsed);
                     }
                     Ok(())
+                }
+                Step::Toast(text) => {
+                    let window = self
+                        .driver
+                        .window
+                        .ok_or_else(|| anyhow!("toast: no window"))?;
+                    let text = text.clone();
+                    self.driver.cx.update(|cx| {
+                        let toasts = semaphore_ui::kit::Toasts::for_window(window);
+                        // `toast off` takes it away again (an inactive window holds a toast).
+                        if text == "off" {
+                            toasts.dismiss("rig-toast", cx);
+                        } else {
+                            toasts.show(
+                                semaphore_ui::kit::ToastRequest::new(text).id("rig-toast"),
+                                cx,
+                            );
+                        }
+                    });
+                    self.driver.settle()
                 }
                 Step::SaveAs(name) => {
                     let directory = self.data_dir.join("saved");

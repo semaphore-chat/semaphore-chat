@@ -41,7 +41,7 @@ impl Render for DesktopAppSettings {
         let view = cx.weak_entity();
         let tray_view = view.clone();
         let tray = section("Window", cx).child(switch_row(
-            Switch::new("desktop-close-to-tray", "Close to tray", state.close_to_tray).on_change(
+            Switch::new("desktop-close-to-tray", "Close to tray", state.close_to_tray).label_hidden().on_change(
                 move |on, _, cx| {
                     tray_view
                         .update(cx, |_, cx| cx.emit(DesktopAppEvent::SetCloseToTray(on)))
@@ -60,7 +60,7 @@ impl Render for DesktopAppSettings {
                     "desktop-open-links",
                     "Open semaphore:// links with this app",
                     state.open_links,
-                )
+                ).label_hidden()
                 .disabled(blocked.is_some())
                 .on_change(move |on, _, cx| {
                     open_links_view
@@ -115,7 +115,7 @@ impl Render for DesktopAppSettings {
                 "desktop-link-preview-images",
                 "Load images from other sites (link previews, GIFs)",
                 state.link_preview_images,
-            )
+            ).label_hidden()
             .on_change(move |on, _, cx| {
                 previews_view
                     .update(cx, |_, cx| cx.emit(DesktopAppEvent::SetLinkPreviewImages(on)))
@@ -146,7 +146,7 @@ impl Render for DesktopAppSettings {
             .child(
                 div().flex().child(
                     Button::new("desktop-change-server", "Change server")
-                        .contained()
+                        .primary()
                         .on_click(
                             cx.listener(|_, _, _, cx| cx.emit(DesktopAppEvent::ChangeServer)),
                         ),
@@ -154,7 +154,7 @@ impl Render for DesktopAppSettings {
             );
         let (severity, summary) = state.update.summary();
         let (icon, tone) = match severity {
-            Severity::Error => (DesignIcon::ErrorOutline, sem.error),
+            Severity::Danger => (DesignIcon::ErrorOutline, sem.error),
             Severity::Warning => (DesignIcon::WarningAmber, sem.warning),
             Severity::Info => (DesignIcon::InfoOutlined, sem.info),
             Severity::Success => (DesignIcon::CheckCircleOutline, sem.success),
@@ -180,8 +180,8 @@ impl Render for DesktopAppSettings {
             .child(
                 div().flex().child(
                     Button::new("desktop-check-updates", "Check for updates")
-                        .outlined()
-                        .size(ButtonSize::Small)
+                        .soft()
+                        .size(ButtonSize::Sm)
                         .start_icon(DesignIcon::Refresh)
                         .disabled(!state.update_enabled || state.update.busy())
                         .on_click(
@@ -215,8 +215,8 @@ impl Render for DesktopAppSettings {
                     .gap(spacing(1.5))
                     .child(
                         Button::new("desktop-open-logs", "Open log folder")
-                            .outlined()
-                            .size(ButtonSize::Small)
+                            .soft()
+                            .size(ButtonSize::Sm)
                             .on_click(
                                 cx.listener(|_, _, _, cx| cx.emit(DesktopAppEvent::OpenLogFolder)),
                             ),

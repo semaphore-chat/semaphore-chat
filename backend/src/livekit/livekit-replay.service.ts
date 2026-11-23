@@ -59,6 +59,48 @@ import { EGRESS_CLIENT } from './providers/egress-client.provider';
 import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
 import { withTimeout } from './livekit-request-timeout.util';
 
+/**
+ * LiveKit egress statuses from which `StopEgress` refuses because the egress
+ * is over (or finishing on its own): stopping it again is a no-op.
+ */
+const ENDED_EGRESS_STATUSES = [
+  'EGRESS_ENDING',
+  'EGRESS_COMPLETE',
+  'EGRESS_FAILED',
+  'EGRESS_ABORTED',
+  'EGRESS_LIMIT_REACHED',
+];
+
+/**
+ * True when a stopEgress failure means the egress is already gone or ended
+ * on the LiveKit side (so stopping is a no-op, not an error). The SDK throws
+ * a `TwirpError` carrying the twirp `code` and LiveKit's message:
+ *
+ * - `not_found` "egress does not exist": unknown or expired egress ID.
+ * - `failed_precondition` "egress with status EGRESS_<X> cannot be stopped"
+ *   (livekit-server `pkg/service/egress.go`): ended when X is ENDING,
+ *   COMPLETE, FAILED, ABORTED or LIMIT_REACHED.
+ *
+ * An egress still STARTING or ACTIVE whose stop failed (LiveKit then returns
+ * the underlying error, e.g. a timeout) is not ended: that stays an error.
+ */
+export function isEgressAlreadyEndedError(error: unknown): boolean {
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? String(error.code)
+      : undefined;
+  const message = getErrorMessage(error).toLowerCase();
+  if (code === 'not_found' || message.includes('egress does not exist')) {
+    return true;
+  }
+  const status = /egress with status (egress_[a-z_]+) cannot be stopped/.exec(
+    message,
+  )?.[1];
+  return (
+    status !== undefined && ENDED_EGRESS_STATUSES.includes(status.toUpperCase())
+  );
+}
+
 @Injectable()
 export class LivekitReplayService
   implements OnApplicationBootstrap, OnModuleDestroy
@@ -209,7 +251,15 @@ export class LivekitReplayService
       this.logger.warn(
         `User ${userId} already has active session ${existingSession.egressId}, stopping it first`,
       );
-      await this.stopReplayBuffer(userId);
+      try {
+        await this.stopReplayBuffer(userId);
+      } catch (error) {
+        // The egress_ended webhook or the reconcile cron closed the row between the lookup
+        // above and the stop's own lookup: there is nothing left to stop.
+        if (!(error instanceof NotFoundException)) {
+          throw error;
+        }
+      }
     }
 
     // Create unique session ID for directory isolation
@@ -498,10 +548,12 @@ export class LivekitReplayService
     } catch (error) {
       const errorMsg = getErrorMessage(error);
       // If the egress is already gone/ended on the LiveKit side, that's
-      // fine - just update the DB. Anything else (network timeout, auth)
-      // is a real failure. Without this tolerance a zombie 'active' row
-      // whose egress already ended would block the next screen-share start.
-      if (this.isEgressAlreadyEndedError(errorMsg)) {
+      // fine - just update the DB. Anything else (network timeout, auth,
+      // an egress still starting) is a real failure. Without this tolerance
+      // a zombie 'active' row whose egress already ended would block the
+      // next screen-share start (the start stops it first) until the
+      // reconcile cron or the egress_ended webhook caught up.
+      if (isEgressAlreadyEndedError(error)) {
         this.logger.warn(
           `Egress ${session.egressId} already stopped on LiveKit side, cleaning up database`,
         );
@@ -556,23 +608,6 @@ export class LivekitReplayService
       egressId: session.egressId,
       status: 'stopped',
     };
-  }
-
-  /**
-   * True when a stopEgress failure means the egress is already gone or
-   * ended on the LiveKit side (so stopping is a no-op, not an error).
-   *
-   * LiveKit server (twirp) error strings, matched case-insensitively and
-   * conservatively:
-   * - 'egress does not exist'  — unknown/expired egress ID
-   * - 'egress is not active'   — egress already completed/aborted
-   */
-  private isEgressAlreadyEndedError(message: string): boolean {
-    const normalized = message.toLowerCase();
-    return (
-      normalized.includes('egress does not exist') ||
-      normalized.includes('egress is not active')
-    );
   }
 
   /**

@@ -83,7 +83,7 @@ fn skeleton(id: &'static str, label: &'static str) -> AnyElement {
                 .items_center()
                 .gap(spacing(2.))
                 .child(Skeleton::circle((id, index * 2), 32.))
-                .child(Skeleton::rect((id, index * 2 + 1), relative(0.6), 14.))
+                .child(Skeleton::sized((id, index * 2 + 1), relative(0.6), 14.))
         }))
         .into_any_element()
 }
@@ -92,7 +92,7 @@ fn skeleton(id: &'static str, label: &'static str) -> AnyElement {
 fn count_chip(label: String, error: bool, cx: &App) -> impl IntoElement + use<> {
     let sem = cx.sem();
     let (bg, fg) = if error {
-        (sem.error, hsla_of(sem.palette.common_white))
+        (sem.error, hsla_of(sem.palette.error_contrast_text))
     } else {
         (sem.primary, sem.primary_contrast)
     };
@@ -187,7 +187,7 @@ pub(crate) fn next_step<V: EventEmitter<HomeEvent>>(
         (
             "Communities hold your channels and voice rooms. Create one and invite people to it.",
             Button::new("home-create-community", "Create a community")
-                .contained()
+                .primary()
                 .start_icon(DesignIcon::Add)
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(HomeEvent::CreateCommunity))),
         )
@@ -195,7 +195,7 @@ pub(crate) fn next_step<V: EventEmitter<HomeEvent>>(
         (
             "Ask an admin of this server to add you to a community. You can still send direct messages in the meantime.",
             Button::new("home-message-someone", "Message someone")
-                .outlined()
+                .soft()
                 .start_icon(DesignIcon::Chat)
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(HomeEvent::OpenDms))),
         )
@@ -252,7 +252,8 @@ impl HomeScreen {
         };
         let action = matches!(self.data.mentions, Section::Ready(_)).then(|| {
             Button::new("home-open-notifications", "Notifications")
-                .size(ButtonSize::Small)
+                .text()
+                .size(ButtonSize::Sm)
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(HomeEvent::OpenNotifications)))
                 .into_any_element()
         });
@@ -308,7 +309,8 @@ impl HomeScreen {
         };
         let action = matches!(self.data.unread_dms, Section::Ready(_)).then(|| {
             Button::new("home-open-dms", "All messages")
-                .size(ButtonSize::Small)
+                .text()
+                .size(ButtonSize::Sm)
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(HomeEvent::OpenDms)))
                 .into_any_element()
         });
@@ -418,7 +420,7 @@ impl HomeScreen {
             icon_face(
                 DesignIcon::VolumeUp,
                 sem.success,
-                hsla_of(sem.palette.common_white),
+                hsla_of(sem.palette.success_contrast_text),
             ),
             channel.channel_name.clone(),
             format!("{} · {names}", channel.community_name),

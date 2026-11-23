@@ -1,14 +1,30 @@
-//! UniFFI exports over `semaphore_core`: the proof that a SwiftUI or Compose app could hold `Core`.
+//! UniFFI exports over `semaphore_core`: the surface a SwiftUI or Compose app holds `Core` through.
 //!
 //! The records and enums are declared with `#[uniffi::remote]`, which repeats each definition and
 //! fails to compile if it stops matching core's. That is the point: a change to the frozen view
 //! models that UniFFI can't express, such as a generic or a lifetime, breaks this crate at once.
 //!
-//! What isn't here: `Backend` and `Realtime`. Their signatures use wire types, and a mobile app has
-//! still to choose between implementing them natively and linking `semaphore-net`, which needs a C
-//! toolchain per target. (`semaphore-net` is linked on Android, but only for the TLS initialiser
-//! below.) So `SemaphoreCore::new` builds a core with no services: state and lifecycle work, and
-//! commands fail with `CoreError::Unavailable`.
+//! What isn't here: `Backend` and `Realtime`. Their signatures use wire types, and the real ones
+//! live in `semaphore-net`, which compiles C (ring) for every target. So this crate stays
+//! core-only: `SemaphoreCore::new` builds a core with no services (state and lifecycle work,
+//! commands fail with `CoreError::Unavailable`), and a host crate that links `semaphore-net`
+//! (`semaphore-mobile`) builds a networked core and hands it over with
+//! [`SemaphoreCore::with_runtime`].
+//!
+//! # Where the work runs
+//!
+//! A networked core needs a Tokio runtime: reqwest and the socket spawn onto, and register their
+//! I/O with, whatever runtime they run in. A foreign caller has none, so every export goes through
+//! one of two helpers, and nothing else touches the core:
+//!
+//! - [`SemaphoreCore::run`] (async exports) spawns the command onto the host's runtime and awaits
+//!   its result. Dropping the awaiting future, as a cancelled Kotlin coroutine or Swift task does,
+//!   leaves the command running to the end. A command cut in half could leave a sign-in stuck
+//!   half way, or drop a rotated refresh token before it is stored.
+//! - [`SemaphoreCore::sync`] (sync exports) runs on the caller's thread inside the runtime's
+//!   context, because `resume` and `network_changed` reach the socket, which spawns.
+//!
+//! Without a runtime (a core from `new`) both run the call in place, as before.
 
 use semaphore_core::cache::QueryKey;
 use semaphore_core::model::{
@@ -19,46 +35,16 @@ use semaphore_core::model::{
     MessageDraft, MessageLink, MessageRow, ParticipantView, PinnedList, PinnedRow, RailCounts,
     ReactionUsers, ReactionView, ReplyToView, ScreenShareRequest, SearchHit, SearchScope, SegKind,
     SendState, SessionState, ShareResolution, TextSeg, TextStyle, ThreadInfo, UnreadMarker,
-    UploadView, UserView, VideoDemand, VideoTrackView, ViewKey, VoiceStatus, VoiceView,
-    WebhookView,
+    UploadView, UserView, VideoDemand, VideoTrackView, ViewKey, VoiceEnded, VoiceJoinOptions,
+    VoiceStatus, VoiceView, WebhookView,
 };
-use semaphore_core::model::{ChannelPreset, RemovalCause};
+use semaphore_core::model::{ChannelPreset, RemovalCause, RestoreOutcome};
 use semaphore_core::model::{ReplayState, ShareTracks, SoundCue, VoiceRoom};
 use semaphore_core::platform::{Clock, EventSink};
 use semaphore_core::{ConnectionState, Core, CoreError, CoreEvent, NetworkState, ResyncPlan};
 use std::sync::Arc;
 
 uniffi::setup_scaffolding!("semaphore");
-
-/// The Android app's entry point into rustls-platform-verifier.
-///
-/// `libsemaphore_ffi.so` is the one native library the app loads, so the JNI method the app calls
-/// at startup lives here. It does nothing on other targets: a desktop build of this crate stays
-/// core-only.
-#[cfg(target_os = "android")]
-mod android {
-    use jni::EnvUnowned;
-    use jni::errors::ThrowRuntimeExAndDefault;
-    use jni::objects::JObject;
-
-    /// `SemaphoreApp.initSemaphoreNative(applicationContext)`: gives rustls-platform-verifier the
-    /// JVM and the application `Context` it needs to read the system trust store. Call it before
-    /// anything builds a TLS client; calling it again does nothing.
-    ///
-    /// A JNI failure throws a `RuntimeException` into Kotlin rather than aborting.
-    #[unsafe(no_mangle)]
-    pub extern "system" fn Java_app_semaphorechat_android_SemaphoreApp_initSemaphoreNative<
-        'caller,
-    >(
-        mut unowned_env: EnvUnowned<'caller>,
-        _this: JObject<'caller>,
-        context: JObject<'caller>,
-    ) {
-        unowned_env
-            .with_env(|env| semaphore_net::init_android(env, context))
-            .resolve::<ThrowRuntimeExAndDefault>();
-    }
-}
 
 // W1: each part exports its commands in an `#[uniffi::export] impl SemaphoreCore` block of its own
 // file. UniFFI takes any number of such blocks for one object.
@@ -67,6 +53,8 @@ mod actions;
 mod admin_w5a;
 mod admin_w5b;
 mod admin_w6;
+mod chat;
+mod design;
 mod dms;
 mod gifs_w7;
 mod notify;
@@ -433,6 +421,16 @@ pub struct VoiceView {
     pub server_muted: bool,
     pub replay: ReplayState,
     pub replay_audio_wait_until_ms: Option<u64>,
+    pub replay_retry_at_ms: Option<u64>,
+    pub ended: Option<VoiceEnded>,
+}
+
+#[uniffi::remote(Record)]
+pub struct VoiceEnded {
+    pub room: VoiceRoom,
+    pub while_reconnecting: bool,
+    pub error: Option<String>,
+    pub options: VoiceJoinOptions,
 }
 
 #[uniffi::remote(Enum)]
@@ -716,6 +714,14 @@ pub enum ConnectionState {
 }
 
 #[uniffi::remote(Enum)]
+pub enum RestoreOutcome {
+    SignedIn,
+    NoSession,
+    Refused,
+    Unreachable { error: ErrorView },
+}
+
+#[uniffi::remote(Enum)]
 pub enum NetworkState {
     Available,
     Unavailable,
@@ -805,6 +811,127 @@ impl Clock for ForeignClock {
 #[derive(uniffi::Object)]
 pub struct SemaphoreCore {
     core: Core,
+    /// The host's runtime, for a networked core. `None` for a core from `new`.
+    runtime: Option<tokio::runtime::Handle>,
+}
+
+/// What an async export returns when its command can't run, because the host's runtime has shut
+/// down. A runtime that shuts down never runs a task it was handed after that.
+pub trait Abandoned {
+    fn abandoned() -> Self;
+}
+
+impl<T> Abandoned for Result<T, CoreError> {
+    fn abandoned() -> Self {
+        Err(CoreError::Unavailable {
+            what: "the core has shut down".to_owned(),
+        })
+    }
+}
+
+impl Abandoned for () {
+    fn abandoned() -> Self {}
+}
+
+impl<T> Abandoned for Option<T> {
+    fn abandoned() -> Self {
+        None
+    }
+}
+
+/// The views some async exports return: what each shows with nothing loaded.
+macro_rules! abandoned_by_default {
+    ($($view:ty),* $(,)?) => {
+        $(impl Abandoned for $view {
+            fn abandoned() -> Self {
+                <$view>::default()
+            }
+        })*
+    };
+}
+
+abandoned_by_default!(
+    semaphore_core::model::RoleMembersView,
+    semaphore_core::model::NotificationSettingsView,
+    semaphore_core::model::InvitePreviewView,
+    semaphore_core::model::InstanceRoleUsersView,
+    semaphore_core::model::InstanceRolesView,
+    semaphore_core::model::InstancePermissionsView,
+    semaphore_core::model::ClipsView,
+    semaphore_core::model::AliasGroupsView,
+    semaphore_core::model::AdminUserView,
+    semaphore_core::model::AdminInvitesView,
+    semaphore_core::model::AdminCommunityView,
+    semaphore_core::model::AdminCommunitiesView,
+);
+
+impl SemaphoreCore {
+    /// A networked core for a host that links the transports (`semaphore-mobile`). Spawns core's
+    /// driver on `runtime` at once, so the exported `drive` does nothing for this core; and every
+    /// command runs there from now on (see the module docs).
+    ///
+    /// Also runs the retry timer desktop runs next to its driver (`semaphore-app`'s
+    /// `services.rs`): failed queries a view shows come back when their wait is over, re-read or
+    /// not (`semaphore_core::retry`). Both tasks end with the runtime.
+    ///
+    /// Not exported: a foreign caller can't hold a `Core` or a runtime.
+    pub fn with_runtime(core: Core, runtime: tokio::runtime::Handle) -> Arc<Self> {
+        let driver = core.clone();
+        runtime.spawn(async move { driver.drive().await });
+        let retrying = core.clone();
+        runtime.spawn(async move {
+            loop {
+                // Never longer than `MAX_TIMER_MS`, so a failure recorded meanwhile is seen in
+                // time; with nothing failed it only looks.
+                let due_in = retrying
+                    .retry_due_queries()
+                    .unwrap_or(semaphore_core::retry::MAX_TIMER_MS)
+                    .clamp(1, semaphore_core::retry::MAX_TIMER_MS);
+                tokio::time::sleep(std::time::Duration::from_millis(due_in)).await;
+            }
+        });
+        Arc::new(Self {
+            core,
+            runtime: Some(runtime),
+        })
+    }
+
+    /// The core itself, for the host crate's own Rust code.
+    pub fn core(&self) -> &Core {
+        &self.core
+    }
+
+    /// Runs an async command on the host's runtime and waits for it; see the module docs. The
+    /// task outlives the returned future: dropping that only stops waiting.
+    pub(crate) async fn run<F, Fut, R>(&self, command: F) -> R
+    where
+        F: FnOnce(Core) -> Fut,
+        Fut: std::future::Future<Output = R> + Send + 'static,
+        R: Abandoned + Send + 'static,
+    {
+        let core = self.core.clone();
+        match &self.runtime {
+            None => command(core).await,
+            Some(runtime) => {
+                let task = {
+                    // Building the future may itself reach the runtime.
+                    let _entered = runtime.enter();
+                    runtime.spawn(command(core))
+                };
+                match task.await {
+                    Ok(result) => result,
+                    Err(error) if error.is_panic() => std::panic::resume_unwind(error.into_panic()),
+                    Err(_) => R::abandoned(),
+                }
+            }
+        }
+    }
+
+    /// Runs a sync call on the caller's thread, inside the host's runtime when there is one.
+    pub(crate) fn sync<R>(&self, call: impl FnOnce(&Core) -> R) -> R {
+        let _entered = self.runtime.as_ref().map(tokio::runtime::Handle::enter);
+        call(&self.core)
+    }
 }
 
 #[uniffi::export]
@@ -816,84 +943,122 @@ impl SemaphoreCore {
                 Arc::new(ForeignClock(clock)),
                 Arc::new(ListenerSink(listener)),
             ),
+            runtime: None,
         })
     }
 
     pub fn connection(&self) -> ConnectionState {
-        self.core.connection()
+        self.sync(move |core| core.connection())
     }
 
     pub fn suspend(&self) {
-        self.core.suspend();
+        self.sync(move |core| {
+            core.suspend();
+        })
     }
 
     pub fn resume(&self) -> ResyncPlan {
-        self.core.resume()
+        self.sync(move |core| core.resume())
     }
 
     pub fn network_changed(&self, network: NetworkState) -> ResyncPlan {
-        self.core.network_changed(network)
+        self.sync(move |core| core.network_changed(network))
     }
 
     pub fn set_focused(&self, focused: bool) {
-        self.core.set_focused(focused);
+        self.sync(move |core| {
+            core.set_focused(focused);
+        })
     }
 
     pub fn session(&self) -> SessionState {
-        self.core.session()
+        self.sync(move |core| core.session())
     }
 
     pub fn communities(&self) -> Vec<CommunityRow> {
-        self.core.communities()
+        self.sync(move |core| core.communities())
     }
 
     pub fn channels(&self, community_id: String) -> Vec<ChannelRow> {
-        self.core.channels(community_id)
+        self.sync(move |core| core.channels(community_id))
     }
 
     pub fn mention_candidates(&self, community_id: String, query: String) -> Vec<MentionCandidate> {
-        self.core.mention_candidates(community_id, query)
+        self.sync(move |core| core.mention_candidates(community_id, query))
     }
 
     pub fn typing_users(&self, conversation: Conversation) -> Vec<UserView> {
-        self.core.typing_users(conversation)
+        self.sync(move |core| core.typing_users(conversation))
     }
 
     pub fn voice(&self) -> VoiceView {
-        self.core.voice()
+        self.sync(move |core| core.voice())
     }
 
     pub fn members(&self, community_id: String) -> Option<MemberList> {
-        self.core.members(community_id)
+        self.sync(move |core| core.members(community_id))
     }
 
     pub fn rail_counts(&self) -> RailCounts {
-        self.core.rail_counts()
+        self.sync(move |core| core.rail_counts())
+    }
+
+    /// Whether a list has arrived (`Communities`, `Channels`, `Members`), so a UI can tell an
+    /// empty list from one still loading. Anything else reads as `Ready`.
+    pub fn load_state(&self, view: ViewKey) -> LoadState {
+        self.sync(move |core| core.load_state(view))
     }
 
     pub fn custom_emojis(&self, community_id: String) -> Vec<EmojiView> {
-        self.core.custom_emojis(community_id)
+        self.sync(move |core| core.custom_emojis(community_id))
     }
 
     pub fn at_live_edge(&self, conversation: Conversation) -> bool {
-        self.core.at_live_edge(conversation)
+        self.sync(move |core| core.at_live_edge(conversation))
+    }
+
+    /// The conversation left the screen: no longer read as messages arrive, until opened again.
+    pub fn close_conversation(&self, conversation: Conversation) {
+        self.sync(move |core| core.close_conversation(conversation))
+    }
+
+    pub fn at_history_start(&self, conversation: Conversation) -> bool {
+        self.sync(move |core| core.at_history_start(conversation))
     }
 
     pub fn hold_rows(&self, conversation: Conversation, start: i64, end: i64) {
-        self.core.hold_rows(conversation, Some((start, end)));
+        self.sync(move |core| {
+            core.hold_rows(conversation, Some((start, end)));
+        })
     }
 
     pub fn release_rows(&self, conversation: Conversation) {
-        self.core.hold_rows(conversation, None);
+        self.sync(move |core| {
+            core.hold_rows(conversation, None);
+        })
     }
 
     /// Runs background work. An app calls this once, and leaves it running for the core's life.
+    /// A networked core (`semaphore-mobile`'s) already drives itself: this returns at once.
     pub async fn drive(&self) {
-        self.core.drive().await;
+        if self.runtime.is_none() {
+            self.run(|core| async move { core.drive().await }).await;
+        }
     }
 
-    pub fn shutdown(&self) {
-        self.core.shutdown();
+    /// Ends `drive`. A networked core (`semaphore-mobile`'s) belongs to its host, whose own
+    /// `shutdown` stops the driver, the socket and the runtime in order: here it is refused, so
+    /// nothing is left half running.
+    pub fn shutdown(&self) -> Result<(), CoreError> {
+        if self.runtime.is_some() {
+            return Err(CoreError::Unavailable {
+                what: "shutting down a networked core: its host does (MobileHost.shutdown)".into(),
+            });
+        }
+        self.sync(move |core| {
+            core.shutdown();
+        });
+        Ok(())
     }
 
     pub async fn sign_in(
@@ -902,27 +1067,40 @@ impl SemaphoreCore {
         username: String,
         password: String,
     ) -> Result<(), CoreError> {
-        self.core.sign_in(server_url, username, password).await
+        self.run(move |core| async move { core.sign_in(server_url, username, password).await })
+            .await
+    }
+
+    /// Resumes the session stored for `server_url` at an earlier run, with no password. A host
+    /// that remembers the last server (`semaphore-mobile`) calls this at start.
+    pub async fn restore_session(&self, server_url: String) -> Result<RestoreOutcome, CoreError> {
+        self.run(move |core| async move { core.restore_session(server_url).await })
+            .await
     }
 
     pub async fn sign_out(&self) -> Result<(), CoreError> {
-        self.core.sign_out().await
+        self.run(move |core| async move { core.sign_out().await })
+            .await
     }
 
     pub async fn open_conversation(&self, conversation: Conversation) -> Result<(), CoreError> {
-        self.core.open_conversation(conversation).await
+        self.run(move |core| async move { core.open_conversation(conversation).await })
+            .await
     }
 
     pub async fn load_older(&self, conversation: Conversation) -> Result<(), CoreError> {
-        self.core.load_older(conversation).await
+        self.run(move |core| async move { core.load_older(conversation).await })
+            .await
     }
 
     pub async fn load_newer(&self, conversation: Conversation) -> Result<(), CoreError> {
-        self.core.load_newer(conversation).await
+        self.run(move |core| async move { core.load_newer(conversation).await })
+            .await
     }
 
     pub async fn jump_to_present(&self, conversation: Conversation) -> Result<(), CoreError> {
-        self.core.jump_to_present(conversation).await
+        self.run(move |core| async move { core.jump_to_present(conversation).await })
+            .await
     }
 
     pub async fn open_conversation_at(
@@ -930,9 +1108,10 @@ impl SemaphoreCore {
         conversation: Conversation,
         message_id: String,
     ) -> Result<(), CoreError> {
-        self.core
-            .open_conversation_at(conversation, message_id)
-            .await
+        self.run(
+            move |core| async move { core.open_conversation_at(conversation, message_id).await },
+        )
+        .await
     }
 
     pub async fn send_message(
@@ -940,31 +1119,48 @@ impl SemaphoreCore {
         conversation: Conversation,
         draft: MessageDraft,
     ) -> Result<String, CoreError> {
-        self.core.send_message(conversation, draft).await
+        self.run(move |core| async move { core.send_message(conversation, draft).await })
+            .await
+    }
+
+    /// The user started typing here (`started`), or stopped. The app debounces, as the web does.
+    pub async fn send_typing(
+        &self,
+        conversation: Conversation,
+        started: bool,
+    ) -> Result<(), CoreError> {
+        self.run(move |core| async move { core.send_typing(conversation, started).await })
+            .await
     }
 
     pub async fn retry_send(&self, client_nonce: String) -> Result<(), CoreError> {
-        self.core.retry_send(client_nonce).await
+        self.run(move |core| async move { core.retry_send(client_nonce).await })
+            .await
     }
 
     pub async fn discard_failed_send(&self, client_nonce: String) -> Result<(), CoreError> {
-        self.core.discard_failed_send(client_nonce).await
+        self.run(move |core| async move { core.discard_failed_send(client_nonce).await })
+            .await
     }
 
     pub async fn retry_upload(&self, client_nonce: String, index: u32) -> Result<(), CoreError> {
-        self.core.retry_upload(client_nonce, index).await
+        self.run(move |core| async move { core.retry_upload(client_nonce, index).await })
+            .await
     }
 
     pub async fn remove_upload(&self, client_nonce: String, index: u32) -> Result<(), CoreError> {
-        self.core.remove_upload(client_nonce, index).await
+        self.run(move |core| async move { core.remove_upload(client_nonce, index).await })
+            .await
     }
 
     pub async fn file(&self, file_id: String, thumbnail: bool) -> Result<Vec<u8>, CoreError> {
-        self.core.file(file_id, thumbnail).await
+        self.run(move |core| async move { core.file(file_id, thumbnail).await })
+            .await
     }
 
     pub async fn join_voice(&self, channel_id: String) -> Result<(), CoreError> {
-        self.core.join_voice(channel_id).await
+        self.run(move |core| async move { core.join_voice(channel_id).await })
+            .await
     }
 
     pub async fn join_voice_with(
@@ -972,7 +1168,8 @@ impl SemaphoreCore {
         channel_id: String,
         options: semaphore_core::model::VoiceJoinOptions,
     ) -> Result<(), CoreError> {
-        self.core.join_voice_with(channel_id, options).await
+        self.run(move |core| async move { core.join_voice_with(channel_id, options).await })
+            .await
     }
 
     pub fn voice_prejoin(
@@ -980,47 +1177,61 @@ impl SemaphoreCore {
         community_id: String,
         channel_id: String,
     ) -> semaphore_core::model::VoicePreJoinView {
-        self.core.voice_prejoin(community_id, channel_id)
+        self.sync(move |core| core.voice_prejoin(community_id, channel_id))
     }
 
     pub async fn leave_voice(&self) -> Result<(), CoreError> {
-        self.core.leave_voice().await
+        self.run(move |core| async move { core.leave_voice().await })
+            .await
     }
 
     pub fn set_video_demands(&self, demands: Vec<VideoDemand>) {
-        self.core.set_video_demands(demands);
+        self.sync(move |core| {
+            core.set_video_demands(demands);
+        })
     }
 
     pub fn ingest_media(&self, call: u64, media: VoiceView) {
-        self.core.ingest_media(call, media);
+        self.sync(move |core| {
+            core.ingest_media(call, media);
+        })
     }
 
     pub async fn voice_token(&self) -> Result<String, CoreError> {
-        self.core.voice_token().await
+        self.run(move |core| async move { core.voice_token().await })
+            .await
     }
 
     pub async fn refresh_voice_presence(&self) {
-        self.core.refresh_voice_presence().await;
+        self.run(move |core| async move {
+            core.refresh_voice_presence().await;
+        })
+        .await
     }
 
     pub async fn set_muted(&self, muted: bool) -> Result<(), CoreError> {
-        self.core.set_muted(muted).await
+        self.run(move |core| async move { core.set_muted(muted).await })
+            .await
     }
 
     pub async fn set_deafened(&self, deafened: bool) -> Result<(), CoreError> {
-        self.core.set_deafened(deafened).await
+        self.run(move |core| async move { core.set_deafened(deafened).await })
+            .await
     }
 
     pub async fn set_camera(&self, on: bool) -> Result<(), CoreError> {
-        self.core.set_camera(on).await
+        self.run(move |core| async move { core.set_camera(on).await })
+            .await
     }
 
     pub async fn start_screen_share(&self, request: ScreenShareRequest) -> Result<(), CoreError> {
-        self.core.start_screen_share(request).await
+        self.run(move |core| async move { core.start_screen_share(request).await })
+            .await
     }
 
     pub async fn stop_screen_share(&self) -> Result<(), CoreError> {
-        self.core.stop_screen_share().await
+        self.run(move |core| async move { core.stop_screen_share().await })
+            .await
     }
 }
 
@@ -1042,6 +1253,61 @@ mod tests {
         fn on_event(&self, event: CoreEvent) {
             self.0.lock().unwrap().push(event);
         }
+    }
+
+    /// Every export goes through `run` or `sync`, so a networked core's commands run on its
+    /// runtime: a direct `self.core.x()` would work in these tests (no runtime needed without
+    /// services) and panic or race in the app. A source check, because no test of a service-less
+    /// core can tell the difference.
+    #[test]
+    fn every_export_goes_through_run_or_sync() {
+        let parts = [
+            ("lib.rs", include_str!("lib.rs")),
+            ("account.rs", include_str!("account.rs")),
+            ("actions.rs", include_str!("actions.rs")),
+            ("chat.rs", include_str!("chat.rs")),
+            ("admin_w5a.rs", include_str!("admin_w5a.rs")),
+            ("admin_w5b.rs", include_str!("admin_w5b.rs")),
+            ("admin_w6.rs", include_str!("admin_w6.rs")),
+            ("design.rs", include_str!("design.rs")),
+            ("dms.rs", include_str!("dms.rs")),
+            ("gifs_w7.rs", include_str!("gifs_w7.rs")),
+            ("notify.rs", include_str!("notify.rs")),
+            ("onboarding.rs", include_str!("onboarding.rs")),
+            ("profile.rs", include_str!("profile.rs")),
+            ("reading.rs", include_str!("reading.rs")),
+            ("social.rs", include_str!("social.rs")),
+            ("voice_w4.rs", include_str!("voice_w4.rs")),
+        ];
+        let listed = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/src"))
+            .unwrap()
+            .count();
+        assert_eq!(listed, parts.len(), "a new part file must be listed here");
+        let needle = ["self", ".core"].concat();
+        // Split, so this file's own test doesn't match itself.
+        let export = ["#[uniffi", "::export"].concat();
+        let (mut asyncs, mut runs, mut syncs) = (0, 0, 0);
+        for (name, source) in parts {
+            // The tests below this line build cores of their own. Each file keeps them at its end,
+            // so nothing exported is cut off with them.
+            let (source, tests) = source.split_once("#[cfg(test)]").unwrap_or((source, ""));
+            assert!(
+                !tests.contains(export.as_str()),
+                "{name}: an export after the test module is never checked; keep the tests last"
+            );
+            let direct = source.matches(needle.as_str()).count();
+            // lib.rs: `run`'s clone, `sync`'s call and the `core()` accessor, all outside the
+            // exported blocks.
+            let allowed = if name == "lib.rs" { 3 } else { 0 };
+            assert_eq!(direct, allowed, "{name} reaches the core directly");
+            asyncs += source.matches("pub async fn ").count();
+            runs += source.matches("self.run(").count();
+            syncs += source.matches("self.sync(").count();
+        }
+        assert_eq!(asyncs, runs, "every async export awaits `self.run`");
+        // Exact, so an export the check stops seeing fails here: change these with the exports.
+        assert_eq!(asyncs, 134, "async exports found");
+        assert_eq!(syncs, 102, "sync exports found");
     }
 
     #[test]

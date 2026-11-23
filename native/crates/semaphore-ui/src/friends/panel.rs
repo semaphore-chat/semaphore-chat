@@ -411,8 +411,8 @@ impl Render for FriendsPanel {
             })
             .child(
                 Button::new("friends-add", "Add Friend")
-                    .contained()
-                    .size(ButtonSize::Small)
+                    .primary()
+                    .size(ButtonSize::Sm)
                     .start_icon(DesignIcon::PersonAdd)
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(FriendsEvent::AddFriend))),
             );
@@ -460,7 +460,7 @@ impl Render for FriendsPanel {
                             .items_center()
                             .gap(spacing(2.))
                             .child(Skeleton::circle(("friend-loading-face", index), 40.))
-                            .child(Skeleton::rect(
+                            .child(Skeleton::sized(
                                 ("friend-loading-name", index),
                                 relative(0.6),
                                 14.,

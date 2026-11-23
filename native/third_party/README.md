@@ -9,7 +9,7 @@
 | `patches/gpui-pre.patch` | `VideoSurfaceId`, `Nv12Frame`, `VideoUploader`, `Window::video_uploader`, `Window::paint_video_surface`; `image` formats cut to what the app can receive, see below |
 | `patches/gpui-pre-wgpu.patch` | Linux: NV12 textures updated in place, drawn in z-order with rounded corners; device-lost handling; images (polychrome sprites) filtered from tile-local coordinates; emoji to the colour emoji font, see below |
 | `patches/gpui-pre-windows.patch` | Windows: the same over D3D11: a `Surface` shader, dynamic R8 and R8G8 textures, parked frames flushed before each draw |
-| `patches/gpui-pre-linux.patch` | Ours, not the video agent's: close to tray and activation tokens on X11 and Wayland, see below |
+| `patches/gpui-pre-linux.patch` | Ours, not the video agent's: close to tray and activation tokens on X11 and Wayland, see below; and the window appearance starts dark, and the Settings portal's "no preference" reads as dark, so "Match system" on a desktop without the portal (bare Hyprland or sway) gives the design default rather than light |
 | `patches/webrtc-sys.patch`, `patches/libwebrtc.patch` | Capture options libwebrtc has but doesn't expose (frame rate cap, PipeWire target size, WGC off) and a camera binding over its `VideoCaptureModule`. Each change and why: [PATCHES.md](PATCHES.md) |
 | `patches/webrtc-sys-build.patch` | The libwebrtc prebuilt is checked against a sha256 pinned per target (`PINNED_SHA256`, with the release URL and the date of each pin) before it is extracted; no pin or a different hash fails the build. A new `WEBRTC_TAG` needs new pins |
 | `vendor.sh` | Rebuilds `vendor/` from `series`. `--check` fails if it differs. Needs network |

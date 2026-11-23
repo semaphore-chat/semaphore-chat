@@ -1,10 +1,13 @@
 //! Sign-in, session restore and sign-out, and token refresh.
 
 use super::{REAUTHENTICATE_TIMEOUT_MS, jwt_expiry_ms};
+use crate::ConnectionState;
+use crate::backend::{BackendError, client_codes};
 use crate::cache::{CacheValue, keys};
 use crate::client::{Core, user_view};
 use crate::model::{
-    RegistrationMode, RestoreOutcome, ServerInfo, SessionState, SignOutReason, ViewKey,
+    ProbeOutcome, RegistrationMode, RestoreOutcome, ServerInfo, SessionState, SignOutReason,
+    ViewKey,
 };
 use crate::platform::CoreError;
 use crate::realtime::RealtimeEvent;
@@ -97,7 +100,7 @@ impl Core {
         access_token: &str,
         profile: wire::UserEntity,
     ) {
-        self.write(|state, now| {
+        let suspended = self.write(|state, now| {
             let me = user_view(&profile);
             state.me = Some(me.clone());
             state.session = SessionState::SignedIn { me };
@@ -111,8 +114,15 @@ impl Core {
             state.ensure_query(keys::op(keys::UNREAD));
             state.w2_signed_in();
             state.ensure_query(keys::op(keys::APPEARANCE));
+            // Suspended (the app went to the background while this signed in): the socket waits
+            // for `resume`, as one already open would have, and connects then.
+            let suspended = state.connection == ConnectionState::Suspended;
+            state.connect_on_resume = suspended;
+            suspended
         });
-        services.realtime.connect();
+        if !suspended {
+            services.realtime.connect();
+        }
     }
 
     /// Resumes the session stored for `server_url` at an earlier run, with no password: the
@@ -229,6 +239,26 @@ impl Core {
     /// `ViewKey::Session`. An answer for a session that has ended since, or for a server no longer
     /// in use, is returned but writes and announces nothing.
     pub async fn probe_server(&self, server_url: String) -> Result<ServerInfo, CoreError> {
+        match self.probe(server_url).await? {
+            Ok(info) => Ok(info),
+            Err(error) => Err(failed(error)),
+        }
+    }
+
+    /// [`Self::probe_server`], with the failure said the way a connect screen needs it: nothing
+    /// there, a TLS failure, not a Semaphore server, or the server's own error. `Err` only when
+    /// this core has no backend.
+    pub async fn check_server(&self, server_url: String) -> Result<ProbeOutcome, CoreError> {
+        Ok(match self.probe(server_url).await? {
+            Ok(info) => ProbeOutcome::Ok { info },
+            Err(error) => probe_failure(&error),
+        })
+    }
+
+    async fn probe(
+        &self,
+        server_url: String,
+    ) -> Result<Result<ServerInfo, BackendError>, CoreError> {
         let services = self.services().ok_or_else(|| unavailable("the backend"))?;
         let url = server_url.trim().trim_end_matches('/').to_owned();
         services.backend.set_server_url(url.clone());
@@ -239,8 +269,11 @@ impl Core {
         let settings = services
             .backend
             .instance_controller_get_public_settings()
-            .await
-            .map_err(failed)?;
+            .await;
+        let settings = match settings {
+            Ok(settings) => settings,
+            Err(error) => return Ok(Err(error)),
+        };
         // An instance with no users yet must be set up in a browser: the native app doesn't run
         // the wizard. A server that can't say (an older build without the route, or a failed read)
         // is set up as far as this client can tell, and the settings above still stand.
@@ -277,7 +310,7 @@ impl Core {
                 state.view_changed(ViewKey::Session);
             }
         });
-        Ok(info)
+        Ok(Ok(info))
     }
 
     /// What the last probe of the server in use said, if it has been probed.
@@ -287,5 +320,75 @@ impl Core {
 
     pub fn session(&self) -> SessionState {
         self.read(|state| state.session.clone())
+    }
+}
+
+/// What a failed probe means for the person typing the address.
+pub(crate) fn probe_failure(error: &BackendError) -> ProbeOutcome {
+    let code = error.code.as_str();
+    match (error.status, code.as_ref()) {
+        (0, client_codes::CLIENT_TLS) => ProbeOutcome::TlsRefused {
+            message: error.message.clone(),
+        },
+        (0, client_codes::CLIENT_UNREACHABLE) => ProbeOutcome::Unreachable {
+            message: error.message.clone(),
+        },
+        // A success that isn't the settings JSON, or no such route at all: every Semaphore server
+        // has `/instance/public-settings`.
+        (0, client_codes::CLIENT_INVALID_RESPONSE) | (404, _) => ProbeOutcome::NotSemaphore,
+        _ => ProbeOutcome::Failed {
+            error: error.view(),
+        },
+    }
+}
+
+#[cfg(test)]
+mod probe_tests {
+    use super::*;
+    use semaphore_wire::enums::ErrorCode;
+
+    fn error(status: u16, code: &str) -> BackendError {
+        BackendError {
+            status,
+            code: ErrorCode::Unknown(code.into()),
+            message: "why".into(),
+            retryable: false,
+            retry_after_ms: None,
+        }
+    }
+
+    #[test]
+    fn each_failure_reads_as_what_it_means() {
+        assert_eq!(
+            probe_failure(&error(0, client_codes::CLIENT_TLS)),
+            ProbeOutcome::TlsRefused {
+                message: "why".into()
+            }
+        );
+        assert_eq!(
+            probe_failure(&error(0, client_codes::CLIENT_UNREACHABLE)),
+            ProbeOutcome::Unreachable {
+                message: "why".into()
+            }
+        );
+        assert_eq!(
+            probe_failure(&error(0, client_codes::CLIENT_INVALID_RESPONSE)),
+            ProbeOutcome::NotSemaphore
+        );
+        assert_eq!(
+            probe_failure(&error(404, "UNKNOWN")),
+            ProbeOutcome::NotSemaphore
+        );
+        // A server code at status 0 is no transport failure; nor is a 500 a different server.
+        for (status, code) in [(0, "UNKNOWN"), (500, "UNKNOWN"), (503, "CLIENT_TLS")] {
+            let failure = error(status, code);
+            assert_eq!(
+                probe_failure(&failure),
+                ProbeOutcome::Failed {
+                    error: failure.view()
+                },
+                "{status} {code}"
+            );
+        }
     }
 }

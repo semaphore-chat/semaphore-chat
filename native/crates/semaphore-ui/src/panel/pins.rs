@@ -226,57 +226,57 @@ impl Render for PinsPanel {
             touch,
             cx,
         );
-        let body: Vec<AnyElement> = match &self.pins.state {
-            LoadState::Loading => vec![
-                div()
-                    .id("pins-loading")
-                    .test_support()
-                    .role(Role::ProgressIndicator)
-                    .aria_label("Loading pinned messages")
-                    .p(spacing(2.))
-                    .flex()
-                    .flex_col()
-                    .gap(spacing(2.))
-                    .children(
-                        (0..3usize)
-                            .map(|index| Skeleton::rect(("pin-loading", index), relative(1.), 60.)),
+        let body: Vec<AnyElement> =
+            match &self.pins.state {
+                LoadState::Loading => vec![
+                    div()
+                        .id("pins-loading")
+                        .test_support()
+                        .role(Role::ProgressIndicator)
+                        .aria_label("Loading pinned messages")
+                        .p(spacing(2.))
+                        .flex()
+                        .flex_col()
+                        .gap(spacing(2.))
+                        .children((0..3usize).map(|index| {
+                            Skeleton::sized(("pin-loading", index), relative(1.), 60.)
+                        }))
+                        .into_any_element(),
+                ],
+                LoadState::Failed { .. } => vec![
+                    error_block(
+                        "pins-retry",
+                        "Couldn't load pinned messages",
+                        "Check your connection and try again.",
+                        cx.listener(|_, _, _, cx| cx.emit(PinsPanelEvent::Retry)),
+                        cx,
                     )
                     .into_any_element(),
-            ],
-            LoadState::Failed { .. } => vec![
-                error_block(
-                    "pins-retry",
-                    "Couldn't load pinned messages",
-                    "Check your connection and try again.",
-                    cx.listener(|_, _, _, cx| cx.emit(PinsPanelEvent::Retry)),
-                    cx,
-                )
-                .into_any_element(),
-            ],
-            LoadState::Ready if self.pins.rows.is_empty() => vec![
-                empty_block(
-                    DesignIcon::PushPin,
-                    "No pinned messages yet.",
-                    "Pin important messages to keep them easily accessible.",
-                    cx,
-                )
-                .into_any_element(),
-            ],
-            LoadState::Ready => {
-                let now = self.clock.now_ms();
-                let rows = self.pins.rows.clone();
-                rows.iter()
-                    // A pin is a sent message, so it has an id; one without can't be jumped to
-                    // or unpinned, and would share an element id with the next.
-                    .filter(|pin| pin.row.id.is_some())
-                    .enumerate()
-                    .map(|(index, pin)| {
-                        self.pin_row(index, pin, now, touch, window, cx)
-                            .into_any_element()
-                    })
-                    .collect()
-            }
-        };
+                ],
+                LoadState::Ready if self.pins.rows.is_empty() => vec![
+                    empty_block(
+                        DesignIcon::PushPin,
+                        "No pinned messages yet.",
+                        "Pin important messages to keep them easily accessible.",
+                        cx,
+                    )
+                    .into_any_element(),
+                ],
+                LoadState::Ready => {
+                    let now = self.clock.now_ms();
+                    let rows = self.pins.rows.clone();
+                    rows.iter()
+                        // A pin is a sent message, so it has an id; one without can't be jumped to
+                        // or unpinned, and would share an element id with the next.
+                        .filter(|pin| pin.row.id.is_some())
+                        .enumerate()
+                        .map(|(index, pin)| {
+                            self.pin_row(index, pin, now, touch, window, cx)
+                                .into_any_element()
+                        })
+                        .collect()
+                }
+            };
         div()
             .id("pins-panel")
             .test_support()

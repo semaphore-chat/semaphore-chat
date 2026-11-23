@@ -26,7 +26,7 @@ use semaphore_core::model::{
 };
 use semaphore_core::{Core, CoreEvent};
 use semaphore_ui::composer::{Availability, Composer, ComposerConfig, DraftStore, MentionSource};
-use semaphore_ui::kit::{Speaker, on_core_event};
+use semaphore_ui::kit::{ChatPane, Speaker, TypingLine, on_core_event};
 use semaphore_ui::messages::{
     ListData, ListOptions, ListPermissions, ListStatus, MessageList, ReplyPreview, TimeFormat,
 };
@@ -137,6 +137,8 @@ pub struct ConversationPane {
     last_typing: Option<Instant>,
     marked_read: Option<String>,
     focused: bool,
+    /// [`Self::hide`]: the shell isn't drawing the pane.
+    hidden: bool,
     media: Rc<AppMedia>,
     /// Inline audio and video players for every list, or `None` (the app built without them).
     players: Option<semaphore_ui::player::Players>,
@@ -213,6 +215,7 @@ impl ConversationPane {
             last_typing: None,
             marked_read: None,
             focused: window.is_window_active(),
+            hidden: false,
             media,
             players,
             open_attachment,
@@ -268,6 +271,17 @@ impl ConversationPane {
         }
     }
 
+    /// The shell isn't drawing the pane (a phone showing the left pane, or the community home in
+    /// its place): core has no conversation on screen, and nothing is marked read until
+    /// [`Self::show`] again.
+    pub fn hide(&mut self, _: &mut Context<Self>) {
+        if self.hidden || self.conversation.is_none() {
+            return;
+        }
+        self.hidden = true;
+        self.core.close_main_conversation();
+    }
+
     /// Shows `conversation`, or keeps showing it with this channel row's permissions.
     pub fn show(
         &mut self,
@@ -278,6 +292,7 @@ impl ConversationPane {
         cx: &mut Context<Self>,
     ) {
         let changed = self.conversation.as_ref() != Some(&conversation);
+        let unhidden = std::mem::replace(&mut self.hidden, false);
         let permissions_changed = self.channel.as_ref().map(|row| &row.permissions)
             != channel.as_ref().map(|row| &row.permissions)
             || self.channel.as_ref().map(|row| row.slowmode_seconds)
@@ -288,9 +303,22 @@ impl ConversationPane {
         self.community_id = community_id;
         if changed {
             self.open(conversation, window, cx);
-        } else if permissions_changed {
-            self.apply_availability(window, cx);
-            self.apply_permissions(cx);
+        } else {
+            if unhidden {
+                // On screen again: core's conversation, and what's newest is read now.
+                let core = self.core.clone();
+                let opening = conversation.clone();
+                self.exec.fire(async move {
+                    if let Err(error) = core.open_conversation(opening).await {
+                        log::debug!("showing the conversation again: {error}");
+                    }
+                });
+                self.mark_read(cx);
+            }
+            if permissions_changed {
+                self.apply_availability(window, cx);
+                self.apply_permissions(cx);
+            }
         }
         // The composer outlives the conversation: it takes this one's name ("Message #random").
         let placeholder = self.placeholder();
@@ -457,6 +485,10 @@ impl ConversationPane {
             self.sync_side(cx);
         }
         let list = self.new_list(Vec::new(), ListStatus::Loading, cx);
+        // The pane's typing line floats over the list's foot: keep its height free under the rows.
+        list.update(cx, |list, cx| {
+            list.set_bottom_room(px(TypingLine::HEIGHT), cx)
+        });
         let list_events = cx.subscribe_in(&list, window, |this, _, event, window, cx| {
             this.on_list_event(Which::Main, event, window, cx)
         });
@@ -761,7 +793,7 @@ impl ConversationPane {
         let Some(conversation) = self.conversation.clone() else {
             return;
         };
-        if !self.focused || !self.core.at_live_edge(conversation.clone()) {
+        if self.hidden || !self.focused || !self.core.at_live_edge(conversation.clone()) {
             return;
         }
         let Some(newest) = self.rows.iter().rev().find_map(|row| row.id.clone()) else {
@@ -808,10 +840,12 @@ impl ConversationPane {
         );
     }
 
-    fn typing_line(&self) -> Option<String> {
-        let conversation = self.conversation.clone()?;
-        let names: Vec<String> = self
-            .core
+    /// Who is typing here, by name, for the kit's `TypingLine`.
+    fn typing_names(&self) -> Vec<String> {
+        let Some(conversation) = self.conversation.clone() else {
+            return Vec::new();
+        };
+        self.core
             .typing_users(conversation)
             .into_iter()
             .map(|user| {
@@ -819,13 +853,7 @@ impl ConversationPane {
                     .filter(|name| !name.is_empty())
                     .unwrap_or(user.username)
             })
-            .collect();
-        match names.as_slice() {
-            [] => None,
-            [one] => Some(format!("{one} is typing...")),
-            [one, two] => Some(format!("{one} and {two} are typing...")),
-            _ => Some("Several people are typing...".into()),
-        }
+            .collect()
     }
 }
 
@@ -933,41 +961,35 @@ pub fn mime_for(name: &str) -> String {
 
 impl Render for ConversationPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let palette = cx
-            .try_global::<semaphore_ui::theme::Sem>()
-            .map(|sem| semaphore_ui::messages::palette::Palette::for_theme(sem.choice))
-            .unwrap_or_else(semaphore_ui::messages::palette::Palette::dark);
-        let typing = self.typing_line();
         let notice = self.notice_element(cx);
         let picker = self.picker_element(cx);
+        let composer = div()
+            .flex()
+            .flex_col()
+            .min_w_0()
+            .children(notice)
+            .children(self.composer.clone());
+        let pane = ChatPane::new("conversation-chat")
+            .typing(TypingLine::new(self.typing_names()))
+            .composer(composer)
+            // Toasts sit at the foot of the messages, above the composer.
+            .list_foot(semaphore_ui::kit::ToastAnchor::new())
+            .when_some(self.list.clone(), |pane, list| pane.list(list));
         div()
             .id("conversation")
             .key_context("ConversationPane")
-            .on_action(cx.listener(|pane, _: &EscapePane, window, cx| pane.escape(window, cx)))
+            .on_action(cx.listener(|pane, _: &EscapePane, window, cx| {
+                // A layer open over the pane (focus elsewhere in it) closes first.
+                if !semaphore_ui::kit::escape_open_layer(window, cx) {
+                    pane.escape(window, cx)
+                }
+            }))
             .relative()
             .size_full()
             .flex()
             .flex_col()
             .min_h_0()
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .when_some(self.list.clone(), |this, list| this.child(list)),
-            )
-            .child(
-                div()
-                    .h(px(20.))
-                    .px(px(16.))
-                    .flex_shrink_0()
-                    .text_size(px(12.))
-                    .text_color(palette.text_secondary)
-                    .when_some(typing, |this, typing| this.child(typing)),
-            )
-            .children(notice)
-            .when_some(self.composer.clone(), |this, composer| {
-                this.child(div().flex_shrink_0().child(composer))
-            })
+            .child(pane)
             .children(picker)
             .children(self.announce.node("pane-announcer", Live::Polite))
     }

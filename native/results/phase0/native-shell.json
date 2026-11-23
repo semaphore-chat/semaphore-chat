@@ -1,15 +1,15 @@
 {
  "schema_version": 1,
  "client": "native",
- "generated_at": "2026-11-05T19:05:00.626247+00:00",
+ "generated_at": "2026-11-22T03:54:12.771849+00:00",
  "ok": true,
  "provisional": true,
  "provisional_reasons": [
-  "load1 peaked at 25.3, above 16.0"
+  "load1 peaked at 22.8, above 16.0"
  ],
  "build": {
   "version": "0.0.0-phase0",
-  "commit": "e30204d8aad62ae6dee1e9dafec53bf06f8d91af",
+  "commit": "8f1174e0c47211294ab2f660747917d2b6f799cd",
   "stripped": true
  },
  "window_scale": 1,
@@ -34,16 +34,16 @@
   }
  },
  "disk": {
-  "unpacked_bytes": 66187584,
+  "unpacked_bytes": 97571216,
   "file_count": 1,
   "top_level": [
    {
     "path": "semaphore-app",
-    "bytes": 66187584
+    "bytes": 97571216
    }
   ],
   "binary": {
-   "bytes": 66187584,
+   "bytes": 97571216,
    "stripped": true
   },
   "artifacts": []
@@ -55,26 +55,26 @@
    "ok": true,
    "provisional": true,
    "load": {
-    "start": "25.28 41.64 38.88 1/1987 8",
-    "end": "17.75 38.25 37.84 91/2457 183",
-    "peak_load1": 25.28,
+    "start": "22.83 14.06 8.65 2/1661 8",
+    "end": "14.45 12.86 8.42 2/1776 199",
+    "peak_load1": 22.83,
     "threshold_load1": 16.0,
     "provisional": true,
-    "reason": "load1 peaked at 25.3, above 16.0"
+    "reason": "load1 peaked at 22.8, above 16.0"
    },
    "errors": [],
    "window_s": 30,
    "cpu_pct_core": {
-    "avg": 1.1,
-    "p95": 1.0
+    "avg": 14.32,
+    "p95": 13.95
    },
    "memory_mb": {
     "primary_metric": "pss",
-    "pss": 158.2,
-    "rss": 168.0,
-    "anon": 58.3,
+    "pss": 204.6,
+    "rss": 214.9,
+    "anon": 59.4,
     "private_working_set": null,
-    "pss_peak": 158.2
+    "pss_peak": 204.6
    }
   }
  },

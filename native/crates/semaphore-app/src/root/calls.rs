@@ -1,30 +1,40 @@
 //! W4: calls in the app: the incoming call banner and its ring timer, DM call controls and the DM
-//! stage, the participant menu (volume, server mute, kick), the soundboard, the float card and the
-//! voice debug panel (Ctrl+Shift+D).
+//! stage, the participant menu (volume, server mute, kick), the soundboard, the frame's call slot
+//! (B11: the call bar, the call surface and the voice notice) and the voice debug panel
+//! (Ctrl+Shift+D).
 //!
 //! - **The ring's timer.** Core has no timers: a ring carries `expires_at_ms`, and this arms a
 //!   GPUI timer for it (by core's clock), calling `Core::expire_incoming_call` when it's due. A
 //!   newer ring replaces the timer; no ring drops it. Signing out drops it with `Calls`.
 //! - **Sounds.** Core decides the cues (`CoreEvent::Sound`); `Sounds` plays them, the ring on a
 //!   loop until core stops it.
-//! - **What's kept:** the float card's placement per `viewport_bucket` and the DM stage's split, in
-//!   the settings; volumes per user (`Settings::user_volumes`, and `screen_share_volumes` for the
+//! - **The call slot.** Away from the call view, the call bar, with the call surface above it while
+//!   someone shares or has a camera on (or you share). Nothing is received until Watch: the
+//!   watched tracks are this session's (`Calls::watched`), and the surface asks core for exactly
+//!   those. Out of a call, the voice notice: a failed join (set here) or `VoiceView::ended`.
+//! - **What's kept:** the DM stage's split, in the settings; volumes per user (`Settings::user_volumes`, and `screen_share_volumes` for the
 //!   audio of their screen shares), applied on every join.
 
 use super::AppRoot;
-use crate::settings::StoredPlacement;
+use super::prejoin::was_left;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::CoreEvent;
-use semaphore_core::model::{IncomingCallView, SessionState, ViewKey, VoiceRoom, VoiceStatus};
+use semaphore_core::model::{
+    IncomingCallView, SessionState, ViewKey, VoiceJoinOptions, VoiceRoom, VoiceStatus,
+};
+use semaphore_ui::kit::{CallSlot, CallStack};
 use semaphore_ui::nav::Route;
+use semaphore_ui::shell::lounge::call::{
+    CallBar, CallBarModel, CallPhase, CallSurface, SurfaceActions, VoiceNoticeBar,
+    VoiceNoticeModel, ended_notice, join_failed_notice, shows_surface, surface_tiles,
+};
 use semaphore_ui::theme::SemTheme as _;
-use semaphore_ui::voice::dock::{PipAnchor, PipPlacement, Point2, Size2, viewport_bucket};
 use semaphore_ui::voice::{
-    DebugActions, FloatCard, FloatEvent, IncomingActions, IncomingProps, ParticipantMenu,
-    ParticipantMenuEvent, ParticipantMenuModel, SoundboardBar, VoiceController,
-    incoming_call_banner, voice_debug_panel,
+    DebugActions, IncomingActions, IncomingProps, ParticipantMenu, ParticipantMenuEvent,
+    ParticipantMenuModel, SoundboardBar, TileDemand, VoiceController, incoming_call_banner,
+    voice_debug_panel,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -78,10 +88,18 @@ pub(super) struct Calls {
     incoming_error: Option<String>,
     menu: Option<(Entity<ParticipantMenu>, Subscription)>,
     soundboard_open: bool,
-    /// Made on the session's first frame with a window; `float_bucket` is the bucket its placement
-    /// is from.
-    float: Option<(Entity<FloatCard>, Subscription)>,
-    float_bucket: Option<&'static str>,
+    /// The tracks the call surface shows (Watch), by sid. Cleared when the call ends.
+    watched: std::collections::BTreeSet<String>,
+    /// What the surface last asked core for, so a frame that asks the same sends nothing.
+    surface_demands: Rc<std::cell::RefCell<Option<Vec<TileDemand>>>>,
+    /// The frames' count when Watch was last pressed, for the rig (`surface-frames`).
+    watch_generation: u64,
+    /// The voice notice, while it shows.
+    notice: Option<SlotNotice>,
+    /// The `VoiceView::ended` the notice last took (so a dismissed one stays dismissed).
+    ended_seen: Option<semaphore_core::model::VoiceEnded>,
+    /// Draws the frame again as the watched pictures' frames come in.
+    video_redraw: Option<Task<()>>,
     debug: Option<Task<()>>,
     /// The DM stage's drag, while it runs: the column's top and height.
     dm_drag: Rc<Cell<Option<(f32, f32)>>>,
@@ -89,6 +107,108 @@ pub(super) struct Calls {
     dm_ratio: Rc<Cell<Option<f32>>>,
     /// The server mute about me last handed to the engine.
     server_muted: bool,
+}
+
+/// The voice notice in the call slot, and what Retry joins.
+#[derive(Clone)]
+pub(super) struct SlotNotice {
+    pub(super) model: VoiceNoticeModel,
+    pub(super) room: Option<VoiceRoom>,
+    /// The mute and deafen Retry joins with: the failed join's own, or the call's when it ended.
+    pub(super) options: VoiceJoinOptions,
+}
+
+/// What the notice's Retry joins: the room, and how the failed join or the ended call had it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum RetryJoin {
+    Channel {
+        channel_id: String,
+        options: VoiceJoinOptions,
+    },
+    Dm {
+        dm_group_id: String,
+        options: VoiceJoinOptions,
+    },
+}
+
+impl SlotNotice {
+    /// A join that failed: Retry joins the room the same way.
+    fn join_failed(room: VoiceRoom, options: VoiceJoinOptions) -> Self {
+        Self {
+            model: join_failed_notice(),
+            room: Some(room),
+            options,
+        }
+    }
+
+    /// A call that ended on its own: Retry rejoins it muted and deafened as it was.
+    fn ended(ended: &semaphore_core::model::VoiceEnded) -> Self {
+        Self {
+            model: ended_notice(ended),
+            room: Some(ended.room.clone()),
+            options: ended.options,
+        }
+    }
+
+    fn retry(&self) -> Option<RetryJoin> {
+        Some(match self.room.as_ref()? {
+            VoiceRoom::Channel { channel_id, .. } => RetryJoin::Channel {
+                channel_id: channel_id.clone(),
+                options: self.options,
+            },
+            VoiceRoom::Dm { dm_group_id } => RetryJoin::Dm {
+                dm_group_id: dm_group_id.clone(),
+                options: self.options,
+            },
+        })
+    }
+}
+
+impl Calls {
+    /// Watch: the surface shows this track, and the frame redraws as its frames come in from here.
+    fn watch(&mut self, sid: String, generation: u64) {
+        self.watch_generation = generation;
+        self.watched.insert(sid);
+    }
+
+    /// Stop watching: nothing is received until Watch again.
+    fn stop_watching(&mut self) {
+        self.watched.clear();
+    }
+
+    /// `ViewChanged { Voice }`: a leave forgets everything watched; otherwise the tracks that
+    /// went stop being watched, a join clears the notice, and an ending shows it.
+    fn on_voice(&mut self, voice: &semaphore_core::model::VoiceView) {
+        if voice.room.is_none() {
+            self.watched.clear();
+            *self.surface_demands.borrow_mut() = None;
+        } else {
+            let present: std::collections::BTreeSet<String> = voice
+                .participants
+                .iter()
+                .flat_map(|person| [&person.camera, &person.screen_share])
+                .flatten()
+                .map(|track| track.track_sid.clone())
+                .collect();
+            self.watched.retain(|sid| present.contains(sid));
+            // A join (or a call) replaces the notice.
+            self.notice = None;
+        }
+        if voice.ended != self.ended_seen {
+            self.ended_seen = voice.ended.clone();
+            if let Some(ended) = &voice.ended {
+                self.notice = Some(SlotNotice::ended(ended));
+            }
+        }
+    }
+
+    /// A DM join failed: the same notice a channel's failed join shows, with Retry.
+    fn dm_join_failed(&mut self, dm_group_id: String, options: VoiceJoinOptions) {
+        self.notice = Some(SlotNotice::join_failed(
+            VoiceRoom::Dm { dm_group_id },
+            options,
+        ));
+    }
 }
 
 impl AppRoot {
@@ -108,6 +228,9 @@ impl AppRoot {
             CoreEvent::ViewChanged {
                 view: ViewKey::Soundboard { .. } | ViewKey::VoiceDiagnostics,
             } => self.refresh_stage(cx),
+            CoreEvent::ViewChanged {
+                view: ViewKey::Voice,
+            } => self.call_slot_on_voice(cx),
             _ => {}
         }
     }
@@ -320,25 +443,69 @@ impl AppRoot {
         &mut self,
         dm_group_id: String,
         video: bool,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(core) = self.core() else {
+        self.start_dm_call_with(dm_group_id, video, None, window, cx);
+    }
+
+    /// A DM call, as `options` chose (`None`: the mute and deafen already chosen). A join that
+    /// fails is the voice notice's, with Retry, and keeps the options it failed with.
+    fn start_dm_call_with(
+        &mut self,
+        dm_group_id: String,
+        video: bool,
+        options: Option<VoiceJoinOptions>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(services) = &self.services else {
             return;
         };
+        let (core, exec) = (services.core.clone(), services.exec.clone());
+        let options = options.unwrap_or_else(|| self.join_options(&core));
         self.prepare_join();
-        let joined = self.fire_and_report(Box::pin(async move {
-            core.join_dm_call(dm_group_id).await?;
-            if video {
-                core.set_camera(true).await?;
-            }
-            Ok(())
-        }));
-        cx.spawn(async move |_, _| {
-            if let Err(error) = joined.await {
+        self.prejoin.joins += 1;
+        let join = self.prejoin.joins;
+        let joining = core;
+        let failed_dm = dm_group_id.clone();
+        exec.run(
+            window,
+            cx,
+            async move {
+                joining.join_dm_call_with(dm_group_id, options).await?;
+                if video && let Err(error) = joining.set_camera(true).await {
+                    // The call is up: only its camera failed, which is the stage's to say.
+                    log::warn!("starting the DM call's camera: {error}");
+                }
+                Ok::<_, semaphore_core::platform::CoreError>(())
+            },
+            move |this, result, _, cx| {
+                let Err(error) = result else {
+                    return;
+                };
                 log::warn!("starting the DM call: {error}");
-            }
-        })
-        .detach();
+                // Another join since, a leave, or a call that's up anyway: not this one's to say.
+                let idle = this
+                    .core()
+                    .is_none_or(|core| core.voice().status == VoiceStatus::Disconnected);
+                if this.prejoin.joins != join || was_left(&error) || !idle {
+                    return;
+                }
+                this.calls.dm_join_failed(failed_dm.clone(), options);
+                cx.notify();
+            },
+        );
+    }
+
+    /// What a join from here starts with: the mute and deafen already chosen on the bar or the
+    /// stage, captured before a failed join resets them.
+    pub(super) fn join_options(&self, core: &semaphore_core::Core) -> VoiceJoinOptions {
+        let voice = core.voice();
+        VoiceJoinOptions {
+            muted: voice.muted || voice.deafened,
+            deafened: voice.deafened,
+        }
     }
 
     // ---- The participant menu. ----
@@ -510,86 +677,213 @@ impl AppRoot {
         self.calls.menu = None;
     }
 
-    // ---- The float card. ----
+    // ---- The call slot (B11). ----
 
-    /// The call over the middle column while its stage isn't shown, on wide windows.
-    pub(super) fn float_card(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        let model = self.stage_model();
-        model.voice.room.as_ref()?;
-        let width = f32::from(window.viewport_size().width);
-        if width < 600. {
-            return None;
-        }
-        let bucket = viewport_bucket(width);
-        if self.calls.float.is_none() {
-            let frames = self.frames.clone()?;
-            let controller: Arc<dyn VoiceController> = self.voice.clone()?;
-            let placement = self.stored_placement(bucket);
-            let card = cx
-                .new(|cx| FloatCard::new(model.clone(), frames, controller, placement, window, cx));
-            let subscription = cx.subscribe_in(&card, window, Self::on_float);
-            self.calls.float = Some((card, subscription));
-            self.calls.float_bucket = Some(bucket);
-        }
-        let (card, _) = self.calls.float.as_ref()?;
-        let card = card.clone();
-        if self.calls.float_bucket != Some(bucket) {
-            self.calls.float_bucket = Some(bucket);
-            let placement = self.stored_placement(bucket);
-            card.update(cx, |card, cx| card.set_placement(placement, cx));
-        }
-        card.update(cx, |card, cx| card.set_model(model, cx));
-        Some(card.into_any_element())
+    /// The call ended (watched pictures go with it), or one ended on its own (the notice).
+    fn call_slot_on_voice(&mut self, cx: &mut Context<Self>) {
+        let Some(core) = self.core() else {
+            return;
+        };
+        self.calls.on_voice(&core.voice());
+        cx.notify();
     }
 
-    fn stored_placement(&self, bucket: &str) -> PipPlacement {
-        self.settings
-            .get()
-            .float_placements
-            .get(bucket)
-            .and_then(placement_from_stored)
-            .unwrap_or_default()
-    }
-
-    fn on_float(
+    /// A join from the pre-join or a voice room card failed: the notice, with Retry, joining the
+    /// same way again.
+    pub(super) fn show_join_failed(
         &mut self,
-        _: &Entity<FloatCard>,
-        event: &FloatEvent,
-        _: &mut Window,
+        room: VoiceRoom,
+        options: VoiceJoinOptions,
         cx: &mut Context<Self>,
     ) {
-        match event {
-            FloatEvent::PlacementChanged(placement) => {
-                let Some(bucket) = self.calls.float_bucket else {
-                    return;
-                };
-                let stored = stored_from_placement(placement);
-                self.update_settings(|settings| {
-                    settings.float_placements.insert(bucket.to_owned(), stored);
-                });
-            }
-            FloatEvent::OpenCall => {
-                let Some(core) = self.core() else {
-                    return;
-                };
-                let route = match core.voice().room {
-                    Some(VoiceRoom::Channel {
-                        channel_id,
-                        community_id: Some(community_id),
-                    }) => Route::Channel {
-                        community_id,
-                        channel_id,
-                    },
-                    Some(VoiceRoom::Dm { dm_group_id }) => Route::DirectMessage { dm_group_id },
-                    _ => return,
-                };
-                self.shell_navigate(route, cx);
+        self.calls.notice = Some(SlotNotice::join_failed(room, options));
+        cx.notify();
+    }
+
+    /// The notice's text, for the rig.
+    pub fn voice_notice(&self) -> Option<String> {
+        self.calls
+            .notice
+            .as_ref()
+            .map(|notice| notice.model.title.clone())
+    }
+
+    /// The frames' count when Watch was last pressed, for the rig.
+    pub fn watch_generation(&self) -> u64 {
+        self.calls.watch_generation
+    }
+
+    /// The tracks the surface shows, for the rig.
+    pub fn watched_tracks(&self) -> Vec<String> {
+        self.calls.watched.iter().cloned().collect()
+    }
+
+    /// What the frame's call slot shows now. `stage_shown`: the call view is on screen, with its
+    /// own bar.
+    pub(super) fn call_slot(
+        &mut self,
+        stage_shown: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<CallSlot> {
+        let model = self.stage_model();
+        if stage_shown {
+            // The stage asks for its own pictures; the surface asks again when it next shows.
+            *self.calls.surface_demands.borrow_mut() = None;
+            return None;
+        }
+        let Some(bar) = CallBarModel::from_stage(&model) else {
+            let notice = self.calls.notice.clone()?;
+            let root = cx.entity().downgrade();
+            let retry = notice.retry().map(|retry| {
+                let root = root.clone();
+                Rc::new(move |window: &mut Window, cx: &mut App| {
+                    let retry = retry.clone();
+                    root.update(cx, |root, cx| root.retry_voice(retry, window, cx))
+                        .ok();
+                }) as Rc<dyn Fn(&mut Window, &mut App)>
+            });
+            let dismiss = Rc::new(move |_: &mut Window, cx: &mut App| {
+                root.update(cx, |root, cx| {
+                    root.calls.notice = None;
+                    cx.notify();
+                })
+                .ok();
+            });
+            return Some(CallSlot::from(VoiceNoticeBar::new(
+                notice.model,
+                retry,
+                dismiss,
+            )));
+        };
+        let controller: Arc<dyn VoiceController> = self.voice.clone()?;
+        let tiles = surface_tiles(&model.voice, &self.calls.watched);
+        let joining = bar.phase == CallPhase::Connecting;
+        let sharing = bar.sharing_screen;
+        let mut stack = CallStack::new(CallBar::new(bar, controller.clone()));
+        if !joining && shows_surface(&tiles, sharing) {
+            self.ensure_video_redraw(window, cx);
+            let root = cx.entity().downgrade();
+            let (watch_root, stop_root) = (root.clone(), root.clone());
+            let (open, share) = (controller.clone(), controller.clone());
+            let last = self.calls.surface_demands.clone();
+            let demands = controller.clone();
+            stack = stack.surface(CallSurface::new(
+                tiles,
+                sharing,
+                self.frames.clone(),
+                SurfaceActions {
+                    watch: Rc::new(move |sid, _, cx| {
+                        let sid = sid.to_owned();
+                        watch_root
+                            .update(cx, |root, cx| {
+                                let generation =
+                                    root.frames.as_ref().map_or(0, |frames| frames.generation());
+                                root.calls.watch(sid, generation);
+                                cx.notify();
+                            })
+                            .ok();
+                    }),
+                    stop_watching: Rc::new(move |_, cx| {
+                        stop_root
+                            .update(cx, |root, cx| {
+                                root.calls.stop_watching();
+                                cx.notify();
+                            })
+                            .ok();
+                    }),
+                    stop_sharing: Rc::new(move |_, _| share.toggle_screen_share()),
+                    open_call_view: Rc::new(move |_, _| open.open_call_view()),
+                    demands: Rc::new(move |list: Vec<TileDemand>| {
+                        let mut last = last.borrow_mut();
+                        if last.as_ref() != Some(&list) {
+                            demands.set_video_demands(list.clone());
+                            *last = Some(list);
+                        }
+                    }),
+                },
+            ));
+            // The stage asks again for its own when it next shows.
+            if let Some(stage) = &self.stage {
+                stage.update(cx, |stage, _| stage.forget_demands());
             }
         }
+        Some(CallSlot::from(stack))
+    }
+
+    /// While the surface shows a watched picture, the frame draws again as its frames come in.
+    fn ensure_video_redraw(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.calls.video_redraw.is_some() {
+            return;
+        }
+        let Some(frames) = self.frames.clone() else {
+            return;
+        };
+        let task = cx.spawn_in(window, async move |this, cx| {
+            let mut seen = frames.generation();
+            loop {
+                let busy = this
+                    .read_with(cx, |root, _| !root.calls.watched.is_empty())
+                    .unwrap_or(false);
+                let poll = if busy {
+                    Duration::from_millis(8)
+                } else {
+                    Duration::from_millis(100)
+                };
+                cx.background_executor().timer(poll).await;
+                let now = frames.generation();
+                if now != seen {
+                    seen = now;
+                    let redrawn = this.update(cx, |root, cx| {
+                        if !root.calls.watched.is_empty()
+                            && let Some(shell) = &root.shell
+                        {
+                            shell.update(cx, |_, cx| cx.notify());
+                        }
+                    });
+                    if redrawn.is_err() {
+                        return;
+                    }
+                }
+            }
+        });
+        self.calls.video_redraw = Some(task);
+    }
+
+    /// The notice's Retry: the same room again, muted and deafened as the join or the ended call
+    /// had it (a mic the user turned off never comes back on by itself).
+    fn retry_voice(&mut self, retry: RetryJoin, window: &mut Window, cx: &mut Context<Self>) {
+        self.calls.notice = None;
+        match retry {
+            RetryJoin::Channel {
+                channel_id,
+                options,
+            } => self.join_from_card_with(channel_id, options, window, cx),
+            RetryJoin::Dm {
+                dm_group_id,
+                options,
+            } => self.start_dm_call_with(dm_group_id, false, Some(options), window, cx),
+        }
+        cx.notify();
+    }
+
+    /// The call bar's room name (and the surface's See all): the call view, the room's route.
+    pub(super) fn open_call_view(&mut self, cx: &mut Context<Self>) {
+        let Some(core) = self.core() else {
+            return;
+        };
+        let route = match core.voice().room {
+            Some(VoiceRoom::Channel {
+                channel_id,
+                community_id: Some(community_id),
+            }) => Route::Channel {
+                community_id,
+                channel_id,
+            },
+            Some(VoiceRoom::Dm { dm_group_id }) => Route::DirectMessage { dm_group_id },
+            _ => return,
+        };
+        self.shell_navigate(route, cx);
     }
 
     // ---- The DM stage. ----
@@ -652,7 +946,8 @@ impl AppRoot {
                     .h(relative(ratio))
                     .min_h_0()
                     .flex_shrink_0()
-                    .child(stage),
+                    // Toasts clear the composer at the pane's foot, not the stage's bar.
+                    .child(semaphore_ui::kit::WithoutToastAnchor::new(stage)),
             )
             .child(
                 div()
@@ -795,63 +1090,154 @@ impl AppRoot {
     }
 }
 
-/// A saved placement, or `None` when it doesn't parse or isn't usable.
-pub fn placement_from_stored(stored: &StoredPlacement) -> Option<PipPlacement> {
-    let placement = PipPlacement {
-        anchor: PipAnchor::parse(&stored.anchor)?,
-        offset: Point2 {
-            x: stored.offset_x,
-            y: stored.offset_y,
-        },
-        size: Size2 {
-            width: stored.width,
-            height: stored.height,
-        },
-        docked: stored.docked,
-        collapsed: stored.collapsed,
-    };
-    placement.is_valid().then_some(placement)
-}
-
-pub fn stored_from_placement(placement: &PipPlacement) -> StoredPlacement {
-    StoredPlacement {
-        anchor: placement.anchor.name().to_owned(),
-        offset_x: placement.offset.x,
-        offset_y: placement.offset.y,
-        width: placement.size.width,
-        height: placement.size.height,
-        docked: placement.docked,
-        collapsed: placement.collapsed,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use semaphore_core::model::{ParticipantView, UserView, VideoTrackView, VoiceEnded, VoiceView};
     use std::prelude::rust_2024::test;
 
-    #[test]
-    fn a_placement_round_trips_through_the_settings_and_a_bad_one_is_dropped() {
-        let placement = PipPlacement {
-            anchor: PipAnchor::TopLeft,
-            offset: Point2 { x: 12., y: 30. },
-            size: Size2 {
-                width: 400.,
-                height: 300.,
+    fn channel_room() -> VoiceRoom {
+        VoiceRoom::Channel {
+            channel_id: "vc".into(),
+            community_id: None,
+        }
+    }
+
+    fn track(sid: &str) -> VideoTrackView {
+        VideoTrackView {
+            track_sid: sid.into(),
+            width: 640,
+            height: 480,
+        }
+    }
+
+    fn person(id: &str, camera: Option<&str>, screen: Option<&str>) -> ParticipantView {
+        ParticipantView {
+            identity: id.into(),
+            user: UserView {
+                id: id.into(),
+                username: id.into(),
+                ..UserView::default()
             },
-            docked: false,
-            collapsed: true,
+            camera: camera.map(track),
+            screen_share: screen.map(track),
+            ..ParticipantView::default()
+        }
+    }
+
+    fn ended(options: VoiceJoinOptions) -> VoiceEnded {
+        VoiceEnded {
+            room: channel_room(),
+            while_reconnecting: true,
+            error: None,
+            options,
+        }
+    }
+
+    /// "Join muted" failed: Retry starts the call muted, not with the mic open.
+    #[test]
+    fn retry_after_a_failed_muted_join_joins_muted() {
+        let options = VoiceJoinOptions {
+            muted: true,
+            deafened: false,
         };
-        let stored = stored_from_placement(&placement);
-        assert_eq!(placement_from_stored(&stored), Some(placement));
-        let json = serde_json::to_string(&stored).unwrap();
-        let back: StoredPlacement = serde_json::from_str(&json).unwrap();
-        assert_eq!(placement_from_stored(&back), Some(placement));
-        let mut bad = stored.clone();
-        bad.anchor = "middle".into();
-        assert_eq!(placement_from_stored(&bad), None);
-        let mut nan = stored;
-        nan.width = f32::NAN;
-        assert_eq!(placement_from_stored(&nan), None);
+        let notice = SlotNotice::join_failed(channel_room(), options);
+        assert_eq!(
+            notice.retry(),
+            Some(RetryJoin::Channel {
+                channel_id: "vc".into(),
+                options,
+            })
+        );
+    }
+
+    /// Muted in a call that ended: Retry rejoins muted.
+    #[test]
+    fn retry_after_a_muted_call_ends_joins_muted() {
+        let options = VoiceJoinOptions {
+            muted: true,
+            deafened: false,
+        };
+        let mut calls = Calls::default();
+        calls.on_voice(&VoiceView {
+            ended: Some(ended(options)),
+            ..VoiceView::default()
+        });
+        assert_eq!(
+            calls.notice.and_then(|notice| notice.retry()),
+            Some(RetryJoin::Channel {
+                channel_id: "vc".into(),
+                options,
+            })
+        );
+    }
+
+    /// A DM join that fails says so with Retry, as a channel's does.
+    #[test]
+    fn a_failed_dm_join_shows_the_retry_notice() {
+        let mut calls = Calls::default();
+        calls.dm_join_failed("dm-1".into(), VoiceJoinOptions::default());
+        let notice = calls.notice.expect("a notice");
+        assert!(notice.model.retry);
+        assert_eq!(
+            notice.retry(),
+            Some(RetryJoin::Dm {
+                dm_group_id: "dm-1".into(),
+                options: VoiceJoinOptions::default(),
+            })
+        );
+    }
+
+    /// Watch adds and counts frames from there; Stop watching and a leave clear the set.
+    #[test]
+    fn watch_adds_and_stop_watching_and_a_leave_clear_the_watched_set() {
+        let mut calls = Calls::default();
+        calls.watch("s1".into(), 4);
+        calls.watch("s2".into(), 9);
+        assert_eq!(
+            calls.watched.iter().cloned().collect::<Vec<_>>(),
+            ["s1", "s2"]
+        );
+        assert_eq!(calls.watch_generation, 9);
+        calls.stop_watching();
+        assert!(calls.watched.is_empty());
+        calls.watch("s1".into(), 1);
+        calls.on_voice(&VoiceView::default());
+        assert!(calls.watched.is_empty(), "a leave forgets every picture");
+        assert!(calls.surface_demands.borrow().is_none());
+    }
+
+    /// A track that goes stops being watched, so nothing is received for it.
+    #[test]
+    fn a_voice_change_drops_the_tracks_that_went() {
+        let mut calls = Calls::default();
+        calls.watch("cam".into(), 0);
+        calls.watch("gone".into(), 0);
+        calls.on_voice(&VoiceView {
+            room: Some(channel_room()),
+            participants: vec![person("pri", Some("cam"), None)],
+            ..VoiceView::default()
+        });
+        assert_eq!(calls.watched.iter().cloned().collect::<Vec<_>>(), ["cam"]);
+    }
+
+    /// The surface is handed watched flags for exactly the watched tracks: its demands are those
+    /// tiles and no others.
+    #[test]
+    fn demands_cover_the_watched_tiles_only() {
+        let mut calls = Calls::default();
+        calls.watch("cam".into(), 0);
+        let voice = VoiceView {
+            room: Some(channel_room()),
+            participants: vec![person("pri", Some("cam"), Some("screen"))],
+            ..VoiceView::default()
+        };
+        let tiles = surface_tiles(&voice, &calls.watched);
+        let demanded: Vec<&str> = tiles
+            .iter()
+            .filter(|tile| tile.watched)
+            .map(|tile| tile.id.as_str())
+            .collect();
+        assert_eq!(demanded, ["cam"], "the screen is offered, not received");
     }
 }

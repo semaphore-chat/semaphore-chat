@@ -3,9 +3,10 @@
 
 use crate::dms::face::user_face;
 use crate::dms::names::user_name;
+use crate::kit::IconButtonVariant;
 use crate::kit::{
-    Alert, Button, ButtonTone, Dialog, IconButton, LinearProgress, Severity, Skeleton, Variant,
-    spacing, text, with_tip,
+    Alert, Button, Dialog, IconButton, LinearProgress, Severity, Skeleton, Variant, spacing, text,
+    with_tip,
 };
 use crate::panel::common::design_icon;
 use crate::theme::SemTheme;
@@ -179,7 +180,7 @@ pub(crate) fn action_icon(
     label: impl Into<SharedString>,
     locked: Option<String>,
     busy: bool,
-    color: Option<Hsla>,
+    variant: Option<IconButtonVariant>,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> AnyElement {
     let id = id.into();
@@ -188,8 +189,8 @@ pub(crate) fn action_icon(
     let mut button = IconButton::new(id.clone(), icon, label)
         .small()
         .disabled(disabled);
-    if let Some(color) = color {
-        button = button.color(color);
+    if let Some(variant) = variant {
+        button = button.variant(variant);
     }
     if !disabled {
         button = button.on_click(on_click);
@@ -225,7 +226,7 @@ pub(crate) fn locked_button(
 
 /// The server's message for the last change, over the tab.
 pub(crate) fn server_error(error: Option<&ErrorView>) -> Option<Alert> {
-    error.map(|error| Alert::new(Severity::Error, error.message.clone()))
+    error.map(|error| Alert::new("server-error", Severity::Danger, error.message.clone()))
 }
 
 /// A file on its way up: its name and a bar.
@@ -275,8 +276,8 @@ pub(crate) fn loading_rows(id: &'static str, label: &'static str, rows: usize) -
                         .flex()
                         .flex_col()
                         .gap(px(6.))
-                        .child(Skeleton::rect((id, index * 3 + 1), relative(0.5), 16.))
-                        .child(Skeleton::rect((id, index * 3 + 2), relative(0.3), 12.)),
+                        .child(Skeleton::sized((id, index * 3 + 1), relative(0.5), 16.))
+                        .child(Skeleton::sized((id, index * 3 + 2), relative(0.3), 12.)),
                 )
         }))
         .into_any_element()
@@ -349,10 +350,11 @@ impl Confirm {
     ) -> Dialog {
         let on_cancel = std::rc::Rc::new(on_cancel);
         let close = on_cancel.clone();
-        Dialog::new(self.title)
+        Dialog::new("confirm-dialog", self.title)
             .body(text(Variant::Body2, self.message))
             .action(
                 Button::new(SharedString::from(format!("{}-cancel", self.id)), "Cancel")
+                    .ghost()
                     .disabled(self.busy)
                     .on_click(move |_, window, cx| on_cancel(window, cx)),
             )
@@ -361,8 +363,7 @@ impl Confirm {
                     SharedString::from(format!("{}-confirm", self.id)),
                     self.confirm,
                 )
-                .contained()
-                .tone(ButtonTone::Danger)
+                .danger()
                 .loading(self.busy)
                 .on_click(move |_, window, cx| on_confirm(window, cx)),
             )

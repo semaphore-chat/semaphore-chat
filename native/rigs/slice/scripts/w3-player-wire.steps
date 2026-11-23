@@ -68,7 +68,7 @@ wait core no-text "a clip"
 wait core players-open 1 within 5
 
 # 6. Signing out closes every player: nothing of the session keeps playing.
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out

@@ -2,7 +2,9 @@
 # (the instance owner may pin and remove anywhere; the fake server gives everyone else a moderator
 # role), so pins and removals are offered. Each part checks the server and core, then takes a shot.
 
-app 1280 800
+# Taller than the old 800: the Lounge frame's islands show fewer rows, and the rows and controls
+# these steps use must be in view.
+app 1280 1000
 wait idle
 click auth-connect
 wait core session signed-out within 5
@@ -56,6 +58,17 @@ type "count me in"
 press enter
 wait core thread-sent "count me in"
 wait core requests sendThreadReply >= 1
+# A failed reply: Retry is a button and takes focus; it hands the caret back to the thread's
+# composer, so the next reply is typed there.
+server fail_next_send "{\"code\": \"RATE_LIMITED\", \"retryable\": true}"
+type "thread try"
+press enter
+wait core thread-failed "thread try" within 3
+click-row thread:message/retry "thread try"
+wait core thread-sent "thread try"
+type "thread after retry"
+press enter
+wait core thread-sent "thread after retry"
 # The server's clock stands still: move it, so the choice comes after the reply, as it would.
 server advance_clock "{\"ms\": 1000}"
 click thread-subscribe

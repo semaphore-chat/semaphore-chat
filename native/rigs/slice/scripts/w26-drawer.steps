@@ -1,0 +1,79 @@
+# B10: the side panel below wide is a modal drawer, a layer of the window's overlay stack, and a
+# voice room card's failed Join says so in a short toast.
+#
+# At 900 wide: the header's pins open the drawer and Escape closes it. The notification centre,
+# opened from the "All communities" sheet, likewise; with it open, Tab stays in the drawer, so
+# five Tabs and Enter open a notification and never reach Squad Up's Join under the scrim. Then
+# the card's Join itself: the fake server has no LiveKit, so the join fails and the toast says
+# so, in a toast that fits the centre island.
+app 900 800
+wait idle
+click auth-connect
+wait core session signed-out within 5
+wait idle
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core rows >= 5
+wait idle
+
+# 1. Pins in the drawer; Escape closes it.
+click header-pins
+wait core side-panel pins
+wait core element drawer-panel
+wait idle
+shot 01-pins-drawer
+press escape
+wait core side-panel none
+wait core no-element drawer-panel
+
+# 2. The notification centre from the sheet, in the drawer; Escape closes it.
+click dock-all
+wait core element sheet-notifications
+click sheet-notifications
+wait core element notifications-close
+wait idle
+shot 02-notifications-drawer
+press escape
+wait core no-element notifications-close
+wait core no-element drawer-panel
+
+# 3. Tab is trapped in the drawer: nothing under the scrim is reached. From Close, five Tabs
+# reach the second notification ("Mark all as read", then the first row and its two buttons),
+# and Enter opens it: pri's DM, not a join of Squad Up under the scrim.
+click dock-all
+wait core element sheet-notifications
+click sheet-notifications
+wait core element notifications-close
+wait idle
+press tab
+press tab
+press tab
+press tab
+press tab
+press enter
+wait core no-element notifications-close
+wait core text "did you see gracie posted the pit screenshot"
+wait idle
+expect core w9v join-failed gone
+navigate /community/$ID(c-couch)/channel/$ID(cc-general)
+wait core channel $ID(cc-general)
+wait idle
+
+# 4. The card's Join fails (no LiveKit here): the voice notice in the call slot (B11), with Retry,
+# and still on #general.
+click room-join-$ID(vc-squad)
+wait core w9v join-failed shown
+wait core element voice-notice
+wait core element voice-notice-action
+wait core channel $ID(cc-general)
+wait idle
+shot 03-join-failed-notice
+# Dismiss takes it away.
+click voice-notice-dismiss
+wait core w9v join-failed gone
+wait core no-element voice-notice

@@ -24,7 +24,7 @@ wait idle
 type "before signing out"
 press enter
 wait core sent "before signing out"
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -47,7 +47,7 @@ shot 01-second-sign-in-sent
 
 # 2. A profile from a message's author: the card, the page, then editing my own name and avatar.
 # The avatar comes from the file picker, which the rig answers.
-click-row message-author "before signing out"
+click-row message/name "before signing out"
 wait core profile-open $ID(me)
 wait core element profile-modal
 wait idle
@@ -78,7 +78,7 @@ shot 05-profile-saved
 
 # 3. Settings from the account menu, replacing W2's dialogs. Voice and video: push to talk and a
 # processing switch, saved and handed to the engine at once.
-click rail-account
+click user-card-menu
 wait core label "Settings"
 click account-settings
 wait core route settings/notifications
@@ -141,25 +141,26 @@ click desktop-link-preview-images
 expect settings /third_party_media false
 
 # "Open log folder" goes through the app's open seam; the rig records the path instead of opening
-# a file manager.
+# a file manager. The design-system controls make the page taller than the window: scroll down to it.
+scroll desktop-link-preview-images 0 -600
 click desktop-open-logs
 expect opened-url "app-data/logs"
 
 # 7. Appearance: light, at once, everywhere: the settings, the shell and a conversation, a dialog.
 click settings-tab-appearance
 wait core route settings/appearance
-wait core theme dark-purple-minimal
-click appearance-dark
-wait core theme light-purple-minimal
+wait core theme dark-minimal-8e75ff
+click appearance-mode-light
+wait core theme light-minimal-8e75ff
 wait core requests AppearanceSettingsController_updateSettings >= 1
-expect settings /theme light-purple-minimal
+expect settings /theme light-minimal-8e75ff
 wait idle
 shot 12-appearance-light-settings
 link "semaphore://community/$ID(c-couch)/channel/$ID(cc-general)"
 wait core channel $ID(cc-general)
 wait idle
 shot 13-appearance-light-conversation
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 wait idle
 shot 14-appearance-light-dialog
@@ -169,10 +170,10 @@ click account-cancel
 # in the tab.
 restart
 wait core session signed-in
-expect core theme light-purple-minimal
+expect core theme light-minimal-8e75ff
 wait core channel $ID(cc-general)
 expect core engine ptt on
-click rail-account
+click user-card-menu
 wait core label "Settings"
 click account-settings
 click settings-tab-voice
@@ -181,7 +182,9 @@ wait idle
 shot 15-restart-settings-voice
 
 # 9. Create a community from the rail's "+", and land in it.
-click rail-create-community
+click dock-all
+wait core element sheet-create-community
+click sheet-create-community
 wait core element create-community-name
 click create-community-name
 type "Board Games"
@@ -201,6 +204,9 @@ shot 17-community-created
 navigate /
 wait core route home
 wait core element home-invite
+# The notice is a toast, and an inactive window holds toasts (the queue's "hidden" reason): the
+# user is at this window.
+window activate
 click home-invite-quick
 wait core requests InviteController_createInvite >= 1
 wait core element home-invite-code
@@ -208,15 +214,16 @@ wait core element home-invite-notice
 expect clipboard "/#/join/"
 wait idle
 shot 17b-home-invite
-# Its notice goes by itself after 3 s, as the web's snackbar; the code stays.
-tick 3000
+# Its notice is a toast of the window's queue now, and goes by itself after the queue's 4 s
+# (`motion.toast`, as the web's toasts); the code stays.
+tick 4000
 wait core no-element home-invite-notice
 expect core element home-invite-code
 # W19: an invite still on its way when I sign out (and back in) belongs to the old session: the new
 # Home shows no code and no notice when its answer lands.
 server delay_route "{\"operationId\": \"InviteController_createInvite\", \"ms\": 3000}"
 click home-invite-quick
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -243,7 +250,7 @@ expect core no-element home-invite-notice
 server public_settings "{\"passwordResetEnabled\": true}"
 server seed_invite "{\"code\": \"w3-invite\"}"
 server reset_token "{\"token\": \"w3-reset-token\"}"
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -292,7 +299,7 @@ shot 21-registered-home
 # 10b. A reset link's route, signed out: a token nobody issued is refused in the server's words
 # and offers another link; a live one sets the new account's password, which then signs in.
 server reset_token "{\"email\": \"newcomer@example.com\", \"token\": \"w3-newcomer-reset\"}"
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out
@@ -339,7 +346,7 @@ shot 21e-reset-signed-in
 # 11. Sign in with the browser, end to end: the app opens the instance's desktop-login page, the
 # rig plays the browser (the signed-in user approves, the browser follows the redirect to the
 # app's loopback listener), and the app redeems the code.
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 click account-sign-out
 wait core session signed-out

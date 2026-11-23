@@ -13,6 +13,7 @@
 //! - **Refresh** is the timeline's: it takes the buffer's new length and reopens here, at the
 //!   playhead, so the newest segments are listed.
 
+use crate::kit::IconButtonVariant;
 use crate::kit::{
     Alert, Button, ButtonSize, IconButton, Severity, Spinner, Variant, text, with_tip,
 };
@@ -240,7 +241,6 @@ impl TrimPreview {
     }
 
     fn controls(&self, phone: bool, cx: &mut Context<Self>) -> impl IntoElement {
-        let sem = cx.sem().clone();
         let playing = self.playback.phase.is_playing();
         let tip = |id: &'static str, button: IconButton, tip: &'static str| {
             with_tip(div().id(id).child(button), tip)
@@ -283,7 +283,7 @@ impl TrimPreview {
                     IconName::Replay,
                     "Play selection from start",
                 )
-                .color(sem.primary)
+                .variant(IconButtonVariant::Soft)
                 .on_click(cx.listener(|view, _, _, cx| view.play_selection(cx))),
                 "Play selection from start",
             ))
@@ -303,7 +303,8 @@ impl TrimPreview {
                     "trim-loop",
                     if self.looping { "Loop ON" } else { "Loop OFF" },
                 )
-                .size(ButtonSize::Small)
+                .text()
+                .size(ButtonSize::Sm)
                 .on_click(cx.listener(|view, _, _, cx| {
                     let looping = !view.looping;
                     view.set_looping(looping, cx);
@@ -311,9 +312,9 @@ impl TrimPreview {
                 div()
                     .mx(px(if phone { 4. } else { 8. }))
                     .child(if self.looping {
-                        loop_button.contained()
+                        loop_button.primary()
                     } else {
-                        loop_button.outlined()
+                        loop_button.soft()
                     })
             })
             .child(with_tip(
@@ -397,16 +398,15 @@ impl TrimPreview {
                         .flex_wrap()
                         .items_center()
                         .gap(px(8.))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w(px(200.))
-                                .child(Alert::new(Severity::Error, PREVIEW_ERROR)),
-                        )
+                        .child(div().flex_1().min_w(px(200.)).child(Alert::new(
+                            "replay-preview-alert",
+                            Severity::Danger,
+                            PREVIEW_ERROR,
+                        )))
                         .child(
                             Button::new("trim-preview-retry", "Retry")
-                                .size(ButtonSize::Small)
-                                .contained()
+                                .primary()
+                                .size(ButtonSize::Sm)
                                 .start_icon(IconName::Refresh)
                                 .on_click(cx.listener(|view, _, _, cx| view.retry(cx))),
                         ),

@@ -431,3 +431,29 @@ diff --color -ruN a/src/linux/x11/window.rs b/src/linux/x11/window.rs
          }
      }
  
+diff --color -ruN a/src/linux/platform.rs b/src/linux/platform.rs
+--- a/src/linux/platform.rs	2026-11-20 20:47:00.741856520 -0800
++++ b/src/linux/platform.rs	2026-11-20 20:47:00.757670686 -0800
+@@ -141,7 +141,9 @@
+             background_executor,
+             foreground_executor: ForegroundExecutor::new(dispatcher),
+             text_system,
+-            appearance: WindowAppearance::Light,
++            // Semaphore: dark until the Settings portal says otherwise. Without the portal (a bare
++            // Hyprland or sway) nothing ever reports a scheme, and dark is the design default.
++            appearance: WindowAppearance::Dark,
+             auto_hide_scrollbars: false,
+             button_layout: WindowButtonLayout::linux_default(),
+             callbacks,
+diff --color -ruN a/src/linux/xdg_desktop_portal.rs b/src/linux/xdg_desktop_portal.rs
+--- a/src/linux/xdg_desktop_portal.rs	2026-11-20 20:47:00.742426858 -0800
++++ b/src/linux/xdg_desktop_portal.rs	2026-11-20 20:47:00.758337347 -0800
+@@ -187,6 +187,7 @@
+     match cs {
+         ColorScheme::PreferDark => WindowAppearance::Dark,
+         ColorScheme::PreferLight => WindowAppearance::Light,
+-        ColorScheme::NoPreference => WindowAppearance::Light,
++        // Semaphore: no preference is the design default, dark.
++        ColorScheme::NoPreference => WindowAppearance::Dark,
+     }
+ }

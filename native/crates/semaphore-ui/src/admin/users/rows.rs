@@ -13,7 +13,9 @@ use crate::community_settings::common::{
 use crate::community_settings::rules::{act, date_label, failure, needs, running};
 use crate::dms::face::user_face;
 use crate::format::file_size;
-use crate::kit::{Button, IconButton, Menu, MenuItem, SecondaryTone, Variant, spacing, text};
+use crate::kit::{
+    Button, IconButton, Menu, MenuCloseReason, MenuItem, SecondaryTone, Variant, spacing, text,
+};
 use crate::theme::SemTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -129,7 +131,7 @@ impl UsersPage {
                 .children(server_error(Some(error)))
                 .child(
                     Button::new("admin-users-retry", "Try again")
-                        .outlined()
+                        .soft()
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(UsersEvent::Retry))),
                 )
                 .into_any_element(),
@@ -150,7 +152,7 @@ impl UsersPage {
         let more = (self.view.state == LoadState::Ready && self.view.more).then(|| {
             div().flex().justify_center().pt(spacing(1.)).child(
                 Button::new("admin-users-more", "Load more")
-                    .outlined()
+                    .soft()
                     .loading(self.view.loading_more)
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(UsersEvent::LoadMore))),
             )
@@ -444,7 +446,16 @@ impl UsersPage {
                                 .max_w_full()
                                 .occlude()
                                 .on_mouse_down_out(cx.listener(|page, _, _, cx| page.close(cx)))
-                                .child(Menu::new(format!("Actions for {name}"), items)),
+                                .child(Menu::new(format!("Actions for {name}"), items).on_close({
+                                    let page = cx.weak_entity();
+                                    // A choice runs its own action (a dialog may follow);
+                                    // Escape and Tab close the menu.
+                                    move |reason, _, cx| {
+                                        if reason != MenuCloseReason::Selected {
+                                            page.update(cx, |page, cx| page.close(cx)).ok();
+                                        }
+                                    }
+                                })),
                         ),
                 )
                 .with_priority(1),

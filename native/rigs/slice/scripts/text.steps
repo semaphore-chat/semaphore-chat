@@ -30,13 +30,22 @@ wait idle
 shot 03-general
 # Third-party pictures are off: kwam3's GIF is a Load card, and nothing was fetched for it.
 expect label "GIF from media.gifs.example"
+# B11 (#900): a toast in a channel sits above the composer, at the foot of the messages
+# (ConversationPane's ToastAnchor), never over it.
+toast Saved
+wait core element kit-toast-region
+wait core above kit-toast-region composer-field
+toast off
+wait core no-element kit-toast-region
 
 # 3. Select across rows and copy. Aimed at the rows' text, so a taller row above (a GIF card)
 # can't move the selection.
-drag-text "are we doing friday or not" "are" "yeah i'll bring it friday" "friday"
+# Two rows in view in the Lounge frame at this size (its islands show fewer rows than the old
+# shell's columns did).
+drag-text "yeah i'll bring it friday" "yeah" "found this from last time" "time"
 press ctrl-c
-expect clipboard "are we doing friday or not"
 expect clipboard "yeah i'll bring it friday"
+expect clipboard "found this from last time"
 wait idle
 shot 04-selection
 press escape
@@ -70,15 +79,19 @@ press enter
 wait core failed "second try works" within 3
 wait idle
 shot 07-failed
-click-row retry "second try works"
+click-row message/retry "second try works"
 wait core sent "second try works"
 expect core count "second try works" 1
 server fail_next_send "{\"code\": \"RATE_LIMITED\", \"retryable\": true}"
 type "this one goes away"
 press enter
 wait core failed "this one goes away" within 3
-click-row discard "this one goes away"
+click-row message/delete "this one goes away"
 wait core no-text "this one goes away"
+# Delete hands the caret back to the composer too.
+type "typed after the delete"
+press enter
+wait core sent "typed after the delete"
 
 # 8. A message from someone else arrives live.
 server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"live from pri\"}"
@@ -208,7 +221,7 @@ shot 24-preview-image-on
 link-images off
 
 # 12. Sign out from the account menu: the stored session goes, the server is remembered.
-click rail-account
+click user-card-menu
 wait core label "Sign out"
 wait idle
 shot 14-account

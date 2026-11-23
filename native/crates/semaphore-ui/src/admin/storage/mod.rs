@@ -275,59 +275,65 @@ impl StoragePage {
             .or_else(|| failure(&self.view.op, &action).map(|error| error.message.clone()));
         let sem = cx.sem().clone();
         Some(
-            Dialog::new(format!("Storage Quota for {name}"))
-                .width(480.)
-                .body(
-                    div()
-                        .pt(spacing(1.))
-                        .flex()
-                        .flex_col()
-                        .gap(spacing(2.))
-                        .children(
-                            (!busy)
-                                .then(|| {
-                                    refusal.map(|message| Alert::new(Severity::Error, message))
+            Dialog::new(
+                "storage-quota-for-dialog",
+                format!("Storage Quota for {name}"),
+            )
+            .width(480.)
+            .body(
+                div()
+                    .pt(spacing(1.))
+                    .flex()
+                    .flex_col()
+                    .gap(spacing(2.))
+                    .children(
+                        (!busy)
+                            .then(|| {
+                                refusal.map(|message| {
+                                    Alert::new("admin-storage-alert", Severity::Danger, message)
                                 })
-                                .flatten(),
+                            })
+                            .flatten(),
+                    )
+                    .child(
+                        text(
+                            Variant::Body2,
+                            "The most this user's files may take, in GB. 0 sets no quota.",
                         )
-                        .child(
-                            text(
-                                Variant::Body2,
-                                "The most this user's files may take, in GB. 0 sets no quota.",
-                            )
-                            .text_color(sem.text_secondary),
-                        )
-                        .child(
-                            TextField::new("admin-storage-quota-field", &self.quota, "Quota (GB)")
-                                .disabled(busy)
-                                .error(invalid.is_some()),
-                        )
-                        .children(invalid.map(|message| {
-                            div()
-                                .id("admin-storage-quota-error")
-                                .test_support()
-                                .child(crate::community_settings::common::field_error(message, cx))
-                        })),
-                )
-                .action(
-                    Button::new("admin-storage-quota-cancel", "Cancel")
-                        .disabled(busy)
-                        .on_click(cx.listener(|page, _, _, cx| page.close_quota(cx))),
-                )
-                .action(
-                    Button::new("admin-storage-quota-save", "Save")
-                        .contained()
-                        .loading(busy)
-                        .disabled(invalid.is_some() || typed.trim().is_empty() || busy)
-                        .on_click(cx.listener(|page, _, _, cx| page.save_quota(cx))),
-                )
-                .on_close({
-                    let page = cx.weak_entity();
-                    move |_, cx| {
-                        page.update(cx, |page, cx| page.close_quota(cx)).ok();
-                    }
-                })
-                .into_any_element(),
+                        .text_color(sem.text_secondary),
+                    )
+                    .child(
+                        TextField::new("admin-storage-quota-field", &self.quota, "Quota (GB)")
+                            .disabled(busy)
+                            .error(invalid.is_some()),
+                    )
+                    .children(invalid.map(|message| {
+                        div()
+                            .id("admin-storage-quota-error")
+                            .test_support()
+                            .child(crate::community_settings::common::field_error(message, cx))
+                    })),
+            )
+            .action(
+                Button::new("admin-storage-quota-cancel", "Cancel")
+                    .ghost()
+                    .disabled(busy)
+                    .on_click(cx.listener(|page, _, _, cx| page.close_quota(cx))),
+            )
+            .action(
+                Button::new("admin-storage-quota-save", "Save")
+                    .primary()
+                    .loading(busy)
+                    .disabled(invalid.is_some() || typed.trim().is_empty() || busy)
+                    .on_click(cx.listener(|page, _, _, cx| page.save_quota(cx))),
+            )
+            .on_close({
+                let page = cx.weak_entity();
+                move |_, cx| {
+                    page.update(cx, |page, cx| page.close_quota(cx)).ok();
+                }
+            })
+            .into_any_element(),
         )
     }
 }
