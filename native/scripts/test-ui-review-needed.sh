@@ -12,7 +12,7 @@ check() { # <expected> <name> <paths...>
 check skip "android only" native/android/app/build.gradle.kts native/android/README.md
 check skip "player parser only" native/crates/semaphore-player/src/parser.rs
 check skip "net and media" native/crates/semaphore-net/src/lib.rs native/crates/semaphore-media-livekit/src/lib.rs
-check skip "core outside model" native/crates/semaphore-core/src/retry.rs native/crates/semaphore-core/src/send.rs
+check run "core outside model (links decide how labels draw)" native/crates/semaphore-core/src/links.rs
 check skip "docs and other workflows" docs-site/docs/a.md .github/workflows/native-android.yml
 check skip "design Kotlin output" design/gen/kotlin/Tokens.kt
 check skip "empty list"

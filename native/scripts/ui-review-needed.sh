@@ -17,8 +17,7 @@ while IFS= read -r path; do
   case "$path" in
     native/crates/semaphore-ui/* | native/crates/semaphore-app/* | native/crates/semaphore-design/* | \
       native/crates/semaphore-wire/* | \
-      native/crates/semaphore-core/src/model/* | native/crates/semaphore-core/src/text/* | \
-      native/crates/semaphore-core/src/scenario.rs | native/crates/semaphore-core/Cargo.toml | \
+      native/crates/semaphore-core/* | \
       native/fixtures/scenarios/* | native/fixtures/text/* | \
       native/third_party/* | native/Cargo.toml | native/Cargo.lock | native/rust-toolchain.toml | \
       native/scripts/ui-review* | native/rigs/* | native/tools/gen-design/* | \
