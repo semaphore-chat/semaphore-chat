@@ -1307,8 +1307,20 @@ pub(crate) fn render_row(
             .filter(|_| !row.removed)
             .and_then(|embed| render_gif(shared, &row, embed, window, cx));
         let has_gif = gif.is_some();
-        if !row.removed && !has_gif && !prepared.text.segments.is_empty() {
-            body = Some(render_words(shared, &row, &prepared.text, window, cx));
+        if !has_gif && !prepared.text.segments.is_empty() {
+            let words = render_words(shared, &row, &prepared.text, window, cx);
+            // A moderator is sent a removed message's words: they go under "[Message deleted]".
+            body = Some(match body.take() {
+                Some(removed) => div()
+                    .flex()
+                    .flex_col()
+                    .w_full()
+                    .min_w_0()
+                    .child(removed)
+                    .child(words)
+                    .into_any_element(),
+                None => words,
+            });
         }
         extras.extend(gif);
         extras.extend(render_attachments(shared, &row, window, cx));

@@ -1181,6 +1181,11 @@ impl Element for InlineText {
                 _ => chip.rest,
             };
             for quad in range_quads(&lines, &chip.range, bounds, line_height) {
+                // A mention wrapped right after its opening pad leaves only the pad on the line
+                // before: no chip for that sliver.
+                if !chip.spill && quad.size.width < px(SPACE_XS) {
+                    continue;
+                }
                 window.paint_quad(
                     fill(chip_box(quad, chip.spill), colour).corner_radii(px(RADIUS_SM)),
                 );
