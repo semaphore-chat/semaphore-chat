@@ -346,12 +346,6 @@ impl RenderOnce for MessageRow {
             })
             .read(cx)
             .clone();
-        // A toolbar taken away under the pointer (the row went into editing) never hears the
-        // pointer leave: forget it, or the toolbar would come back shown for good.
-        if self.actions.is_empty() {
-            toolbar_hovered.set(false);
-        }
-        let revealed = hovered.get() || toolbar_hovered.get() || focus_within;
         // Row or toolbar under the pointer, as `on_hover` last told it.
         let told = window
             .use_keyed_state(child_id(&self.id, "hover-told"), cx, |_, _| {
@@ -359,6 +353,19 @@ impl RenderOnce for MessageRow {
             })
             .read(cx)
             .clone();
+        // A toolbar taken away under the pointer (the row went into editing) never hears the
+        // pointer leave: forget it, or the toolbar would come back shown for good.
+        if self.actions.is_empty() && toolbar_hovered.replace(false) {
+            // And tell the screen if that leaves neither row nor toolbar under the pointer, or
+            // the row's next real hover is swallowed as no change.
+            let now = hovered.get();
+            if told.replace(now) != now
+                && let Some(handler) = self.on_hover.clone()
+            {
+                window.defer(cx, move |window, cx| handler(now, window, cx));
+            }
+        }
+        let revealed = hovered.get() || toolbar_hovered.get() || focus_within;
         let tell: crate::kit::Action = {
             let (hovered, toolbar_hovered) = (hovered.clone(), toolbar_hovered.clone());
             let handler = self.on_hover.clone();

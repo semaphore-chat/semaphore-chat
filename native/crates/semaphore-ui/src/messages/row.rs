@@ -50,8 +50,6 @@ const GROUP_WINDOW_MS: i64 = 5 * 60 * 1000;
 const PREPARED_LIMIT: usize = 512;
 /// Animated avatars kept as still copies (`Shared::still`), before the copies are dropped.
 const STILLS_LIMIT: usize = 64;
-/// Row focus handles kept before the ones of rows no longer loaded are dropped.
-const ROW_FOCUS_LIMIT: usize = 1024;
 
 /// A quoted message, shown above the body.
 ///
@@ -144,6 +142,14 @@ pub(crate) struct Shared {
     pub row_focus: RefCell<HashMap<i64, FocusHandle>>,
     /// The row that holds the roving focus (the list's one Tab stop); the newest when unset.
     pub roving: Cell<Option<i64>>,
+    /// The row whose focus handle the list holds (`ListState::splice_focusable`), so it stays
+    /// drawn while it has focus: the roving row. One row, so the list never walks them all.
+    pub focusable: Cell<Option<i64>>,
+    /// The rows drawn this frame, and last frame: a Tab stop must be a drawn row.
+    pub drawn: RefCell<Vec<i64>>,
+    pub last_drawn: RefCell<Vec<i64>>,
+    /// The list's own focus handle: a pointer press anywhere in it focuses the list.
+    pub list_focus: FocusHandle,
 }
 
 impl Shared {
@@ -318,15 +324,11 @@ impl Shared {
         still
     }
 
-    /// A row's focus handle, made the first time the row is drawn.
+    /// A row's focus handle, made the first time the list asks for it.
     pub(crate) fn row_focus(&self, seq: i64, cx: &mut App) -> RowFocus {
-        let mut handles = self.row_focus.borrow_mut();
-        if !handles.contains_key(&seq) && handles.len() >= ROW_FOCUS_LIMIT {
-            // Keep the rows still in the list; a gone row's handle goes with it.
-            let rows = self.rows.borrow();
-            handles.retain(|seq, _| rows.by_seq(*seq).is_some());
-        }
-        let handle = handles
+        let handle = self
+            .row_focus
+            .borrow_mut()
             .entry(seq)
             .or_insert_with(|| cx.focus_handle())
             .clone();
@@ -336,10 +338,23 @@ impl Shared {
         }
     }
 
-    /// The row that is the list's Tab stop: the one the roving focus last held, else the newest.
+    /// Drops the handles of rows no longer loaded, once they are many.
+    pub(crate) fn prune_row_focus(&self) {
+        let rows = self.rows.borrow();
+        let mut handles = self.row_focus.borrow_mut();
+        if handles.len() > rows.len() * 2 + 64 {
+            handles.retain(|seq, _| rows.by_seq(*seq).is_some());
+        }
+    }
+
+    /// The row that is the list's Tab stop: the one the roving focus last held, else the newest,
+    /// as long as it was drawn last frame; otherwise the newest row drawn (only drawn rows are in
+    /// the window's Tab order).
     pub(crate) fn tab_stop_seq(&self) -> Option<i64> {
         let rows = self.rows.borrow();
-        self.roving
+        let drawn = self.last_drawn.borrow();
+        let wanted = self
+            .roving
             .get()
             .filter(|seq| rows.by_seq(*seq).is_some())
             .or_else(|| {
@@ -347,14 +362,35 @@ impl Shared {
                     .checked_sub(1)
                     .and_then(|ix| rows.get(ix))
                     .map(|row| row.seq)
-            })
+            })?;
+        if drawn.is_empty() || drawn.contains(&wanted) {
+            return Some(wanted);
+        }
+        drawn
+            .iter()
+            .copied()
+            .filter(|seq| rows.by_seq(*seq).is_some())
+            .max()
+            .or(Some(wanted))
     }
 
-    /// Where a menu asked for from the keyboard opens: under the start of the row's words.
-    pub(crate) fn row_anchor(&self, seq: i64) -> Option<Point<Pixels>> {
-        let visible = self.visible.borrow();
-        let (_, block) = visible.range((seq, 0)..(seq + 1, 0)).next()?;
-        Some(block.bounds.origin + point(px(0.), block.layout.line_height()))
+    /// The rows' focus handles for `range` of the store, for the list (`splice_focusable`): only
+    /// the focusable row's.
+    pub(crate) fn row_handles(
+        &self,
+        range: std::ops::Range<usize>,
+        cx: &mut App,
+    ) -> Vec<Option<FocusHandle>> {
+        let seqs: Vec<i64> = {
+            let rows = self.rows.borrow();
+            range
+                .filter_map(|ix| rows.get(ix).map(|row| row.seq))
+                .collect()
+        };
+        let focusable = self.focusable.get();
+        seqs.into_iter()
+            .map(|seq| (Some(seq) == focusable).then(|| self.row_focus(seq, cx).handle))
+            .collect()
     }
 
     /// Opens an address that is already `check_link`'s (`MessageText`'s and `LinkCard`'s
@@ -434,15 +470,20 @@ fn image_canvas(shared: &Rc<Shared>, image: Arc<RenderImage>, radius: Pixels) ->
 }
 
 /// A row's part a press on which is its own: it starts no text selection.
-fn unselectable(content: impl IntoElement) -> Div {
-    own_presses().child(content)
+fn unselectable(shared: &Rc<Shared>, content: impl IntoElement) -> Div {
+    own_presses(shared).child(content)
 }
 
-/// A box of a row's parts that keep their presses (`unselectable`).
-fn own_presses() -> Div {
+/// A box of a row's parts that keep their presses (`unselectable`). A pointer press there
+/// still focuses the list, not the control (which may not stay drawn: a Load card, a toolbar).
+fn own_presses(shared: &Rc<Shared>) -> Div {
+    let list_focus = shared.list_focus.clone();
     div()
         .min_w_0()
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+            cx.stop_propagation();
+            window.focus(&list_focus, cx);
+        })
 }
 
 /// The key of a row's part that comes once per attachment, reaction or preview.
@@ -1275,7 +1316,7 @@ pub(crate) fn render_row(
     let reply = shared.replies.borrow().get(&row.seq).cloned();
     let quote = reply
         .as_ref()
-        .map(|reply| unselectable(render_quote(shared, &row, reply)).max_w_full());
+        .map(|reply| unselectable(shared, render_quote(shared, &row, reply)).max_w_full());
 
     let editor = shared
         .editing
@@ -1352,6 +1393,7 @@ pub(crate) fn render_row(
         _ => MessageState::Sent,
     };
     let focus = shared.row_focus(seq, cx);
+    shared.drawn.borrow_mut().push(seq);
     let focus_within = focus.handle.contains_focused(window, cx);
     if focus_within {
         shared.roving.set(Some(seq));
@@ -1375,14 +1417,14 @@ pub(crate) fn render_row(
     .reactions(
         render_reactions(shared, &row, window, cx)
             .into_iter()
-            .map(unselectable),
+            .map(|chip| unselectable(shared, chip)),
     );
     if let Some(body) = body {
         kit_row = kit_row.body(body);
     }
     if !extras.is_empty() {
         kit_row = kit_row.attachments(
-            own_presses()
+            own_presses(shared)
                 .flex()
                 .flex_col()
                 .items_start()
@@ -1393,7 +1435,13 @@ pub(crate) fn render_row(
         );
     }
     if !footer.is_empty() {
-        kit_row = kit_row.footer(own_presses().flex().flex_col().min_w_0().children(footer));
+        kit_row = kit_row.footer(
+            own_presses(shared)
+                .flex()
+                .flex_col()
+                .min_w_0()
+                .children(footer),
+        );
     }
     if let Some(image) = avatar {
         kit_row = kit_row.avatar(ImageSource::Render(image));
@@ -1444,14 +1492,13 @@ pub(crate) fn render_row(
     }
     if !is_editing {
         let menu_shared = shared.clone();
-        kit_row = kit_row.on_open_actions(move |request, window, cx| {
+        kit_row = kit_row.on_open_actions(move |request, _, cx| {
             let position = match request {
                 OpenActionsRequest::Pointer { position }
                 | OpenActionsRequest::Touch { position } => position,
-                // Anchored to the row: the start of its words as last painted.
-                OpenActionsRequest::Keyboard => menu_shared
-                    .row_anchor(seq)
-                    .unwrap_or_else(|| window.mouse_position()),
+                // The list's menu takes no keyboard yet (it becomes the kit Menu in PR 4), so a
+                // keyboard request opens nothing; the toolbar gives the keyboard every action.
+                OpenActionsRequest::Keyboard => return,
             };
             let view = menu_shared.view.borrow().clone();
             view.update(cx, |list, cx| list.open_menu(seq, position, cx))

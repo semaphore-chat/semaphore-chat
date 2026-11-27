@@ -293,8 +293,11 @@ impl VideoPlayer {
     }
 
     fn center(&self, center: Center, radius: Pixels, cx: &mut Context<Self>) -> Option<AnyElement> {
+        // In a message row that is not the list's Tab stop, Tab skips it, as the kit's controls.
+        let row_tab = crate::kit::chat::RowTabScope::active(cx);
         let round = |id: &'static str, icon: IconName, label: &'static str| {
             base::Button::new(id)
+                .when(!row_tab, |button| button.tab_stop(false))
                 .accessibility_label(label)
                 .size(px(64.))
                 .flex()

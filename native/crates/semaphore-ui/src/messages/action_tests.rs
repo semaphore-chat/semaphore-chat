@@ -310,3 +310,35 @@ fn a_toolbar_taken_away_under_the_pointer_does_not_come_back(cx: &mut TestAppCon
     draw(cx);
     assert_eq!(buttons(cx, "message-action-reply"), 1);
 }
+
+/// The same, with Edit pressed on its top part, which overhangs the row above: the row has the
+/// pointer again when it comes back onto its words, and shows its toolbar.
+#[gpui_kit::test]
+fn a_press_on_the_toolbars_overhang_does_not_swallow_the_next_hover(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let (view, cx, _) = open(cx);
+    let at = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 2, byte: 1 }))
+        .expect("row 2 is painted");
+    cx.simulate_mouse_move(at, None, Modifiers::default());
+    draw(cx);
+    let button = cx.update(|window, _| window.find("message-action-edit").bounds());
+    let top = point(button.center().x, button.top() + px(2.));
+    cx.simulate_mouse_move(top, None, Modifiers::default());
+    draw(cx);
+    cx.simulate_mouse_down(top, MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(top, MouseButton::Left, Modifiers::default());
+    draw(cx);
+    let editor: AnyView = cx.update(|_, cx| cx.new(|_| EmptyView).into());
+    view.update(cx, |list, cx| list.set_editing(Some((2, editor)), cx));
+    draw(cx);
+    view.update(cx, |list, cx| list.set_editing(None, cx));
+    draw(cx);
+    let at = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 2, byte: 1 }))
+        .expect("row 2 is painted");
+    cx.simulate_mouse_move(at, None, Modifiers::default());
+    draw(cx);
+    assert_eq!(view.read_with(cx, |view, _| view.hovered()), Some(2));
+    assert_eq!(buttons(cx, "message-action-reply"), 1);
+}

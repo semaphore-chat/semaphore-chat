@@ -304,3 +304,33 @@ fn what_a_player_asks_goes_out_as_the_lists_events(cx: &mut TestAppContext) {
         ] if a == "f-video" && b == "f-video"
     ));
 }
+
+/// A video a few rows up is not a Tab stop: Tab into the list lands on the newest row.
+#[gpui_kit::test]
+fn a_videos_play_button_is_skipped_by_tab_outside_the_tab_stop_row(cx: &mut TestAppContext) {
+    let opened = open(cx, rows(3), true);
+    let cx = opened.cx;
+    assert!(player_shown(5, cx), "the video row");
+    assert_eq!(
+        cx.update(|_, cx| opened.view.read(cx).focused_row()),
+        Some(7)
+    );
+    cx.update(|window, cx| window.focus_next(cx));
+    draw(cx);
+    let row = cx.update(|_, cx| {
+        opened
+            .view
+            .read(cx)
+            .shared
+            .row_focus
+            .borrow()
+            .get(&7)
+            .cloned()
+    });
+    let focused = row.is_some_and(|row| cx.update(|window, _| row.is_focused(window)));
+    assert!(focused, "the newest row, not the video's Play");
+    assert_eq!(
+        cx.update(|_, cx| opened.view.read(cx).focused_row()),
+        Some(7)
+    );
+}

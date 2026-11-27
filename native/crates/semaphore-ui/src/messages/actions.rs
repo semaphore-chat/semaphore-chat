@@ -212,11 +212,24 @@ pub fn reaction_tooltip_lines(users: Option<&ReactionUsers>) -> (String, Option<
 /// Runs `action` on the row with `seq` through the list, from a click in a row.
 fn act(shared: &Rc<Shared>, seq: i64, action: MessageAction, window: &mut Window, cx: &mut App) {
     let anchor = window.mouse_position();
+    focus_after_press(shared, seq, window, cx);
     let view = shared.view.borrow().clone();
     view.update(cx, |list, cx| {
         list.run_action(seq, action, anchor, window, cx)
     })
     .ok();
+}
+
+/// After a press in the toolbar, focus goes where it can stay: the list for the pointer (the
+/// toolbar goes when the pointer leaves), the row for the keyboard. A toolbar button keeps no
+/// focus of its own, since the toolbar may be gone at the next frame.
+fn focus_after_press(shared: &Rc<Shared>, seq: i64, window: &mut Window, cx: &mut App) {
+    if window.last_input_was_keyboard() {
+        let handle = shared.row_focus(seq, cx).handle;
+        window.focus(&handle, cx);
+    } else {
+        window.focus(&shared.list_focus, cx);
+    }
 }
 
 /// One of the toolbar's buttons: `message-action-<id>`, as rigs click it.
@@ -278,7 +291,8 @@ pub(crate) fn toolbar_buttons(
             .lounge_icon(LoungeIcon::Check)
             .small()
             .variant(IconButtonVariant::Danger)
-            .on_click(move |_, _, cx| {
+            .on_click(move |_, window, cx| {
+                focus_after_press(&confirm, seq, window, cx);
                 let view = confirm.view.borrow().clone();
                 view.update(cx, |list, cx| list.confirm_delete(seq, None, cx))
                     .ok();
@@ -291,7 +305,8 @@ pub(crate) fn toolbar_buttons(
             )
             .lounge_icon(LoungeIcon::X)
             .small()
-            .on_click(move |_, _, cx| {
+            .on_click(move |_, window, cx| {
+                focus_after_press(&cancel, seq, window, cx);
                 let view = cancel.view.borrow().clone();
                 view.update(cx, |list, cx| list.cancel_delete(cx)).ok();
             })
@@ -305,6 +320,7 @@ pub(crate) fn toolbar_buttons(
                 .lounge_icon(LoungeIcon::Ellipsis)
                 .small()
                 .on_click(move |_, window, cx| {
+                    focus_after_press(&open, seq, window, cx);
                     let at = window.mouse_position();
                     let view = open.view.borrow().clone();
                     view.update(cx, |list, cx| list.open_menu(seq, at, cx)).ok();

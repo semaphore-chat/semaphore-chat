@@ -10,8 +10,7 @@ use super::selection::{Pos, Selection};
 use super::synth::{self, SynthMedia, emoji_name, row, truth};
 use super::text::copy_range;
 use super::view::{
-    CopySelection, ListData, ListOptions, ListStatus, MessageList, MessageListEvent, init,
-    with_list_frame_policy,
+    ListData, ListOptions, ListStatus, MessageList, MessageListEvent, init, with_list_frame_policy,
 };
 use super::{MediaSource, ReplyPreview};
 use gpui_kit::*;
@@ -231,14 +230,10 @@ fn c_selection_survives_unmount_and_copies_everything_in_order(cx: &mut TestAppC
     let expected = expected_text(selection);
     assert_eq!(copied, expected);
 
-    // Through the real Copy action and the clipboard.
-    let focus = view.read_with(cx, |view, _| view.focus_handle().clone());
-    cx.update(|window, cx| {
-        window.focus(&focus, cx);
-        cx.write_to_clipboard(ClipboardItem::new_string("SENTINEL".into()));
-    });
-    draw(cx);
-    cx.update(|window, cx| window.dispatch_action(Box::new(CopySelection), cx));
+    // Through the real keystroke and the clipboard, with the focus the press left (the pressed
+    // row is long out of the drawn range).
+    cx.update(|_, cx| cx.write_to_clipboard(ClipboardItem::new_string("SENTINEL".into())));
+    cx.simulate_keystrokes("ctrl-c");
     cx.run_until_parked();
     let clipboard = cx
         .update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
@@ -663,7 +658,7 @@ fn shift_click_extends_from_the_anchor(cx: &mut TestAppContext) {
     assert_eq!(selected(&view, cx), "beta gamma\nsecond line here\ndelta");
 }
 
-/// Focuses the list, the way a press does, so bindings reach it.
+/// Focuses the list, as a pointer press in it does, so bindings reach it.
 fn focus_list(view: &Entity<MessageList>, cx: &mut VisualTestContext) {
     let focus = view.read_with(cx, |view, _| view.focus_handle().clone());
     cx.update(|window, cx| window.focus(&focus, cx));
@@ -2017,13 +2012,13 @@ fn the_typing_line_never_covers_the_last_row(cx: &mut TestAppContext) {
     );
 }
 
-/// Whether the row `seq` (or a control in it) has focus.
 /// Tab, as the window's focus traversal does it.
 fn tab(cx: &mut VisualTestContext) {
     cx.update(|window, cx| window.focus_next(cx));
     draw(cx);
 }
 
+/// Whether the row `seq` (or a control in it) has focus.
 fn row_has_focus(view: &Entity<MessageList>, seq: i64, cx: &mut VisualTestContext) -> bool {
     let handle = view.read_with(cx, |view, _| {
         view.shared.row_focus.borrow().get(&seq).cloned()
@@ -2034,28 +2029,66 @@ fn row_has_focus(view: &Entity<MessageList>, seq: i64, cx: &mut VisualTestContex
     cx.update(|window, cx| handle.contains_focused(window, cx))
 }
 
+/// Whether the row `seq` itself (not a control in it) has focus.
+fn row_is_focused(view: &Entity<MessageList>, seq: i64, cx: &mut VisualTestContext) -> bool {
+    let handle = view.read_with(cx, |view, _| {
+        view.shared.row_focus.borrow().get(&seq).cloned()
+    });
+    handle.is_some_and(|handle| cx.update(|window, _| handle.is_focused(window)))
+}
+
+/// Whether any of the list's rows, or the list itself, has focus.
+fn list_has_focus(view: &Entity<MessageList>, cx: &mut VisualTestContext) -> bool {
+    let list = view.read_with(cx, |view, _| view.focus_handle().clone());
+    cx.update(|window, cx| list.contains_focused(window, cx))
+}
+
+fn drawn_rows(view: &Entity<MessageList>, cx: &mut VisualTestContext) -> Vec<i64> {
+    view.read_with(cx, |view, _| view.shared.last_drawn.borrow().clone())
+}
+
+/// Whether the row `seq` is on screen: one of its blocks painted inside the viewport.
+fn on_screen(view: &Entity<MessageList>, seq: i64, cx: &mut VisualTestContext) -> bool {
+    view.read_with(cx, |view, _| {
+        let viewport = view.list.viewport_bounds();
+        view.painted_blocks()
+            .iter()
+            .any(|(painted, bounds)| *painted == seq && bounds.intersects(&viewport))
+    })
+}
+
 #[gpui_kit::test]
 fn rows_take_the_lists_roving_focus_with_the_arrow_keys(cx: &mut TestAppContext) {
-    let (view, cx) = open_list(cx, one_author(0, 5), Rc::new(NoMedia));
+    let (view, cx) = open_list(cx, one_author(0, 200), Rc::new(NoMedia));
     settle(cx);
+    assert!(view.read_with(cx, |view, _| view.is_following_tail()));
     // The newest row is the list's one Tab stop.
-    assert_eq!(view.read_with(cx, |view, _| view.focused_row()), Some(4));
+    assert_eq!(view.read_with(cx, |view, _| view.focused_row()), Some(199));
     tab(cx);
-    assert!(row_has_focus(&view, 4, cx));
-    for (keys, seq) in [("up", 3), ("up", 2), ("home", 0), ("down", 1), ("end", 4)] {
+    assert!(row_is_focused(&view, 199, cx));
+    // Up past the top of the screen: each row it lands on is scrolled to, drawn and focused.
+    for step in 1..=60 {
+        cx.simulate_keystrokes("up");
+        draw(cx);
+        let seq = 199 - step;
+        assert!(row_is_focused(&view, seq, cx), "up {step} lands on {seq}");
+        assert!(on_screen(&view, seq, cx), "up {step}: {seq} is on screen");
+        assert_eq!(view.read_with(cx, |view, _| view.focused_row()), Some(seq));
+    }
+    for (keys, seq) in [("home", 0), ("down", 1), ("end", 199), ("home", 0)] {
         cx.simulate_keystrokes(keys);
         draw(cx);
-        assert!(row_has_focus(&view, seq, cx), "{keys} lands on {seq}");
-        assert_eq!(
-            view.read_with(cx, |view, _| view.focused_row()),
-            Some(seq),
-            "{keys}: the row it lands on is the Tab stop"
-        );
+        assert!(row_is_focused(&view, seq, cx), "{keys} lands on {seq}");
+        assert!(on_screen(&view, seq, cx), "{keys}: {seq} is on screen");
     }
-    // Shift+Up still extends a selection rather than moving the focus.
-    cx.simulate_keystrokes("shift-up");
+    // Keys keep working after Home from the tail.
+    cx.simulate_keystrokes("down");
     draw(cx);
-    assert!(row_has_focus(&view, 4, cx));
+    assert!(row_is_focused(&view, 1, cx) && on_screen(&view, 1, cx));
+    // Shift+Down extends a selection rather than moving the focus.
+    cx.simulate_keystrokes("shift-down");
+    draw(cx);
+    assert!(row_is_focused(&view, 1, cx));
 }
 
 #[gpui_kit::test]
@@ -2064,16 +2097,86 @@ fn tab_walks_the_focused_rows_links_and_never_another_rows(cx: &mut TestAppConte
     let (view, cx) = open_list(cx, rows, Rc::new(NoMedia));
     settle(cx);
     tab(cx);
-    assert!(row_has_focus(&view, 2, cx));
-    for _ in 0..3 {
-        cx.simulate_keystrokes("tab");
-        draw(cx);
+    assert!(row_is_focused(&view, 2, cx));
+    // The next Tab stop is the row's link, inside the row.
+    tab(cx);
+    assert!(
+        row_has_focus(&view, 2, cx) && !row_is_focused(&view, 2, cx),
+        "the link in the focused row"
+    );
+    for _ in 0..4 {
+        tab(cx);
         assert!(!row_has_focus(&view, 0, cx) && !row_has_focus(&view, 1, cx));
     }
 }
 
 #[gpui_kit::test]
-fn enter_on_a_focused_row_opens_its_actions(cx: &mut TestAppContext) {
+fn the_tab_stop_follows_the_drawn_rows_after_arrivals_and_a_reset(cx: &mut TestAppContext) {
+    let (view, cx) = open_list(cx, one_author(0, 5), Rc::new(NoMedia));
+    settle(cx);
+    tab(cx);
+    cx.simulate_keystrokes("up");
+    draw(cx);
+    assert!(row_is_focused(&view, 3, cx));
+    cx.update(|window, cx| window.blur(cx));
+    draw(cx);
+    // 120 messages arrive: row 3 is far off screen, so a drawn row is the Tab stop.
+    view.update(cx, |view, cx| {
+        view.apply(
+            ListOp::Insert {
+                index: 5,
+                rows: one_author(5, 120),
+            },
+            cx,
+        );
+    });
+    settle(cx);
+    let stop = view.read_with(cx, |view, _| view.focused_row()).unwrap();
+    assert!(drawn_rows(&view, cx).contains(&stop), "{stop} is drawn");
+    tab(cx);
+    assert!(list_has_focus(&view, cx), "Tab reaches the list again");
+
+    // Another conversation (a reset): the newest row is the Tab stop again.
+    cx.update(|window, cx| window.blur(cx));
+    view.update(cx, |view, cx| {
+        view.apply(
+            ListOp::Reset {
+                rows: one_author(0, 200),
+            },
+            cx,
+        );
+    });
+    settle(cx);
+    assert_eq!(view.read_with(cx, |view, _| view.focused_row()), Some(199));
+    tab(cx);
+    assert!(row_is_focused(&view, 199, cx));
+}
+
+#[gpui_kit::test]
+fn a_press_focuses_the_list_so_its_shortcuts_work_wherever_the_row_goes(cx: &mut TestAppContext) {
+    let (view, cx) = setup(cx, 0, 3_000);
+    scroll_to(&view, 1_000, 0., cx);
+    let (_, bounds) = first_full_block(&view, cx);
+    click(bounds.origin + point(px(10.), px(6.)), 1, cx);
+    assert!(list_has_focus(&view, cx));
+    scroll_to(&view, 2_900, 0., cx);
+    cx.simulate_keystrokes("ctrl-a");
+    draw(cx);
+    assert!(
+        !selected(&view, cx).is_empty(),
+        "Ctrl+A after scrolling away"
+    );
+    cx.simulate_keystrokes("escape");
+    draw(cx);
+    assert_eq!(selected(&view, cx), "", "Escape");
+    // Tab from the list goes into it, to its Tab stop row.
+    tab(cx);
+    let stop = view.read_with(cx, |view, _| view.focused_row()).unwrap();
+    assert!(row_is_focused(&view, stop, cx));
+}
+
+#[gpui_kit::test]
+fn enter_on_a_focused_row_opens_no_menu_the_keyboard_cannot_use(cx: &mut TestAppContext) {
     let mut rows = one_author(0, 3);
     for row in &mut rows {
         row.id = Some(format!("m-{}", row.seq));
@@ -2083,14 +2186,21 @@ fn enter_on_a_focused_row_opens_its_actions(cx: &mut TestAppContext) {
     tab(cx);
     cx.simulate_keystrokes("up");
     draw(cx);
-    assert!(row_has_focus(&view, 1, cx));
-    cx.simulate_keystrokes("enter");
-    draw(cx);
-    assert_eq!(view.read_with(cx, |view, _| view.menu_open()), Some(1));
+    assert!(row_is_focused(&view, 1, cx));
+    for keys in ["enter", "shift-f10"] {
+        cx.simulate_keystrokes(keys);
+        draw(cx);
+        assert_eq!(
+            view.read_with(cx, |view, _| view.menu_open()),
+            None,
+            "{keys}"
+        );
+    }
+    assert!(row_is_focused(&view, 1, cx));
 }
 
 #[gpui_kit::test]
-fn a_mentions_pads_are_drawn_but_never_copied(cx: &mut TestAppContext) {
+fn a_mentions_pads_are_drawn_but_never_selected_or_copied(cx: &mut TestAppContext) {
     let rows = vec![fixture::message(
         1,
         fixture::user("u-ava", "ava", Some("Ava")),
@@ -2101,6 +2211,28 @@ fn a_mentions_pads_are_drawn_but_never_copied(cx: &mut TestAppContext) {
             .text(" about it"),
     )];
     let (view, cx) = open_list(cx, rows, Rc::new(NoMedia));
+    settle(cx);
+    // What is drawn: the name between its pads, inside its isolate.
+    let (drawn, highlighted) = view.read_with(cx, |view, _| {
+        let row = view.shared.rows.borrow().by_seq(1).cloned().unwrap();
+        let text = view.shared.prepared_for(&row).text.clone();
+        let drawn: String = text
+            .segments
+            .iter()
+            .map(|segment| crate::kit::chat::shown(segment, true))
+            .collect();
+        // The mention in the display string is bytes 4..10: "alex" inside it is 5..9.
+        let range = text.map.to_drawn(5) as usize..text.map.to_drawn(9) as usize;
+        (drawn.clone(), drawn[range].to_owned())
+    });
+    assert_eq!(
+        drawn, "ask \u{2066}\u{200A}@alexk\u{200A}\u{2069} about it",
+        "the pads are drawn"
+    );
+    assert_eq!(
+        highlighted, "alex",
+        "a selection inside the name maps past the marks and pads"
+    );
     focus_list(&view, cx);
     cx.simulate_keystrokes("ctrl-a");
     draw(cx);
