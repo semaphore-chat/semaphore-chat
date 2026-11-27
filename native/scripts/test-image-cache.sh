@@ -13,10 +13,17 @@ cat >"$work/bin/docker" <<'STUB'
 echo "$*" >>"$STUB_LOG"
 case "$1 ${2:-}" in
   "image inspect") exit "${STUB_INSPECT:-0}" ;;
-  "manifest inspect") exit "${STUB_MANIFEST:-0}" ;;
+  "manifest inspect")
+    # STUB_MANIFEST: 0 the tag exists, 1 "manifest unknown", 2 another error.
+    case "${STUB_MANIFEST:-0}" in
+      0) exit 0 ;;
+      1) echo "manifest unknown" >&2; exit 1 ;;
+      *) echo "error pinging v2 registry: dial tcp: i/o timeout" >&2; exit 1 ;;
+    esac ;;
 esac
 case "$1" in
   pull) exit "${STUB_PULL:-0}" ;;
+  tag) exit "${STUB_TAG:-0}" ;;
   build) exit "${STUB_BUILD:-0}" ;;
   push) exit "${STUB_PUSH:-0}" ;;
 esac
@@ -64,10 +71,10 @@ expect_no '^push'; expect_no '^manifest'; ok
 run "push needs a registry" NATIVE_IMAGE_PUSH=1 -- "native_image_build $img ctx"
 expect_rc 0; expect_no '^push'; expect_no '^manifest'; ok
 
-run "push: a new tag is pushed" NATIVE_IMAGE_PUSH=1 STUB_MANIFEST=1 NATIVE_IMAGE_REGISTRY=$reg -- "native_image_build $img ctx"
+run "push: a tag the registry calls unknown is pushed" NATIVE_IMAGE_PUSH=1 STUB_MANIFEST=1 NATIVE_IMAGE_REGISTRY=$reg -- "native_image_build $img ctx"
 expect_rc 0; expect_call "tag $img $reg/$img"; expect_call "push -q $reg/$img"; ok
 
-run "push: an existing tag is never overwritten" NATIVE_IMAGE_PUSH=1 STUB_MANIFEST=0 NATIVE_IMAGE_REGISTRY=$reg -- "native_image_build $img ctx"
+run "push: an existing tag is not pushed over" NATIVE_IMAGE_PUSH=1 STUB_MANIFEST=0 NATIVE_IMAGE_REGISTRY=$reg -- "native_image_build $img ctx"
 expect_rc 0; expect_call "manifest inspect $reg/$img"; expect_no '^push'; ok
 
 run "push failure only warns" NATIVE_IMAGE_PUSH=1 STUB_MANIFEST=1 STUB_PUSH=1 NATIVE_IMAGE_REGISTRY=$reg GITHUB_ACTIONS=true -- "native_image_build $img ctx"
@@ -75,6 +82,12 @@ expect_rc 0; grep -q '::warning title=Image cache::' "$work/out" || { echo "FAIL
 
 run "build failure fails, nothing pushed" STUB_BUILD=1 NATIVE_IMAGE_PUSH=1 STUB_MANIFEST=1 NATIVE_IMAGE_REGISTRY=$reg -- "native_image_build $img ctx"
 expect_rc 1; expect_no '^push'; ok
+
+run "push: a registry error is not taken as absent" NATIVE_IMAGE_PUSH=1 STUB_MANIFEST=2 NATIVE_IMAGE_REGISTRY=$reg GITHUB_ACTIONS=true -- "native_image_build $img ctx"
+expect_rc 0; expect_no '^push'; grep -q '::warning title=Image cache::not pushing' "$work/out" || { echo "FAIL $current: no warning"; fail=1; }; ok
+
+run "a pulled image that can't be tagged is a miss" STUB_INSPECT=1 STUB_TAG=1 NATIVE_IMAGE_REGISTRY=$reg -- "native_image_fetch $img"
+expect_rc 1; if grep -q 'image-cache: pulled' "$work/err"; then echo "FAIL $current: reported as pulled"; fail=1; fi; ok
 
 run "cache mount: a volume name is passed through" -- "native_cache_mount semaphore-native-cargo /cache/cargo"
 [ "$(cat "$work/out")" = "semaphore-native-cargo:/cache/cargo" ] || { echo "FAIL $current: got $(cat "$work/out")"; fail=1; }; ok

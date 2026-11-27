@@ -45,11 +45,13 @@ IN_IMAGE=0
 case "${1:-}" in
   -h|--help) usage; exit 0 ;;
   --in-image) IN_IMAGE=1 ;;
+  # Pulls or builds the NSIS image, prints its tag and tests nothing (native-images.yml).
+  --print-image) IN_IMAGE=print ;;
   "") ;;
   *) die "unknown argument '$1' (try --help)" ;;
 esac
 
-if [ "$IN_IMAGE" = 0 ]; then
+if [ "$IN_IMAGE" != 1 ]; then
   command -v docker >/dev/null 2>&1 || die "docker is required"
   tag="$(sha256sum "$NATIVE_DIR/docker/Dockerfile.nsis" | cut -c1-12)"
   IMAGE="semaphore-native-nsis:$tag"
@@ -59,6 +61,7 @@ if [ "$IN_IMAGE" = 0 ]; then
     echo "test-package-windows: building $IMAGE (first use of the NSIS image) ..." >&2
     native_image_build "$IMAGE" -f "$NATIVE_DIR/docker/Dockerfile.nsis" "$NATIVE_DIR"
   fi
+  if [ "$IN_IMAGE" = print ]; then echo "$IMAGE"; exit 0; fi
   exec docker run --rm --init \
     --network none \
     --user "$(id -u):$(id -g)" \

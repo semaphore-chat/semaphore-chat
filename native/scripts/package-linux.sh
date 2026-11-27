@@ -524,8 +524,11 @@ if [ "${1:-}" = "--finish-artifacts" ]; then
   exit 0
 fi
 
+PRINT_IMAGE=0
 case "${1:-}" in
   -h|--help) usage; exit 0 ;;
+  # Pulls or builds the image, prints its tag and builds nothing (.github/workflows/native-images.yml).
+  --print-image) PRINT_IMAGE=1 ;;
   "") ;;
   *) die "unknown argument '$1' (try --help)" ;;
 esac
@@ -542,6 +545,7 @@ if ! native_image_fetch "$IMAGE"; then
   native_image_build "$IMAGE" -f "$NATIVE_DIR/docker/Dockerfile.package" \
     --build-arg "HOST_UID=$HOST_UID" "$NATIVE_DIR"
 fi
+if [ "$PRINT_IMAGE" = 1 ]; then echo "$IMAGE"; exit 0; fi
 
 "$ROOT/scripts/test-net.sh" >/dev/null
 

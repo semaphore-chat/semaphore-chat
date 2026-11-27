@@ -18,11 +18,10 @@ permissions:
   contents: read
 
 env:
-  # The build image from GHCR by its content-hash tag (native/scripts/image-cache.sh, #887); a miss
-  # builds and pushes it once.
+  # The build image is pulled from GHCR by its content-hash tag (native/scripts/image-cache.sh,
+  # #887), with no login; a miss builds it locally. Only native-images.yml pushes it.
   NATIVE_IMAGE_REGISTRY: ghcr.io/semaphore-chat
-  NATIVE_IMAGE_PUSH: '1'
-
+  
 jobs:
   slice-e2e:
     name: Headless end to end (fake server, lavapipe)
@@ -34,9 +33,6 @@ jobs:
     # pinned snapshot); on the bare runner the .cargo/config.toml link args find no glib and the
     # run is not the deterministic one the shot comparison expects. The cargo registry is restored
     # from the copy native-spike.yml saves on main; the target directory is not cached.
-    permissions:
-      contents: read
-      packages: write
     defaults:
       run:
         working-directory: native
@@ -47,12 +43,6 @@ jobs:
       - name: Point the caches at the runner's temp directory
         run: |
           echo "NATIVE_CARGO_CACHE=$RUNNER_TEMP/native-cache/cargo" >> "$GITHUB_ENV"
-      - name: Log in to GHCR (the native image cache)
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
       - name: Restore the cargo registry
         uses: actions/cache/restore@v6
         with:
@@ -60,8 +50,8 @@ jobs:
             ${{ env.NATIVE_CARGO_CACHE }}/registry/index
             ${{ env.NATIVE_CARGO_CACHE }}/registry/cache
             ${{ env.NATIVE_CARGO_CACHE }}/git/db
-          key: native-cargo-${{ hashFiles('native/Cargo.lock') }}
-          restore-keys: native-cargo-
+          key: native-cargo-desktop-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: native-cargo-desktop-
       - name: Run the default suite
         run: scripts/in-image.sh scripts/slice-e2e.sh
       # The rig's own log, the steps, the fake server's log and the shots: what a failing run

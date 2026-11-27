@@ -38,6 +38,8 @@ if [ "${1:-}" != --inner ]; then
       --build-arg "HOST_UID=$(id -u)" \
       "$NATIVE_DIR/docker"
   fi
+  # Prints the image, pulled or built first, and runs nothing (.github/workflows/native-images.yml).
+  if [ "${1:-}" = --print-image ]; then echo "$image"; exit 0; fi
   NATIVE_IMAGE="$image" exec "$NATIVE_DIR/scripts/in-image.sh" bash scripts/desktop-probe.sh --inner
 fi
 

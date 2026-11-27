@@ -1,0 +1,105 @@
+name: Native images
+
+# Builds native/'s pinned Docker images and pushes them to ghcr.io/semaphore-chat under their
+# content-hash tags (#887). The other native-*.yml workflows only pull them, with no login and no
+# packages permission, and build an image locally when the pull misses.
+#
+# This is the only workflow that holds a GHCR write token for those images, and it only runs main's
+# reviewed tree: on pushes to main and on manual runs from main, never on a pull request. Its jobs
+# run `docker build` on the pinned Dockerfiles and nothing else: no cargo build, no Gradle and no
+# script from a pull request. A pull request that changes a Dockerfile builds that image locally on
+# each run, as before #887, and the push after merge publishes it.
+#
+# Each image is pushed by exactly one job: `base` the images on the build image (and the package
+# and NSIS images, which are independent), `android` the two layered on the Android image, after
+# `base` so it pulls the build image rather than building it again. image-cache.sh pushes a tag
+# only when GHCR answers "manifest unknown" for it, and the concurrency group keeps two runs from
+# pushing at once.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'native/docker/**'
+      - 'native/rust-toolchain.toml'
+      # The Android image's tag hashes the uniffi version, read from Cargo.lock.
+      - 'native/Cargo.lock'
+      - 'native/scripts/image-cache.sh'
+      - 'native/scripts/in-image.sh'
+      - 'native/scripts/android.sh'
+      - 'native/scripts/android-device-test.sh'
+      - 'native/scripts/package-linux.sh'
+      - 'native/scripts/test-package-windows.sh'
+      - 'native/scripts/desktop-probe.sh'
+      - 'native/rigs/sysaudio/image.sh'
+      - '.github/workflows/native-images.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: native-images
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NATIVE_IMAGE_REGISTRY: ghcr.io/semaphore-chat
+  NATIVE_IMAGE_PUSH: '1'
+
+jobs:
+  base:
+    name: Build image and the images on it; package and NSIS images
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build image
+        run: scripts/in-image.sh --print-image
+      - name: Desktop probe image
+        run: scripts/desktop-probe.sh --print-image
+      - name: System audio rig image
+        run: rigs/sysaudio/image.sh
+      - name: Package image
+        run: scripts/package-linux.sh --print-image
+      - name: NSIS image
+        run: scripts/test-package-windows.sh --print-image
+
+  android:
+    name: Android and emulator images
+    needs: base
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Android image
+        run: scripts/android.sh --print-image
+      - name: Emulator image
+        run: scripts/android-device-test.sh --print-image

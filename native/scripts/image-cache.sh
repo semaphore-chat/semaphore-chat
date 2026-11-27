@@ -1,17 +1,25 @@
 # shellcheck shell=bash
 # Sourced by the scripts that build native/'s pinned images (in-image.sh, android.sh,
-# android-device-test.sh, package-linux.sh, package-windows.sh, test-package-windows.sh).
+# android-device-test.sh, package-linux.sh, package-windows.sh, test-package-windows.sh,
+# desktop-probe.sh, rigs/sysaudio/image.sh).
 #
 # Each image keeps its local name, semaphore-native-<kind>:<hash>, where the hash covers every
 # file the image is built from. With NATIVE_IMAGE_REGISTRY set (CI sets ghcr.io/semaphore-chat),
-# an image missing locally is pulled from <registry>/<local name> before it is built, and with
-# NATIVE_IMAGE_PUSH=1 a freshly built one is pushed there, once: a tag that already exists is
-# never overwritten. There is no `latest`; a changed input is a new hash, so a new tag.
+# an image missing locally is pulled from <registry>/<local name> before it is built; any failed
+# pull (a miss, an outage) falls back to a local build. Pulls need no login: the packages are
+# public.
+#
+# Pushing (NATIVE_IMAGE_PUSH=1) is for .github/workflows/native-images.yml only, which runs on
+# pushes to main, builds nothing but the images, and pushes each from exactly one job. A tag is
+# pushed only when the registry answers "manifest unknown" for it; one that exists, or an answer
+# that is neither, is left alone. GHCR tags are mutable, so this is not a lock: it relies on that
+# workflow being the only pusher and on its runs not overlapping (one concurrency group). There is
+# no `latest`; a changed input is a new hash, so a new tag.
 #
 #   native_image_fetch <image>          0 if <image> is here, locally or pulled; 1 if it must be built
 #   native_image_build <image> <docker build args...>   builds it as <image> (-q), then pushes it
 #
-# Neither unset: nothing is pulled or pushed, and the scripts build locally exactly as before.
+# Neither set: nothing is pulled or pushed, and the scripts build locally exactly as before.
 
 NATIVE_IMAGE_SOURCE_URL="https://github.com/semaphore-chat/semaphore-chat"
 
@@ -24,7 +32,7 @@ native_image_fetch() {
   # A miss and a registry outage both fall back to a build: the run is never worse than without
   # the registry.
   if docker pull -q "$remote" >/dev/null 2>&1; then
-    docker tag "$remote" "$image"
+    docker tag "$remote" "$image" || return 1
     echo "image-cache: pulled $remote" >&2
     return 0
   fi
@@ -40,11 +48,21 @@ native_image_build() {
     -t "$image" "$@" >/dev/null || return 1
   [ -n "${NATIVE_IMAGE_REGISTRY:-}" ] && [ "${NATIVE_IMAGE_PUSH:-0}" = 1 ] || return 0
   remote="$NATIVE_IMAGE_REGISTRY/$image"
-  # Write once: whoever pushed the tag first wins, and the same hash names the same inputs.
-  if docker manifest inspect "$remote" >/dev/null 2>&1; then
+  # Only a definite "not there" leads to a push: an existing tag is never pushed over, and an
+  # error (network, auth) is not taken to mean absent.
+  local answer
+  if answer="$(docker manifest inspect "$remote" 2>&1 >/dev/null)"; then
     echo "image-cache: $remote already exists; not pushing" >&2
     return 0
   fi
+  case "$answer" in
+    *"manifest unknown"*|*"no such manifest"*) ;;
+    *)
+      echo "image-cache: can't tell whether $remote exists ($answer); not pushing" >&2
+      [ -z "${GITHUB_ACTIONS:-}" ] || echo "::warning title=Image cache::not pushing $remote: $answer"
+      return 0
+      ;;
+  esac
   echo "image-cache: pushing $remote ..." >&2
   docker tag "$image" "$remote"
   # A failed push only costs the next run a build, so it warns and does not fail the job.

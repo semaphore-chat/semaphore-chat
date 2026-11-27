@@ -120,8 +120,6 @@ jobs:
     needs: prepare
     permissions:
       contents: read
-      # native-package.yml pulls (and on a miss pushes) its pinned image on GHCR (#887).
-      packages: write
     uses: ./.github/workflows/native-package.yml
     with:
       version: ${{ needs.prepare.outputs.version }}

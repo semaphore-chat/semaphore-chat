@@ -65,6 +65,8 @@ if [ "${1:-}" != --inner ]; then
       --build-arg "BASE=$android_image" \
       "$NATIVE_DIR"
   fi
+  # Prints the image, pulled or built first, and runs nothing (.github/workflows/native-images.yml).
+  if [ "${1:-}" = --print-image ]; then echo "$image"; exit 0; fi
 
   if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
     echo "android-device-test: /dev/kvm must be readable and writable: the emulator needs it" >&2

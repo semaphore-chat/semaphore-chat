@@ -29,15 +29,14 @@ concurrency:
 permissions:
   contents: read
 
-# Caches (#887): the build and NSIS images come from GHCR by their content-hash tag
-# (native/scripts/image-cache.sh; a miss builds and, outside fork pull requests, pushes once), and
+# Caches (#887): the build, NSIS, desktop and sysaudio images are pulled from GHCR by their
+# content-hash tag (native/scripts/image-cache.sh), with no login and no packages permission; a
+# miss builds the image locally, and only native-images.yml, on main, pushes them. And
 # the cargo registry is a host directory bind-mounted in place of the Docker volume, restored with
 # actions/cache keyed on Cargo.lock and saved by runs on main only. The target directory is not
 # cached: it is tens of GB, more than the repository's whole cache allowance.
 env:
   NATIVE_IMAGE_REGISTRY: ghcr.io/semaphore-chat
-  # Fork pull requests pull only; every other run pushes an image it had to build.
-  NATIVE_IMAGE_PUSH: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '1' || '0' }}
   # Saves happen on main only, so pull requests share main's copy and add none of their own.
   NATIVE_CACHE_SAVE: ${{ github.ref == 'refs/heads/main' }}
 
@@ -45,9 +44,6 @@ jobs:
   checks:
     name: Build, policy and headless render (Linux)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     # 60 minutes was enough for verify.sh; the native UI review below renders every story three
     # times (about 80 CPU-minutes, so roughly 20 on the runner's 4 cores) on pull requests. A change
     # that touches every story (a theme change, as in #863) also writes a composite for every shot:
@@ -68,12 +64,6 @@ jobs:
       - name: Point the caches at the runner's temp directory
         run: |
           echo "NATIVE_CARGO_CACHE=$RUNNER_TEMP/native-cache/cargo" >> "$GITHUB_ENV"
-      - name: Log in to GHCR (the native image cache)
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
       - name: Restore the cargo registry
         id: cargo-cache
         uses: actions/cache/restore@v6
@@ -82,8 +72,8 @@ jobs:
             ${{ env.NATIVE_CARGO_CACHE }}/registry/index
             ${{ env.NATIVE_CARGO_CACHE }}/registry/cache
             ${{ env.NATIVE_CARGO_CACHE }}/git/db
-          key: native-cargo-${{ hashFiles('native/Cargo.lock') }}
-          restore-keys: native-cargo-
+          key: native-cargo-desktop-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: native-cargo-desktop-
       # The release and packaging scripts, which nothing else runs before a native-v* tag goes
       # out: assembly and the manifest checks with a throwaway key, and the installer compiled in
       # the NSIS image (native/docker/Dockerfile.nsis). First, so a break here shows up in

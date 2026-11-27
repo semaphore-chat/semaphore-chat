@@ -10,8 +10,9 @@ name: Native Android
 # (native/scripts/android-device-test.sh). It has been run on this host's Docker and /dev/kvm, but
 # not on a GitHub runner: the first CI run is what proves the KVM rule below on that image.
 #
-# Caches (#887): the images come from GHCR by their content-hash tag (native/scripts/image-cache.sh;
-# a miss builds and, outside fork pull requests, pushes once). Gradle's downloaded dependencies and
+# Caches (#887): the images are pulled from GHCR by their content-hash tag
+# (native/scripts/image-cache.sh), with no login and no packages permission; a miss builds the
+# image locally. Only native-images.yml, on main, pushes them. Gradle's downloaded dependencies and
 # the cargo registry are host directories bind-mounted in place of the Docker volumes, restored
 # with actions/cache keyed on the Gradle build files and Cargo.lock. Only runs on main save them,
 # so pull requests share main's copy and add none of their own; the push trigger is what writes it.
@@ -44,8 +45,6 @@ permissions:
 
 env:
   NATIVE_IMAGE_REGISTRY: ghcr.io/semaphore-chat
-  # Fork pull requests pull only; every other run pushes an image it had to build.
-  NATIVE_IMAGE_PUSH: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '1' || '0' }}
   # Saves happen on main only (see the top of the file).
   NATIVE_CACHE_SAVE: ${{ github.ref == 'refs/heads/main' }}
 
@@ -55,9 +54,6 @@ jobs:
     runs-on: ubuntu-latest
     # The image build (SDK, NDK, a Gradle distribution) dominates a run that misses the registry.
     timeout-minutes: 60
-    permissions:
-      contents: read
-      packages: write
     defaults:
       run:
         working-directory: native
@@ -71,12 +67,6 @@ jobs:
         run: |
           echo "NATIVE_CARGO_CACHE=$RUNNER_TEMP/native-cache/cargo" >> "$GITHUB_ENV"
           echo "NATIVE_GRADLE_CACHE=$RUNNER_TEMP/native-cache/gradle" >> "$GITHUB_ENV"
-      - name: Log in to GHCR (the native image cache)
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
       - name: Restore the Gradle dependency cache
         id: gradle-cache
         uses: actions/cache/restore@v6
@@ -147,9 +137,6 @@ jobs:
     # The emulator image (a ~350 MB emulator and a ~1 GB system image) dominates a run that misses
     # the registry; the emulator build and boot come on top of the APK's build.
     timeout-minutes: 90
-    permissions:
-      contents: read
-      packages: write
     defaults:
       run:
         working-directory: native
@@ -163,12 +150,6 @@ jobs:
         run: |
           echo "NATIVE_CARGO_CACHE=$RUNNER_TEMP/native-cache/cargo" >> "$GITHUB_ENV"
           echo "NATIVE_GRADLE_CACHE=$RUNNER_TEMP/native-cache/gradle" >> "$GITHUB_ENV"
-      - name: Log in to GHCR (the native image cache)
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
       # Restore only: debug-apk saves both, and the instrumented test needs few dependencies more.
       - name: Restore the Gradle dependency cache
         uses: actions/cache/restore@v6
