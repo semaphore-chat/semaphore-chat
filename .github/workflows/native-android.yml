@@ -47,8 +47,7 @@ env:
   # Fork pull requests pull only; every other run pushes an image it had to build.
   NATIVE_IMAGE_PUSH: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '1' || '0' }}
   # Saves happen on main only (see the top of the file).
-  # TEMPORARY (#887 proof): also this branch's pull request; removed before review.
-  NATIVE_CACHE_SAVE: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/native-image-cache' }}
+  NATIVE_CACHE_SAVE: ${{ github.ref == 'refs/heads/main' }}
 
 jobs:
   debug-apk:

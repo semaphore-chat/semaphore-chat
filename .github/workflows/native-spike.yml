@@ -38,8 +38,8 @@ env:
   NATIVE_IMAGE_REGISTRY: ghcr.io/semaphore-chat
   # Fork pull requests pull only; every other run pushes an image it had to build.
   NATIVE_IMAGE_PUSH: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '1' || '0' }}
-  # TEMPORARY (#887 proof): also this branch's pull request; removed before review.
-  NATIVE_CACHE_SAVE: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/native-image-cache' }}
+  # Saves happen on main only, so pull requests share main's copy and add none of their own.
+  NATIVE_CACHE_SAVE: ${{ github.ref == 'refs/heads/main' }}
 
 jobs:
   checks:
