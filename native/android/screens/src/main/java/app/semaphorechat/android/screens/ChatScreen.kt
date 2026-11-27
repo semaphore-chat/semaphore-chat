@@ -9,9 +9,8 @@ package app.semaphorechat.android.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -156,7 +156,6 @@ fun ChatScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ComposerArea(channel: String, draft: TextFieldValue, composer: ComposerModel, actions: ChatActions, onSend: () -> Unit) {
     Column(
@@ -195,7 +194,9 @@ private fun ComposerArea(channel: String, draft: TextFieldValue, composer: Compo
                     value = draft,
                     onValueChange = actions.onDraftChange,
                     placeholder = ComposerText.placeholder(channel),
-                    maxLines = if (WindowInsets.isImeVisible) ComposerCaps.KEYBOARD_ROWS else ComposerCaps.PHONE_ROWS,
+                    // The keyboard is up when it takes room at the bottom (`isImeVisible` reads true
+                    // where no insets are dispatched at all, as under Robolectric).
+                    maxLines = if (WindowInsets.ime.getBottom(LocalDensity.current) > 0) ComposerCaps.KEYBOARD_ROWS else ComposerCaps.PHONE_ROWS,
                     canSend = draft.text.isNotBlank(),
                     onSend = onSend,
                 )
