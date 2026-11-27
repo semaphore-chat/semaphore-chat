@@ -4,7 +4,8 @@
  * (`AttachmentTile`). The rules are the old row's (`components/Message/MessageComponent.tsx`), so both shells say
  * the same thing about the same message. No React, no data fetching: a native shell can mirror them.
  */
-import { stripBidiOverrides } from '../../kit';
+import { spansToText } from '../../utils/mentionParser';
+import { stripBidiOverrides } from '../../utils/bidi';
 import type { LinkPreview, Message } from '../../types/message.type';
 import { SpanType } from '../../types/message.type';
 import { formatClockTime, formatFullTimestamp, formatMessageTime } from '../../utils/messageTime';
@@ -134,6 +135,11 @@ export interface QuoteView {
   /** The first plain text of the original, or "Message" (as the old quote). */
   line: string;
   deleted: boolean;
+}
+
+/** The first line of a replied-to message's text, as the composer's reply banner shows it (no bidi overrides). */
+export function replyBannerLine(spans: Message['spans']): string {
+  return stripBidiOverrides(spansToText(spans).split('\n')[0]);
 }
 
 export function toQuoteView(replyTo: Message['replyTo']): QuoteView | null {

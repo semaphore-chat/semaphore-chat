@@ -1,6 +1,10 @@
 import { expectNoSensitiveUserFields } from '@/test-utils';
 import { toWireMessage } from '@/common/utils/message-wire.utils';
-import { toMessageDto, toMessageReactionsDto } from './message.mapper';
+import {
+  toAttachmentDto,
+  toMessageDto,
+  toMessageReactionsDto,
+} from './message.mapper';
 
 const SENT = new Date('2026-01-02T03:04:05.000Z');
 
@@ -284,6 +288,22 @@ describe('toWireMessage', () => {
       linkPreviews: null,
       deletedBy: null,
       deletedByReason: null,
+    });
+  });
+
+  describe('toAttachmentDto', () => {
+    it('returns the file name without bidi controls', () => {
+      const dto = toAttachmentDto({
+        id: 'f',
+        filename: 'a\u202Eb.png',
+        mimeType: 'image/png',
+        fileType: 'IMAGE',
+        size: 1,
+        thumbnailPath: null,
+        width: null,
+        height: null,
+      } as any);
+      expect(dto.filename).toBe('ab.png');
     });
   });
 });

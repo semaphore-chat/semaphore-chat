@@ -1,3 +1,4 @@
+import { stripBidiControls } from '@/common/utils/bidi.utils';
 import {
   BadRequestException,
   Injectable,
@@ -419,12 +420,10 @@ export class FileUploadService {
    * derived from this value.
    */
   private sanitizeFilename(originalName: string): string {
-    const sanitized = (originalName ?? '')
+    const sanitized = stripBidiControls(originalName ?? '')
       .replace(/[/\\]/g, '_')
       // eslint-disable-next-line no-control-regex
       .replace(/[\u0000-\u001f\u007f]/g, '')
-      // Bidi controls (embeddings, overrides, isolates and the marks) reorder the name as drawn.
-      .replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C]/g, '')
       .trim();
 
     return (sanitized.length > 0 ? sanitized : 'file').slice(0, 255);

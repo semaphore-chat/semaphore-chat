@@ -6,7 +6,7 @@
  * Clicking navigates to the original message.
  */
 
-import { stripBidiOverrides } from "../../kit";
+import { stripBidiOverrides } from "../../utils/bidi";
 import React from "react";
 import { Box, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";

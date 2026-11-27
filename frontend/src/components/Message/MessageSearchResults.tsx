@@ -3,7 +3,7 @@
  * phone `MobileSearchScreen` (author, channel chip in community scope,
  * relative time, 2-line preview). The query itself is `useMessageSearch`.
  */
-import { stripBidiOverrides } from "../../kit";
+import { stripBidiOverrides } from "../../utils/bidi";
 import React from "react";
 import {
   Box,

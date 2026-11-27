@@ -1,3 +1,4 @@
+import { stripBidiControls } from '@/common/utils/bidi.utils';
 import { toSpanDto } from '@/messages/message.mapper';
 import {
   Injectable,
@@ -720,17 +721,18 @@ export class NotificationsService {
       channel: { name: string } | null;
     },
   ): string {
-    const authorName =
+    const authorName = stripBidiControls(
       notification.author?.displayName ||
-      notification.author?.username ||
-      'Someone';
+        notification.author?.username ||
+        'Someone',
+    );
 
     if (notification.type === NotificationType.DIRECT_MESSAGE) {
       return `Message from ${authorName}`;
     }
 
     if (notification.channel) {
-      return `#${notification.channel.name}`;
+      return `#${stripBidiControls(notification.channel.name)}`;
     }
 
     return 'New notification';
@@ -745,15 +747,19 @@ export class NotificationsService {
       message: { spans: { text?: string | null }[] } | null;
     },
   ): string {
-    const authorName =
+    const authorName = stripBidiControls(
       notification.author?.displayName ||
-      notification.author?.username ||
-      'Someone';
+        notification.author?.username ||
+        'Someone',
+    );
 
     const MAX_BODY_LENGTH = 100;
-    const rawText = notification.message?.spans
+    // Bidi controls are dropped here, not in the shared flattening helper:
+    // link-preview address extraction reads the same text as stored.
+    const flattened = notification.message?.spans
       ? flattenSpansToDisplayText(notification.message.spans)
       : undefined;
+    const rawText = flattened ? stripBidiControls(flattened) : undefined;
     const messageText =
       rawText && rawText.length > MAX_BODY_LENGTH
         ? rawText.slice(0, MAX_BODY_LENGTH) + '...'

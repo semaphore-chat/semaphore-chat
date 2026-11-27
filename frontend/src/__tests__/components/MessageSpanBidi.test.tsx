@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { screen } from '@testing-library/react';
+import { fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
+import { toSegments } from '../../data/chat/toSegments';
+import { checkLink } from '../../utils/links';
 import { renderMessageSpans } from '../../components/Message/MessageSpan';
 import { SpanType, type Span } from '../../types/message.type';
 
@@ -41,5 +44,31 @@ describe('MessageSpan bidi isolation', () => {
 
     expect(container.textContent).not.toMatch(/[‪-‮⁦-⁩]/);
     expect(container.textContent).toContain('‏');
+  });
+
+  it('strips the fallback of a known custom emoji whose image fails to load', () => {
+    const emojiById = new Map([['e1', { id: 'e1', name: 'party', fileId: 'file-1' }]]) as never;
+    const spans = [{ type: SpanType.EMOJI, text: ':pa\u202Erty:', emojiId: 'e1' }] as Span[];
+    const { container } = renderWithProviders(<div>{renderMessageSpans(spans, emojiById)}</div>);
+    fireEvent.error(container.querySelector('img') as HTMLImageElement);
+    expect(container.textContent).toBe(':party:');
+  });
+
+  // Text is split at addresses first and each part cleaned, as the kit does: the same address in both renderers.
+  it.each([
+    ['a balanced pair closing right after an address', '\u2067see https://example.com/x\u2069', ['https://example.com/x']],
+    ['an override inside a path', 'go https://example.com/a\u202Eb now', ['https://example.com/a']],
+    ['an override inside the host (the address ends there)', 'go https://exa\u202Emple.com/ now', ['https://exa']],
+    ['a stray PDF after an address', 'https://example.com/x\u202C trailing', ['https://example.com/x']],
+    ['an unpaired opener before an address', 'a\u202B https://example.com/p b', ['https://example.com/p']],
+  ])('links the same address as the kit for %s', (_name, text, hrefs) => {
+    const { container } = renderWithProviders(<div>{renderMessageSpans([{ type: SpanType.PLAINTEXT, text }] as Span[])}</div>);
+    const classic = [...container.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+    const kit = toSegments([{ type: SpanType.PLAINTEXT, text }] as Span[])
+      .flatMap((segment) => (segment.type === 'link' ? [checkLink(segment.href)?.href ?? null] : []))
+      .filter((href) => href !== null);
+    expect(classic).toEqual(kit);
+    expect(classic.map((href) => href?.replace(/\/$/, ''))).toEqual(hrefs);
+    expect(container.textContent).not.toMatch(/[\u202A-\u202E\u2066-\u2069]/);
   });
 });

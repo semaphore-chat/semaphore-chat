@@ -1,4 +1,4 @@
-import { stripBidiOverrides } from "../kit/chat/messageSegments";
+import { stripBidiOverrides } from "../utils/bidi";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { userControllerGetUserByIdOptions } from "../api-client/@tanstack/react-query.gen";

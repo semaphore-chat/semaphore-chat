@@ -5,7 +5,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import { useAuthenticatedFile } from "../../hooks/useAuthenticatedFile";
 import { FileMetadata } from "../../types/message.type";
 import { formatFileSize, downloadBlob } from "../../utils/format";
-import { stripBidi } from "../../kit/chat/messageSegments";
+import { stripBidi } from "../../utils/bidi";
 import { getFileIcon } from "./fileTypeIcon";
 
 const DownloadCard = styled(Card)(({ theme }) => ({

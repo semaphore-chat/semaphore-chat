@@ -15,9 +15,6 @@ export function flattenSpansToText(
   return text.length > 0 ? text : undefined;
 }
 
-/** Bidi embeddings, overrides, isolates and marks: they reorder what is drawn. */
-const BIDI_CONTROLS = /[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C]/g;
-
 /**
  * Flattens message spans into a single display text string.
  * Same as flattenSpansToText but preserves original case for display purposes
@@ -30,7 +27,6 @@ export function flattenSpansToDisplayText(
     .filter((span) => span.text)
     .map((span) => span.text)
     .join(' ')
-    .replace(BIDI_CONTROLS, '')
     .trim();
   return text.length > 0 ? text : undefined;
 }

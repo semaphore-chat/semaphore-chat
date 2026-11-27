@@ -5,7 +5,7 @@
  * Used by both DirectMessageList (desktop) and MobileMessagesPanel (mobile).
  */
 
-import { stripBidiOverrides } from "../../kit";
+import { stripBidiOverrides } from "../../utils/bidi";
 import React from "react";
 import {
   Badge,

@@ -11,13 +11,12 @@
  * One host per conversation: the screen hands it the message whose actions were asked for. The row had focus when
  * it opened, so closing returns focus there (the overlay stack); Edit and Reply then move it to their field.
  */
-import { stripUnpairedBidi } from '../../../../kit';
+import { messageCopyText } from '../../../../data/chat/messageActionModel';
 import { useCallback, useEffect, useState, type JSX } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { userControllerGetUserByIdOptions } from '../../../../api-client/@tanstack/react-query.gen';
 import { Button, Icon, IconButton, ListRow, Sheet, Stack, useAnnounce, useConfirmDestructive, useToasts, type IconName } from '../../../../kit';
 import { copyToClipboard } from '../../../../utils/clipboard';
-import { spansToText } from '../../../../utils/mentionParser';
 import { getMessageActionModel, type MessageActionId } from '../../../../data/chat/messageActionModel';
 import { useMessageActions } from '../../../../data/chat/useMessageActions';
 import { findCachedChannel } from '../../../../hooks/useChannelMentionTarget';
@@ -147,7 +146,7 @@ function ActionsFor({
   // Copy says whether it worked (a page served over plain http has no clipboard).
   const copy = async () => {
     try {
-      await copyToClipboard(stripUnpairedBidi(spansToText(message.spans, (id) => findCachedChannel(queryClient, id)?.name)));
+      await copyToClipboard(messageCopyText(message.spans, (id) => findCachedChannel(queryClient, id)?.name));
       announce('Message copied');
     } catch {
       toasts.show({ tone: 'danger', message: "Couldn't copy the message" });

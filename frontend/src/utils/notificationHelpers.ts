@@ -1,4 +1,4 @@
-import { stripBidiOverrides } from '../kit/chat/messageSegments';
+import { stripBidiOverrides } from './bidi';
 import { formatDistanceToNow } from 'date-fns';
 import { NotificationType } from '../types/notification.type';
 import type { Notification } from '../types/notification.type';

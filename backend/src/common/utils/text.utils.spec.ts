@@ -7,10 +7,8 @@ describe('flattenSpansToDisplayText', () => {
     );
   });
 
-  it('drops bidi embeddings, overrides, isolates and marks', () => {
-    expect(
-      flattenSpansToDisplayText([{ text: 'a‮b‬' }, { text: '⁦c⁩‎‏؜d' }]),
-    ).toBe('ab cd');
+  it('keeps the stored text as is, bidi controls included (link previews read it)', () => {
+    expect(flattenSpansToDisplayText([{ text: 'a\u202Eb' }])).toBe('a\u202Eb');
   });
 
   it('returns undefined when no text remains', () => {

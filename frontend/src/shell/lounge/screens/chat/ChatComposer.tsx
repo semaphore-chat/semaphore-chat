@@ -8,7 +8,7 @@
  * tray, files dropped on the conversation too (`composerDrop`), and ↑ in the empty field edits the reader's last
  * message (`onEditLastMessage`). Neither picker is offered while the reader cannot write (the notice shows instead).
  */
-import { stripBidiOverrides } from '../../../../kit';
+import { replyBannerLine } from '../../../../data/chat/messageRowModel';
 import { useCallback, useEffect, useId, useRef, useState, type JSX, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -40,7 +40,6 @@ import { useTouchFirst } from '../../../../data/touchFirst';
 import { useMessageFileUpload } from '../../../../hooks/useMessageFileUpload';
 import type { MentionSuggestion } from '../../../../hooks/useMentionAutocomplete';
 import type { Message, Span } from '../../../../types/message.type';
-import { spansToText } from '../../../../utils/mentionParser';
 import type { DropInto } from './composerDrop';
 import { EmojiPickerSheet } from './EmojiPickerSheet';
 import { GifPickerSheet, gifSendUrl } from './GifPickerSheet';
@@ -90,7 +89,7 @@ function useReplyBanner(replyTo: Message | null, onCancel: () => void): Composer
   });
   if (replyTo === null) return undefined;
   const name = replyTo.webhook?.name ?? (author?.displayName || author?.username || 'a message');
-  const line = stripBidiOverrides(spansToText(replyTo.spans).split('\n')[0]);
+  const line = replyBannerLine(replyTo.spans);
   return { kind: 'reply', title: `Replying to ${name}`, detail: line || undefined, cancelLabel: 'Cancel reply', onCancel };
 }
 

@@ -10,7 +10,8 @@ import { renderWithProviders, createDmGroup, createMessage, createSpan } from '.
 import { renderWithKit } from '../test-utils/renderWithKit';
 import { MessageQuote } from '../../kit';
 import { segmentsLine } from '../../data/chat/toSegments';
-import { toQuoteView } from '../../data/chat/messageRowModel';
+import { replyBannerLine, toQuoteView } from '../../data/chat/messageRowModel';
+import { getMessageActionModel, messageCopyText } from '../../data/chat/messageActionModel';
 import { pinnedText } from '../../data/chat/usePinnedList';
 import { replySnippet } from '../../components/Message/ReplyComposerBanner';
 import { buildPreviewText } from '../../hooks/useMessageListAnnouncer';
@@ -62,6 +63,27 @@ describe('previews drop bidi controls', () => {
   });
   it('plainSpanText (desktop notification body)', () => {
     expect(plainSpanText(spans)).toBe(clean);
+  });
+  it('the lounge reply banner line', () => {
+    expect(replyBannerLine(spans)).toBe(clean);
+  });
+  it('the copy text (helper and the model\'s Copy action)', async () => {
+    expect(messageCopyText(spans)).toBe(clean);
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: write }, configurable: true });
+    const noop = () => undefined;
+    const copy = getMessageActionModel({
+      message: createMessage({ spans }),
+      canEdit: false,
+      canDelete: false,
+      canPin: false,
+      canReact: false,
+      canThread: false,
+      isPinned: false,
+      handlers: { onEdit: noop, onDelete: noop, onPin: noop, onUnpin: noop, onReplyInThread: noop, onAddReaction: noop },
+    }).find((action) => action.key === 'copy');
+    await copy?.run();
+    expect(write).toHaveBeenCalledWith(clean);
   });
   it('spansToText keeps the stored text, so editing a message does not rewrite it', () => {
     expect(spansToText(spans)).toBe(dirty);

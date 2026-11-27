@@ -13,7 +13,8 @@ import type { CustomEmojiDto } from "../../api-client/types.gen";
 import { getFileUrl } from "../../utils/fileHelpers";
 import { useNavigate } from "react-router-dom";
 import { useChannelMentionTarget } from "../../hooks/useChannelMentionTarget";
-import { checkLink, stripBidi, stripBidiOverrides, stripUnpairedBidi } from "../../kit";
+import { stripBidi, stripBidiOverrides, stripUnpairedBidi } from "../../utils/bidi";
+import { checkLink } from "../../utils/links";
 
 /**
  * A left-to-right isolate: a link label draws as written, whatever precedes it
@@ -211,11 +212,12 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
         );
       } else {
         // Split text into segments: plain text and URLs (auto-link).
-        const urlPattern = /(https?:\/\/[^\s<>)"']*[^\s<>)"'.,!?;:])/g;
-        const parts = stripUnpairedBidi(span.text ?? "").split(urlPattern);
+        const urlPattern =
+          /(https?:\/\/[^\s<>)"'\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]*[^\s<>)"'.,!?;:\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069])/g;
+        const parts = (span.text ?? "").split(urlPattern);
 
         content = parts.map((part, i) => {
-          if (!/^https?:\/\//.test(part)) return <React.Fragment key={i}>{part}</React.Fragment>;
+          if (!/^https?:\/\//.test(part)) return <React.Fragment key={i}>{stripUnpairedBidi(part)}</React.Fragment>;
           // The same check as the kit: an address with a user name or password is drawn as text, and a link
           // shows the parsed address (punycode host), not what was typed.
           const link = checkLink(part);

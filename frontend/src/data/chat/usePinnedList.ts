@@ -6,7 +6,7 @@
  *
  * Headless: no UI imports (see the `src/data` lint block in eslint.config.js).
  */
-import { stripBidiOverrides } from '../../kit';
+import { stripBidiOverrides } from '../../utils/bidi';
 import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {

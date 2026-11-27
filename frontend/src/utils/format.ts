@@ -1,4 +1,4 @@
-import { stripBidi } from "../kit/chat/messageSegments";
+import { stripBidi } from "./bidi";
 /**
  * Formats a byte count into a human-readable file size string.
  * e.g. 1024 → "1 KB", 1048576 → "1 MB"
