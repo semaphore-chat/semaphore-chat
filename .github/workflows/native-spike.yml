@@ -38,7 +38,6 @@ env:
   NATIVE_IMAGE_REGISTRY: ghcr.io/semaphore-chat
   # Fork pull requests pull only; every other run pushes an image it had to build.
   NATIVE_IMAGE_PUSH: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '1' || '0' }}
-  NATIVE_CARGO_CACHE: ${{ github.workspace }}/../native-cache/cargo
   # TEMPORARY (#887 proof): also this branch's pull request; removed before review.
   NATIVE_CACHE_SAVE: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/native-image-cache' }}
 
@@ -64,6 +63,11 @@ jobs:
           persist-credentials: false
       - name: Image cache helper
         run: native/scripts/test-image-cache.sh
+      # actions/cache refuses paths with `..`, and a job's env can't read the runner context, so
+      # the cache directory under the runner's temp directory is set here.
+      - name: Point the caches at the runner's temp directory
+        run: |
+          echo "NATIVE_CARGO_CACHE=$RUNNER_TEMP/native-cache/cargo" >> "$GITHUB_ENV"
       - name: Log in to GHCR (the native image cache)
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:

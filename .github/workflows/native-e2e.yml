@@ -22,7 +22,6 @@ env:
   # builds and pushes it once.
   NATIVE_IMAGE_REGISTRY: ghcr.io/semaphore-chat
   NATIVE_IMAGE_PUSH: '1'
-  NATIVE_CARGO_CACHE: ${{ github.workspace }}/../native-cache/cargo
 
 jobs:
   slice-e2e:
@@ -43,6 +42,11 @@ jobs:
         working-directory: native
     steps:
       - uses: actions/checkout@v7
+      # actions/cache refuses paths with `..`, and a job's env can't read the runner context, so
+      # the cache directory under the runner's temp directory is set here.
+      - name: Point the caches at the runner's temp directory
+        run: |
+          echo "NATIVE_CARGO_CACHE=$RUNNER_TEMP/native-cache/cargo" >> "$GITHUB_ENV"
       - name: Log in to GHCR (the native image cache)
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
