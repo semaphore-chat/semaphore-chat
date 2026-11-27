@@ -653,7 +653,10 @@ async fn control(
             ) else {
                 return invalid("communityId and userId are required");
             };
-            let seconds = request.get("seconds").and_then(Value::as_i64).unwrap_or(600);
+            let seconds = request
+                .get("seconds")
+                .and_then(Value::as_i64)
+                .unwrap_or(600);
             moderation::time_out_for_control(&inner, community_id, user_id, seconds);
         }
         "fail_next_send" => {

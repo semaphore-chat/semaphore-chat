@@ -1103,7 +1103,10 @@ async fn a_send_that_needs_its_row_is_refused_until_the_window_is_loaded() {
         .await
         .unwrap();
     rig.sync();
-    assert_eq!(rig.rows.last().unwrap().client_nonce.as_deref(), Some(nonce.as_str()));
+    assert_eq!(
+        rig.rows.last().unwrap().client_nonce.as_deref(),
+        Some(nonce.as_str())
+    );
     rig.settle().await;
     assert_eq!(rig.realtime.sent_nonces(), vec![nonce]);
 }
