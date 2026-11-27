@@ -24,6 +24,8 @@ pub struct AudioPlayer {
     scrub: Scrub,
     focus: FocusHandle,
     volume: Entity<SliderState>,
+    /// Drawn in an attachment tile, which shows the file's name: only the controls, no card.
+    in_tile: bool,
     _inbox: Task<()>,
     _volume_events: Subscription,
 }
@@ -31,6 +33,11 @@ pub struct AudioPlayer {
 impl EventEmitter<PlayerViewEvent> for AudioPlayer {}
 
 impl AudioPlayer {
+    /// Draws only the controls, for a kit `AttachmentTile` that shows the name and size.
+    pub fn set_in_tile(&mut self, in_tile: bool) {
+        self.in_tile = in_tile;
+    }
+
     /// A row for `source`, opened through `opener` on the first play (with no surface).
     pub fn new(
         source: AttachmentSource,
@@ -63,6 +70,7 @@ impl AudioPlayer {
         Self {
             source,
             playback,
+            in_tile: false,
             scrub: Scrub::default(),
             focus: cx.focus_handle(),
             volume,
@@ -290,6 +298,7 @@ impl Render for AudioPlayer {
                     })
                     .into_any_element(),
             };
+        let in_tile = self.in_tile;
         div()
             .id(("audio-player", cx.entity_id()))
             .track_focus(&self.focus)
@@ -298,16 +307,23 @@ impl Render for AudioPlayer {
             .flex()
             .items_center()
             .gap(px(8.))
-            .w(px(model::AUDIO_MAX_WIDTH))
             .max_w_full()
             .min_w_0()
-            .pl(px(4.))
-            .pr(px(8.))
-            .py(px(8.))
-            .rounded(px(8.))
-            .border_1()
-            .border_color(divider)
-            .bg(paper)
+            .map(|player| {
+                if in_tile {
+                    player.w_full()
+                } else {
+                    player
+                        .w(px(model::AUDIO_MAX_WIDTH))
+                        .pl(px(4.))
+                        .pr(px(8.))
+                        .py(px(8.))
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(divider)
+                        .bg(paper)
+                }
+            })
             .child(self.main_button(button, ink, cx))
             .child(
                 div()
@@ -316,7 +332,7 @@ impl Render for AudioPlayer {
                     .flex_1()
                     .min_w_0()
                     .gap(px(2.))
-                    .child(name)
+                    .when(!in_tile, |column| column.child(name))
                     .child(lower),
             )
             .child(

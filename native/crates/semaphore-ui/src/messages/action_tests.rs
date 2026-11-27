@@ -278,3 +278,35 @@ fn hovering_a_reaction_asks_who_reacted_once(cx: &mut TestAppContext) {
         .count();
     assert_eq!(asked, 1);
 }
+
+/// How many toolbars hold this button now.
+fn buttons(cx: &mut VisualTestContext, id: &'static str) -> usize {
+    use gpui_kit::test::TestWindowExt as _;
+    cx.update(|window, _| window.find_all(id).len())
+}
+
+/// W1: the toolbar's Edit is pressed with the pointer (its button keeps focus), the row turns
+/// into the editor and back, and the pointer moves to another row: only that row's toolbar shows.
+#[gpui_kit::test]
+fn a_toolbar_taken_away_under_the_pointer_does_not_come_back(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let (view, cx, _) = open(cx);
+    let at = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 2, byte: 1 }))
+        .expect("row 2 is painted");
+    cx.simulate_mouse_move(at, None, Modifiers::default());
+    draw(cx);
+    cx.update(|window, cx| window.click("message-action-edit", cx));
+    draw(cx);
+    let editor: AnyView = cx.update(|_, cx| cx.new(|_| EmptyView).into());
+    view.update(cx, |list, cx| list.set_editing(Some((2, editor)), cx));
+    draw(cx);
+    view.update(cx, |list, cx| list.set_editing(None, cx));
+    draw(cx);
+    let other = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 3, byte: 1 }))
+        .expect("row 3 is painted");
+    cx.simulate_mouse_move(other, None, Modifiers::default());
+    draw(cx);
+    assert_eq!(buttons(cx, "message-action-reply"), 1);
+}

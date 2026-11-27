@@ -4,15 +4,17 @@
 //! Which actions a row offers is a pure function of the row and the list's [`ListPermissions`], so
 //! the toolbar, the right-click menu and the phone sheet always agree.
 
-use super::icons::{self, Glyph, glyph as icon};
 use super::palette::*;
 use super::row::{Shared, clickable};
 use super::view::MessageList;
 use crate::emoji::QUICK_REACTIONS;
+use crate::kit::{Icon, IconButton, IconButtonVariant};
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{MessageRow, ReactionUsers, SendState};
+use semaphore_design::lounge::{TEXT_BODY_STRONG, TEXT_SMALL};
+use semaphore_design::{Icon as IconName, LoungeIcon};
 use std::rc::Rc;
 
 /// What the signed-in user may do in the conversation a list shows. The owner fills it from the
@@ -79,16 +81,16 @@ impl MessageAction {
         }
     }
 
-    fn glyph(self) -> Glyph {
+    fn icon(self) -> LoungeIcon {
         match self {
-            Self::React => icons::ADD_REACTION,
-            Self::Reply => icons::QUOTE,
-            Self::Thread => icons::THREAD,
-            Self::Edit => icons::EDIT,
-            Self::Pin => icons::PIN_OUTLINED,
-            Self::Unpin => icons::PIN,
-            Self::Copy => icons::COPY,
-            Self::Delete => icons::DELETE,
+            Self::React => LoungeIcon::SmilePlus,
+            Self::Reply => LoungeIcon::Reply,
+            Self::Thread => LoungeIcon::MessageSquare,
+            Self::Edit => LoungeIcon::Pencil,
+            Self::Pin => LoungeIcon::Pin,
+            Self::Unpin => LoungeIcon::PinOff,
+            Self::Copy => LoungeIcon::Copy,
+            Self::Delete => LoungeIcon::Trash2,
         }
     }
 
@@ -186,30 +188,6 @@ pub fn unread_label(count: u32) -> String {
     }
 }
 
-pub(crate) fn render_unread_divider(count: u32, palette: &Palette) -> impl IntoElement {
-    let rule = || div().flex_1().h(px(1.)).bg(palette.error);
-    div()
-        .id("unread-divider")
-        .test_support()
-        .aria_label(unread_label(count))
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .px(px(16.))
-        .my(px(16.))
-        .child(rule())
-        .child(
-            div()
-                .flex_none()
-                .whitespace_nowrap()
-                .text_size(px(CAPTION_SIZE))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(palette.error)
-                .child(unread_label(count)),
-        )
-        .child(rule())
-}
-
 /// `ReactionTooltip`: who reacted, `+N more`, or `Loading...` until core has names.
 pub fn reaction_tooltip_lines(users: Option<&ReactionUsers>) -> (String, Option<String>) {
     match users {
@@ -231,31 +209,6 @@ pub fn reaction_tooltip_lines(users: Option<&ReactionUsers>) -> (String, Option<
     }
 }
 
-pub(crate) fn render_reaction_tooltip(
-    users: Option<&ReactionUsers>,
-    palette: &Palette,
-) -> impl IntoElement {
-    let (names, more) = reaction_tooltip_lines(users);
-    div()
-        .id("reaction-tooltip")
-        .test_support()
-        .role(Role::Tooltip)
-        .aria_label(names.clone())
-        .whitespace_nowrap()
-        .max_w(px(260.))
-        .px(px(8.))
-        .py(px(4.))
-        .rounded(px(4.))
-        .bg(palette.tooltip_bg())
-        .text_color(palette.tip_text)
-        .text_size(px(13.))
-        .line_height(px(18.))
-        .child(names)
-        .when_some(more, |tip, more| {
-            tip.child(div().mt(px(2.)).italic().child(more))
-        })
-}
-
 /// Runs `action` on the row with `seq` through the list, from a click in a row.
 fn act(shared: &Rc<Shared>, seq: i64, action: MessageAction, window: &mut Window, cx: &mut App) {
     let anchor = window.mouse_position();
@@ -266,144 +219,103 @@ fn act(shared: &Rc<Shared>, seq: i64, action: MessageAction, window: &mut Window
     .ok();
 }
 
-fn tool_button(shared: &Rc<Shared>, row: &MessageRow, action: MessageAction) -> impl IntoElement {
-    let (seq, pinned) = (row.seq, row.pinned);
+/// One of the toolbar's buttons: `message-action-<id>`, as rigs click it.
+fn tool_button(shared: &Rc<Shared>, row: &MessageRow, action: MessageAction) -> AnyElement {
+    let seq = row.seq;
     let label = action.label_for(row, shared.permissions.get());
-    let palette = shared.palette.get();
-    let color = match action {
-        MessageAction::Delete => palette.error,
-        MessageAction::Unpin if pinned => palette.primary,
-        _ => palette.text_secondary,
-    };
     let event_shared = shared.clone();
-    clickable(SharedString::from(format!(
-        "message-action-{}",
-        action.id()
-    )))
-    .test_support()
-    .role(Role::Button)
-    .aria_label(label)
-    .flex()
-    .items_center()
-    .justify_center()
-    .size(px(28.))
-    .rounded(px(4.))
-    .hover(move |style| style.bg(palette.hover))
+    IconButton::new(
+        SharedString::from(format!("message-action-{}", action.id())),
+        IconName::MoreHoriz,
+        label,
+    )
+    .lounge_icon(action.icon())
+    .small()
+    .when(action == MessageAction::Delete, |button| {
+        button.variant(IconButtonVariant::Danger)
+    })
+    .selected(action == MessageAction::Unpin && row.pinned)
     .on_click(move |_, window, cx| act(&event_shared, seq, action, window, cx))
-    .child(icon(action.glyph(), 18., color))
+    .into_any_element()
 }
 
-/// `MessageTools`: top right of the row, over its text. While a delete is staged it asks "Delete?"
-/// with confirm and cancel instead. On a phone it is one button that opens the sheet.
-pub(crate) fn render_toolbar(
+/// `MessageTools`, for MessageRow's `actions`: the row's actions as IconButtons. While a delete is
+/// staged it asks "Delete?" with confirm and cancel instead. On a phone it is one button that
+/// opens the sheet. Empty when the row offers nothing.
+pub(crate) fn toolbar_buttons(
     shared: &Rc<Shared>,
     row: &MessageRow,
     staged: bool,
     phone: bool,
-) -> Option<AnyElement> {
+) -> Vec<AnyElement> {
     let permissions = shared.permissions.get();
     let actions = toolbar_actions(row, permissions);
     if actions.is_empty() {
-        return None;
+        return Vec::new();
     }
-    let palette = shared.palette.get();
     let seq = row.seq;
-    let tools = div()
-        .id("message-toolbar")
-        .test_support()
-        .role(Role::Toolbar)
-        .aria_label("Message actions")
-        .absolute()
-        .right(px(8.))
-        .top(px(4.))
-        .flex()
-        .items_center()
-        .gap(px(4.))
-        .p(px(2.))
-        .rounded(px(4.))
-        .bg(palette.paper)
-        .shadow_md()
-        // Not `occlude`: the toolbar sits inside its row, and occluding the row would unhover it,
-        // hide the toolbar, hover the row again and so on, every frame the pointer is on it. The
-        // press stops here instead, so it starts no selection in the text beneath.
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
-    let tools = if staged {
+    if staged {
         let confirm = shared.clone();
         let cancel = shared.clone();
-        tools
-            .border_1()
-            .border_color(palette.error)
-            .child(
-                div()
-                    .px(px(8.))
-                    .text_size(px(CAPTION_SIZE))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(palette.error)
-                    .child("Delete?"),
-            )
-            .child(
-                clickable("message-action-confirm-delete")
-                    .test_support()
-                    .role(Role::Button)
-                    .aria_label("Confirm delete")
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .size(px(28.))
-                    .rounded(px(4.))
-                    .hover(move |style| style.bg(palette.hover))
-                    .on_click(move |_, _, cx| {
-                        let view = confirm.view.borrow().clone();
-                        view.update(cx, |list, cx| list.confirm_delete(seq, None, cx))
-                            .ok();
-                    })
-                    .child(icon(icons::CHECK, 18., palette.error)),
-            )
-            .child(
-                clickable("message-action-cancel-delete")
-                    .test_support()
-                    .role(Role::Button)
-                    .aria_label("Cancel delete")
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .size(px(28.))
-                    .rounded(px(4.))
-                    .hover(move |style| style.bg(palette.hover))
-                    .on_click(move |_, _, cx| {
-                        let view = cancel.view.borrow().clone();
-                        view.update(cx, |list, cx| list.cancel_delete(cx)).ok();
-                    })
-                    .child(icon(icons::CANCEL, 18., palette.text_secondary)),
-            )
-    } else if phone {
-        let open = shared.clone();
-        tools.child(
-            clickable("message-action-more")
+        return vec![
+            div()
+                .id("message-toolbar-confirm")
                 .test_support()
-                .role(Role::Button)
-                .aria_label("More actions")
                 .flex()
                 .items_center()
-                .justify_center()
-                .size(px(28.))
-                .rounded(px(4.))
-                .hover(move |style| style.bg(palette.hover))
+                .px(px(8.))
+                .child(
+                    crate::kit::overlays::type_text(TEXT_SMALL, "Delete?")
+                        .font_weight(FontWeight(TEXT_BODY_STRONG.weight as f32))
+                        .text_color(shared.palette.get().error),
+                )
+                .into_any_element(),
+            IconButton::new(
+                "message-action-confirm-delete",
+                IconName::Check,
+                "Confirm delete",
+            )
+            .lounge_icon(LoungeIcon::Check)
+            .small()
+            .variant(IconButtonVariant::Danger)
+            .on_click(move |_, _, cx| {
+                let view = confirm.view.borrow().clone();
+                view.update(cx, |list, cx| list.confirm_delete(seq, None, cx))
+                    .ok();
+            })
+            .into_any_element(),
+            IconButton::new(
+                "message-action-cancel-delete",
+                IconName::Close,
+                "Cancel delete",
+            )
+            .lounge_icon(LoungeIcon::X)
+            .small()
+            .on_click(move |_, _, cx| {
+                let view = cancel.view.borrow().clone();
+                view.update(cx, |list, cx| list.cancel_delete(cx)).ok();
+            })
+            .into_any_element(),
+        ];
+    }
+    if phone {
+        let open = shared.clone();
+        return vec![
+            IconButton::new("message-action-more", IconName::MoreVert, "More actions")
+                .lounge_icon(LoungeIcon::Ellipsis)
+                .small()
                 .on_click(move |_, window, cx| {
                     let at = window.mouse_position();
                     let view = open.view.borrow().clone();
                     view.update(cx, |list, cx| list.open_menu(seq, at, cx)).ok();
                 })
-                .child(icon(icons::MORE, 18., palette.text_secondary)),
-        )
-    } else {
-        tools.children(
-            actions
-                .into_iter()
-                .map(|action| tool_button(shared, row, action)),
-        )
-    };
-    Some(tools.into_any_element())
+                .into_any_element(),
+        ];
+    }
+    actions
+        .into_iter()
+        .map(|action| tool_button(shared, row, action))
+        .collect()
 }
 
 fn menu_item(
@@ -432,15 +344,15 @@ fn menu_item(
         .px(px(16.))
         .hover(move |style| style.bg(palette.hover))
         .on_click(move |_, window, cx| act(&event_shared, seq, action, window, cx))
-        .child(icon(
-            action.glyph(),
-            20.,
-            if action.destructive() {
-                palette.error
-            } else {
-                palette.text_secondary
-            },
-        ))
+        .child(
+            Icon::lounge(action.icon())
+                .size(20.)
+                .color(if action.destructive() {
+                    palette.error
+                } else {
+                    palette.text_secondary
+                }),
+        )
         .child(
             div()
                 .text_size(px(BODY_SIZE))

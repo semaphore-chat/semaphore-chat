@@ -278,6 +278,32 @@ const PHONE_WIDTH: f32 = 600.;
 
 impl EventEmitter<MessageListEvent> for MessageList {}
 
+/// A key that moves the list's roving focus from the row that has it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RowStep {
+    Previous,
+    Next,
+    First,
+    Last,
+}
+
+impl RowStep {
+    /// Up, Down, Home or End, with no modifier.
+    pub(crate) fn of(keystroke: &Keystroke) -> Option<Self> {
+        let m = keystroke.modifiers;
+        if m.shift || m.alt || m.control || m.platform || m.function {
+            return None;
+        }
+        Some(match keystroke.key.as_str() {
+            "up" => Self::Previous,
+            "down" => Self::Next,
+            "home" => Self::First,
+            "end" => Self::Last,
+            _ => return None,
+        })
+    }
+}
+
 impl MessageList {
     /// Whether third-party pictures (GIFs, link-preview images) may load
     /// (`Core::third_party_media()`). Off (the default) draws "Load" cards and never asks the
@@ -409,6 +435,8 @@ impl MessageList {
             seen: RefCell::default(),
             seen_hovered: Cell::new(false),
             dm_peer_reads: RefCell::new(None),
+            row_focus: RefCell::new(HashMap::new()),
+            roving: Cell::new(None),
         });
         let target = seen::own_latest(shared.rows.borrow().iter().map(|row| row.as_ref()));
         shared.seen.borrow_mut().retarget(target);
@@ -734,6 +762,44 @@ impl MessageList {
                         }),
                 ),
         )
+    }
+
+    /// Moves the roving focus from the row `from` by `step`: the row it lands on is scrolled into
+    /// view, becomes the list's Tab stop and takes focus.
+    pub(crate) fn move_row_focus(
+        &mut self,
+        from: i64,
+        step: RowStep,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let target = {
+            let rows = self.shared.rows.borrow();
+            let Some(ix) = rows.index_of(from) else {
+                return;
+            };
+            let last = rows.len().saturating_sub(1);
+            let to = match step {
+                RowStep::Previous => ix.saturating_sub(1),
+                RowStep::Next => (ix + 1).min(last),
+                RowStep::First => 0,
+                RowStep::Last => last,
+            };
+            rows.get(to).map(|row| (to, row.seq))
+        };
+        let Some((ix, seq)) = target else {
+            return;
+        };
+        self.list.scroll_to_reveal_item(ix);
+        self.shared.roving.set(Some(seq));
+        let handle = self.shared.row_focus(seq, cx).handle;
+        window.focus(&handle, cx);
+        cx.notify();
+    }
+
+    /// The row holding the list's roving focus (its one Tab stop).
+    pub fn focused_row(&self) -> Option<i64> {
+        self.shared.tab_stop_seq()
     }
 
     pub fn focus_handle(&self) -> &FocusHandle {
@@ -1107,7 +1173,10 @@ impl MessageList {
     }
 
     fn on_press(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        window.focus(&self.focus, cx);
+        // A press in a row has already focused it, or the control under the pointer.
+        if !window.default_prevented() {
+            window.focus(&self.focus, cx);
+        }
         self.pointer = event.position;
         self.pressed_at = event.position;
         self.moved = false;

@@ -275,6 +275,11 @@ pub(crate) fn plan(segments: &[MessageSegment]) -> Vec<Block> {
 /// inside one, so no bidi control in the words around it can reorder what it reads.
 pub(crate) const LRI: char = '\u{2066}';
 pub(crate) const PDI: char = '\u{2069}';
+/// The room a mention keeps each side of its name, inside its isolate, so its chip pads the
+/// name as the web's `padding: 0 space.2xs` does. A run cannot be padded, and a chip only
+/// spilling past the glyphs would let the name's last letter reach its edge, and two mentions a
+/// space apart touch.
+pub(crate) const MENTION_PAD: char = '\u{200A}';
 
 /// Byte offsets of the bidi embeddings, overrides and isolates in `text` that are not closed (or
 /// close nothing) inside it: they would run on into the next segment, so they are not drawn.
@@ -341,7 +346,12 @@ pub(crate) fn shown(segment: &MessageSegment, emoji_placeholders: bool) -> Strin
             Some(link) => isolated(&link.label),
             None => strip_bidi(href),
         },
-        MessageSegment::Mention(mention) => isolated(&mention.text),
+        MessageSegment::Mention(mention) => {
+            format!(
+                "{LRI}{MENTION_PAD}{}{MENTION_PAD}{PDI}",
+                strip_bidi(&mention.text)
+            )
+        }
         MessageSegment::Emoji { name, src } => {
             if src.is_some() || emoji_placeholders {
                 EMOJI_PLACEHOLDER.to_string()
@@ -1053,7 +1063,8 @@ fn selection_quads(
 }
 
 /// A chip's box around its glyphs. Runs cannot be padded, so inline code spills `space.2xs` past
-/// them; a mention does not, or two mentions a space apart would touch.
+/// them; a mention does not, or two mentions a space apart would touch: its room is the pads
+/// drawn inside its isolate (`MENTION_PAD`).
 fn chip_box(quad: Bounds<Pixels>, spill: bool) -> Bounds<Pixels> {
     let side = if spill { px(SPACE_2XS) } else { px(0.) };
     Bounds::from_corners(

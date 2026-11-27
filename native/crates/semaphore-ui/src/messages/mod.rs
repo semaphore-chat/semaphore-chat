@@ -18,7 +18,6 @@ mod action_tests;
 mod actions;
 mod announce;
 mod format;
-mod icons;
 #[cfg(test)]
 mod link_tests;
 mod media;

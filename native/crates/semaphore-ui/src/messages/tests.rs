@@ -2016,3 +2016,93 @@ fn the_typing_line_never_covers_the_last_row(cx: &mut TestAppContext) {
         "last row {last:?} under the typing line {typing:?}"
     );
 }
+
+/// Whether the row `seq` (or a control in it) has focus.
+/// Tab, as the window's focus traversal does it.
+fn tab(cx: &mut VisualTestContext) {
+    cx.update(|window, cx| window.focus_next(cx));
+    draw(cx);
+}
+
+fn row_has_focus(view: &Entity<MessageList>, seq: i64, cx: &mut VisualTestContext) -> bool {
+    let handle = view.read_with(cx, |view, _| {
+        view.shared.row_focus.borrow().get(&seq).cloned()
+    });
+    let Some(handle) = handle else {
+        return false;
+    };
+    cx.update(|window, cx| handle.contains_focused(window, cx))
+}
+
+#[gpui_kit::test]
+fn rows_take_the_lists_roving_focus_with_the_arrow_keys(cx: &mut TestAppContext) {
+    let (view, cx) = open_list(cx, one_author(0, 5), Rc::new(NoMedia));
+    settle(cx);
+    // The newest row is the list's one Tab stop.
+    assert_eq!(view.read_with(cx, |view, _| view.focused_row()), Some(4));
+    tab(cx);
+    assert!(row_has_focus(&view, 4, cx));
+    for (keys, seq) in [("up", 3), ("up", 2), ("home", 0), ("down", 1), ("end", 4)] {
+        cx.simulate_keystrokes(keys);
+        draw(cx);
+        assert!(row_has_focus(&view, seq, cx), "{keys} lands on {seq}");
+        assert_eq!(
+            view.read_with(cx, |view, _| view.focused_row()),
+            Some(seq),
+            "{keys}: the row it lands on is the Tab stop"
+        );
+    }
+    // Shift+Up still extends a selection rather than moving the focus.
+    cx.simulate_keystrokes("shift-up");
+    draw(cx);
+    assert!(row_has_focus(&view, 4, cx));
+}
+
+#[gpui_kit::test]
+fn tab_walks_the_focused_rows_links_and_never_another_rows(cx: &mut TestAppContext) {
+    let rows = (0..3).map(link_row).collect();
+    let (view, cx) = open_list(cx, rows, Rc::new(NoMedia));
+    settle(cx);
+    tab(cx);
+    assert!(row_has_focus(&view, 2, cx));
+    for _ in 0..3 {
+        cx.simulate_keystrokes("tab");
+        draw(cx);
+        assert!(!row_has_focus(&view, 0, cx) && !row_has_focus(&view, 1, cx));
+    }
+}
+
+#[gpui_kit::test]
+fn enter_on_a_focused_row_opens_its_actions(cx: &mut TestAppContext) {
+    let mut rows = one_author(0, 3);
+    for row in &mut rows {
+        row.id = Some(format!("m-{}", row.seq));
+    }
+    let (view, cx) = open_list(cx, rows, Rc::new(NoMedia));
+    settle(cx);
+    tab(cx);
+    cx.simulate_keystrokes("up");
+    draw(cx);
+    assert!(row_has_focus(&view, 1, cx));
+    cx.simulate_keystrokes("enter");
+    draw(cx);
+    assert_eq!(view.read_with(cx, |view, _| view.menu_open()), Some(1));
+}
+
+#[gpui_kit::test]
+fn a_mentions_pads_are_drawn_but_never_copied(cx: &mut TestAppContext) {
+    let rows = vec![fixture::message(
+        1,
+        fixture::user("u-ava", "ava", Some("Ava")),
+        NOW_MS - 60_000,
+        Body::default()
+            .text("ask ")
+            .mention("@alexk", "u-alex")
+            .text(" about it"),
+    )];
+    let (view, cx) = open_list(cx, rows, Rc::new(NoMedia));
+    focus_list(&view, cx);
+    cx.simulate_keystrokes("ctrl-a");
+    draw(cx);
+    assert_eq!(selected(&view, cx), "ask @alexk about it");
+}

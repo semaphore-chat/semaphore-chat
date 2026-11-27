@@ -116,6 +116,11 @@ impl VideoPlayer {
         self.size
     }
 
+    /// Takes the box of the kit `AttachmentTile` it is drawn in.
+    pub fn set_size(&mut self, size: (f32, f32)) {
+        self.size = size;
+    }
+
     pub fn focus_handle(&self) -> &FocusHandle {
         &self.focus
     }

@@ -191,7 +191,11 @@ fn shown_lengths_add_up_to_the_planned_blocks() {
     let shown: usize = segments.iter().map(super::text::shown_len).sum();
     assert_eq!(planned, shown);
     let mention = super::text::shown_len(&segments[6]);
-    assert_eq!(mention, "@sam".len() + 6, "in a left-to-right isolate");
+    assert_eq!(
+        mention,
+        "@sam".len() + 12,
+        "in a left-to-right isolate, between its two pads"
+    );
     assert_eq!(
         super::text::block_starts(&blocks),
         [0, planned - mention - "let a = 1;".len(), planned - mention]
@@ -235,7 +239,7 @@ fn ranges_cover_the_text_in_order() {
     assert_eq!(at, text.len());
     assert_eq!(
         text,
-        "hi \u{2066}@aiko\u{2069} see x\u{2066}https://example.com/\u{2069}"
+        "hi \u{2066}\u{200A}@aiko\u{200A}\u{2069} see x\u{2066}https://example.com/\u{2069}"
     );
 }
 
@@ -1335,7 +1339,7 @@ fn link_labels_draw_in_a_left_to_right_isolate() {
         MentionKind::User,
         "@x\u{2069}\u{202E}y",
     ))]);
-    assert_eq!(text, "\u{2066}@xy\u{2069}");
+    assert_eq!(text, "\u{2066}\u{200A}@xy\u{200A}\u{2069}");
 }
 
 /// A pane under a cover is laid out but not painted: its list foot (the toast anchor) is left

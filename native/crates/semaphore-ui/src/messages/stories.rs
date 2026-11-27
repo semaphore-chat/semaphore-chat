@@ -11,7 +11,7 @@ use crate::stories::{Story, StoryEnv};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
-    AttachmentKind, AttachmentView, MessageRow, ReactionUsers, UnreadMarker,
+    AttachmentKind, AttachmentView, MessageRow, ReactionUsers, SegKind, TextStyle, UnreadMarker,
 };
 use semaphore_core::scenario::ScenarioViews;
 use std::collections::HashMap;
@@ -318,6 +318,46 @@ fn links_bidi(cx: &mut App) -> AnyView {
                 .text("\u{202E}ask ")
                 .mention("@alexk", &fixture::me().id)
                 .text(" about it"),
+        ),
+    ];
+    StoryList::new(rows).view(cx)
+}
+
+/// Mentions side by side, of the reader and of others, and in a narrow column: each chip keeps
+/// its room around the name, and two a space apart never touch.
+fn mentions(cx: &mut App) -> AnyView {
+    let ava = fixture::user("u-ava", "ava", Some("Ava Chen"));
+    let me = fixture::me().id;
+    let rows = vec![
+        fixture::message(
+            1,
+            ava.clone(),
+            NOW_MS - 120_000,
+            fixture::Body::default()
+                .mention("@sam", "u-sam")
+                .text(" ")
+                .mention("@priya", "u-priya")
+                .text(" ")
+                .mention("@alexk", &me)
+                .text(" are we on for friday?"),
+        ),
+        fixture::message(
+            2,
+            ava,
+            NOW_MS - 60_000,
+            fixture::Body::default()
+                .text("ping ")
+                .mention("@kwakwakwakwakwakwakwa", "u-k")
+                .text(" and ")
+                .mention("@W", "u-w")
+                .text(", then ")
+                .seg(
+                    "#general",
+                    SegKind::ChannelMention {
+                        channel_id: "c-general".into(),
+                    },
+                    TextStyle::default(),
+                ),
         ),
     ];
     StoryList::new(rows).view(cx)
@@ -860,6 +900,7 @@ fn base_stories() -> Vec<Story> {
         Story::new("messages-link-preview", |_, _, cx| link_preview(cx)),
         Story::new("messages-links-checked", |_, _, cx| checked_links(cx)),
         Story::new("messages-links-bidi", |_, _, cx| links_bidi(cx)),
+        Story::new("messages-mentions", |_, _, cx| mentions(cx)),
         Story::new("messages-chat-pane-typing", |_, _, cx| chat_pane_typing(cx)),
         Story::new("messages-links-checked-phone", |_, _, cx| {
             let view = checked_links(cx);

@@ -8,7 +8,8 @@
 //!
 //! - In the UI nothing calls `open_url`, `is_web_url`, `link_parts` or `extract_urls`, and
 //!   `MessageListEvent::OpenLink` is built in exactly two places in `messages/row.rs`: from
-//!   `check_link`'s `link.href`, and from `MessageText::on_link`'s `href` (the checked address).
+//!   `check_link`'s `link.href`, and from the `href` that `MessageText`'s and `LinkCard`'s
+//!   `on_link` hand over (the checked address). `LinkCard` hands over only `check_link`'s.
 //! - In the app, `open_url(` appears only in the files listed in `APP_OPENERS`, and a message link
 //!   opens in one place, `conversation/actions.rs`, as `check_link`'s address.
 
@@ -129,11 +130,30 @@ fn violations(ui: &[(String, String)], app: &[(String, String)]) -> Vec<String> 
         .unwrap_or_default();
     for needle in [
         "if let Some(link) = check_link(url)",
-        ".on_link(move |href, _, cx|",
+        ".on_link(move |href, _, cx| link_shared.open_href(href, cx))",
     ] {
         if !row.contains(needle) {
             found.push(format!("ui/messages/row.rs lacks `{needle}`"));
         }
+    }
+    // A preview card (`LinkCard`) hands its `on_link` only `check_link`'s address, and opens
+    // nothing itself.
+    let card = ui
+        .iter()
+        .find(|(path, _)| path == "kit/chat/link_card.rs")
+        .map(|(_, source)| code(source))
+        .unwrap_or_default();
+    for needle in [
+        "let link = check_link(&self.href)",
+        "let href = link.href;",
+        "handler(&href, window, cx)",
+    ] {
+        if !card.contains(needle) {
+            found.push(format!("ui/kit/chat/link_card.rs lacks `{needle}`"));
+        }
+    }
+    if card.matches("handler(").count() != 1 {
+        found.push("ui/kit/chat/link_card.rs calls its handler more than once".into());
     }
 
     let openers: BTreeMap<&str, usize> = APP_OPENERS.iter().copied().collect();

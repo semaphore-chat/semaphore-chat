@@ -70,6 +70,7 @@ pub struct AttachmentTile {
     on_open: Option<Action>,
     on_load_error: Option<Action>,
     player: Option<PlayerBuilder>,
+    picture: Option<AnyElement>,
     on_remove: Option<Action>,
     progress: Option<f32>,
     error: Option<SharedString>,
@@ -96,6 +97,7 @@ impl AttachmentTile {
             on_open: None,
             on_load_error: None,
             player: None,
+            picture: None,
             on_remove: None,
             progress: None,
             error: None,
@@ -151,6 +153,13 @@ impl AttachmentTile {
     /// the slot's box (the pattern of MediaTile's `video`). Ignored on an image or a file.
     pub fn player(mut self, build: impl FnOnce(PlayerSlot) -> AnyElement + 'static) -> Self {
         self.player = Some(Box::new(build));
+        self
+    }
+
+    /// The picture drawn by the screen, in place of `src`'s: a message list paints animated
+    /// images on its own clock. It fills the box.
+    pub(crate) fn picture(mut self, picture: impl IntoElement) -> Self {
+        self.picture = Some(picture.into_any_element());
         self
     }
 
@@ -410,7 +419,7 @@ impl AttachmentTile {
                                 .child(Icon::lounge(LoungeIcon::Music).color(secondary))
                                 .child(file_text(self.name, self.detail)),
                         )
-                        .child(div().h(px(CONTROL_MD)).child(build(slot)))
+                        .child(div().min_h(px(CONTROL_MD)).child(build(slot)))
                         .into_any_element()
                 }
             };
@@ -456,6 +465,7 @@ impl AttachmentTile {
                 // An image's failure only: a video whose still fails still plays.
                 let on_load_error = self.on_load_error.filter(|_| !video);
                 let failed_id = child_id(&self.id, "failed-name");
+                let drawn = self.picture.filter(|_| !video);
                 let picture = if video { self.poster } else { self.src }.map(|source| {
                     img(source)
                         .size_full()
@@ -494,7 +504,9 @@ impl AttachmentTile {
                             }
                             .into_any_element()
                         })
+                        .into_any_element()
                 });
+                let picture = drawn.or(picture);
                 let overlay = if video {
                     Some(
                         centred().child(
