@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.semaphorechat.android.design.Icons
 import app.semaphorechat.android.design.Tokens
@@ -103,7 +104,8 @@ fun ComposerField(
     ) {
         Box(Modifier.weight(1f).padding(vertical = Tokens.Space.Sm)) {
             if (value.text.isEmpty()) {
-                BasicText(text = placeholder, style = text.copy(color = palette.textDim), maxLines = 1)
+                // A long channel name ends in an ellipsis rather than wrapping out of sight.
+                BasicText(text = placeholder, style = text.copy(color = palette.textDim), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
             }
             BasicTextField(
                 value = value,
