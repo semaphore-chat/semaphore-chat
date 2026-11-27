@@ -236,4 +236,24 @@ describe('MessageText', () => {
     );
     expectNoAxeViolations(await runAxe(container));
   });
+
+  it('draws a link label and a mention in a left-to-right isolate, with no override left in the text', () => {
+    const segments: MessageSegment[] = [
+      { type: 'text', text: 'pay at \u202E' },
+      { type: 'link', href: 'https://evil.example/x' },
+      { type: 'text', text: ' today ' },
+      { type: 'mention', kind: 'user', text: '@aiko', id: 'u1' },
+    ];
+    const { container } = renderWithKit(<MessageText segments={segments} />);
+    const link = screen.getByRole('link');
+    const label = link.firstElementChild as HTMLElement;
+    expect(label.tagName).toBe('BDI');
+    expect(label).toHaveAttribute('dir', 'ltr');
+    expect(label).toHaveStyle({ unicodeBidi: 'isolate' });
+    expect(label).toHaveTextContent('https://evil.example/x');
+    const mention = screen.getByText('@aiko');
+    expect(mention.tagName).toBe('BDI');
+    expect(mention).toHaveAttribute('dir', 'ltr');
+    expect(container.textContent).not.toMatch(/[\u202A-\u202E\u2066-\u2069]/);
+  });
 });

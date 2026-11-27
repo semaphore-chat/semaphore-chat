@@ -7,7 +7,7 @@
  * shortcode fallback for an unknown emoji. One difference is the kit's own: `MessageText` draws only safe web links
  * as links (no `user:pass@` addresses), where the old renderer links any `http(s)://` match.
  */
-import type { MessageSegment, SegmentStyle } from '../../kit';
+import { stripBidiOverrides, type MessageSegment, type SegmentStyle } from '../../kit';
 import { SpanType, type Span } from '../../types/message.type';
 
 /** What a #channel mention shows when the reader can't see the channel (as the old renderer). */
@@ -119,6 +119,7 @@ export function segmentsLine(segments: readonly MessageSegment[]): string {
           return segment.text;
       }
     })
+    .map(stripBidiOverrides)
     .join('')
     .replace(/\s+/g, ' ')
     .trim();

@@ -92,6 +92,23 @@ export function stripBidi(text: string): string {
   return text.replace(BIDI_CONTROLS, '');
 }
 
+/** Bidi embeddings, overrides and isolates. The plain marks (U+200E, U+200F, U+061C) are not here: they are harmless. */
+const BIDI_OVERRIDES = /[\u202A-\u202E\u2066-\u2069]/g;
+
+/** `text` without bidi embeddings, overrides and isolates, so none can reach past its own segment. Marks are kept. */
+export function stripBidiOverrides(text: string): string {
+  return text.replace(BIDI_OVERRIDES, '');
+}
+
+/** The segments with bidi overrides dropped from every text, code and code-block run (and a mention's text). */
+export function cleanSegments(segments: readonly MessageSegment[]): MessageSegment[] {
+  return segments.map((segment) =>
+    segment.type === 'text' || segment.type === 'code' || segment.type === 'codeBlock' || segment.type === 'mention'
+      ? { ...segment, text: stripBidiOverrides(segment.text) }
+      : segment,
+  );
+}
+
 /** Whether `text` has a C0 control character (tab, line break, …) or DEL. */
 function hasControl(text: string): boolean {
   for (let index = 0; index < text.length; index += 1) {

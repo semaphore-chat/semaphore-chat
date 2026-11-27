@@ -4,6 +4,7 @@
  * (`AttachmentTile`). The rules are the old row's (`components/Message/MessageComponent.tsx`), so both shells say
  * the same thing about the same message. No React, no data fetching: a native shell can mirror them.
  */
+import { stripBidiOverrides } from '../../kit';
 import type { LinkPreview, Message } from '../../types/message.type';
 import { SpanType } from '../../types/message.type';
 import { formatClockTime, formatFullTimestamp, formatMessageTime } from '../../utils/messageTime';
@@ -138,7 +139,7 @@ export interface QuoteView {
 export function toQuoteView(replyTo: Message['replyTo']): QuoteView | null {
   if (!replyTo) return null;
   const deleted = !!replyTo.deletedAt;
-  const line = replyTo.spans.find((s) => s.type === SpanType.PLAINTEXT)?.text || 'Message';
+  const line = stripBidiOverrides(replyTo.spans.find((s) => s.type === SpanType.PLAINTEXT)?.text ?? '') || 'Message';
   return { id: replyTo.id, authorId: replyTo.authorId, line, deleted };
 }
 

@@ -6,6 +6,7 @@
  * message, with a cancel button.
  */
 
+import { stripBidiOverrides } from "../../kit";
 import React from "react";
 import { Box, Typography, IconButton } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
@@ -24,7 +25,7 @@ interface ReplyComposerBannerProps {
 // eslint-disable-next-line react-refresh/only-export-components
 export function replySnippet(message: Message): string {
   const text = (message.spans ?? [])
-    .map((span) => span.text ?? "")
+    .map((span) => stripBidiOverrides(span.text ?? ""))
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();

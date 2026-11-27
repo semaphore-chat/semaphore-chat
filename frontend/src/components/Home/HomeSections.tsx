@@ -1,3 +1,4 @@
+import { stripBidiOverrides } from "../../kit";
 import React from "react";
 import {
   Avatar,
@@ -91,7 +92,7 @@ export const UnreadDmList: React.FC<{ dms: HomeUnreadDm[]; currentUserId?: strin
     {dms.map(({ group, unreadCount }) => {
       const other = getDmOtherUser(group, currentUserId);
       const name = getDmDisplayName(group, currentUserId);
-      const preview = group.lastMessage?.spans.find((s) => s.type === "PLAINTEXT")?.text || "New message";
+      const preview = stripBidiOverrides(group.lastMessage?.spans.find((s) => s.type === "PLAINTEXT")?.text ?? "") || "New message";
       return (
         <ListItem key={group.id} disablePadding>
           <ListItemButton component={Link} to={`/direct-messages/${group.id}`}>
