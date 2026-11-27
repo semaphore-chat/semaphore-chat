@@ -51,7 +51,7 @@
     "@prisma/client": "7.9.1",
     "@semaphore-chat/shared": "workspace:*",
     "@socket.io/redis-adapter": "^8.3.0",
-    "@willsoto/nestjs-prometheus": "^6.1.1",
+    "@willsoto/nestjs-prometheus": "^7.0.0",
     "bcrypt": "^6.0.0",
     "bullmq": "^6.3.15",
     "class-transformer": "^0.5.1",
