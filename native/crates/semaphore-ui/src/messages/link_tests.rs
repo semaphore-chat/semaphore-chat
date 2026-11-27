@@ -138,6 +138,14 @@ fn violations(ui: &[(String, String)], app: &[(String, String)]) -> Vec<String> 
     }
     // `open_href` emits what it is given: only the two `on_link` closures (words and preview
     // cards) may call it, besides its definition.
+    let closures = row
+        .matches(".on_link(move |href, _, cx| link_shared.open_href(href, cx))")
+        .count();
+    if closures != 2 {
+        found.push(format!(
+            "ui/messages/row.rs has the `on_link` line {closures} times, not 2"
+        ));
+    }
     let calls = row.matches("open_href(").count();
     if calls != 3 {
         found.push(format!(
@@ -283,6 +291,22 @@ fn the_check_sees_new_files_and_code_after_a_url_literal() {
     let found = violations(&ui, &app);
     assert!(
         found.iter().any(|v| v.contains("open_href(` 4 times")),
+        "{found:?}"
+    );
+
+    let (mut ui, app) = tree();
+    let row = ui
+        .iter_mut()
+        .find(|(path, _)| path == "messages/row.rs")
+        .unwrap();
+    row.1 = row.1.replacen(
+        ".on_link(move |href, _, cx| link_shared.open_href(href, cx))",
+        ".on_link(move |_, _, cx| link_shared.open_href(&preview.url, cx))",
+        1,
+    );
+    let found = violations(&ui, &app);
+    assert!(
+        found.iter().any(|v| v.contains("`on_link` line 1 times")),
         "{found:?}"
     );
 

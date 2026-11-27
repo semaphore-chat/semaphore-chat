@@ -1228,7 +1228,11 @@ impl Element for InlineText {
         for target in &mut self.targets {
             target.node.paint(window, cx);
         }
-        if let Some((list, start, len)) = &self.list {
+        // Only what can be seen and hit: a row kept drawn out of sight (an empty content mask)
+        // records nothing to hit-test.
+        if let Some((list, start, len)) = &self.list
+            && !window.content_mask().bounds.is_empty()
+        {
             (list.record)(*start, *len, layout.clone(), bounds);
         }
 

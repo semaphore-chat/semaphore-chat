@@ -211,7 +211,16 @@ pub fn reaction_tooltip_lines(users: Option<&ReactionUsers>) -> (String, Option<
 
 /// Runs `action` on the row with `seq` through the list, from a click in a row.
 fn act(shared: &Rc<Shared>, seq: i64, action: MessageAction, window: &mut Window, cx: &mut App) {
-    let anchor = window.mouse_position();
+    // A picker asked for by the keyboard opens at the row (its top right, where the toolbar
+    // is), not wherever the pointer was left.
+    let anchor = if window.last_input_was_keyboard() {
+        shared
+            .row_bounds(seq)
+            .map(|bounds| bounds.top_right())
+            .unwrap_or_else(|| window.mouse_position())
+    } else {
+        window.mouse_position()
+    };
     focus_after_press(shared, seq, window, cx);
     let view = shared.view.borrow().clone();
     view.update(cx, |list, cx| {
@@ -260,9 +269,18 @@ pub(crate) fn toolbar_buttons(
     row: &MessageRow,
     staged: bool,
     phone: bool,
+    keyboard: bool,
 ) -> Vec<AnyElement> {
     let permissions = shared.permissions.get();
-    let actions = toolbar_actions(row, permissions);
+    let mut actions = toolbar_actions(row, permissions);
+    // Copy lives in the menu, which the keyboard can't use yet: the keyboard's toolbar has it.
+    if keyboard && message_actions(row, permissions).contains(&MessageAction::Copy) {
+        let at = actions
+            .iter()
+            .position(|action| *action == MessageAction::Delete)
+            .unwrap_or(actions.len());
+        actions.insert(at, MessageAction::Copy);
+    }
     if actions.is_empty() {
         return Vec::new();
     }

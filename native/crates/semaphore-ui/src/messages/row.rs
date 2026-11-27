@@ -145,9 +145,19 @@ pub(crate) struct Shared {
     /// The row whose focus handle the list holds (`ListState::splice_focusable`), so it stays
     /// drawn while it has focus: the roving row. One row, so the list never walks them all.
     pub focusable: Cell<Option<i64>>,
-    /// The rows drawn this frame, and last frame: a Tab stop must be a drawn row.
-    pub drawn: RefCell<Vec<i64>>,
-    pub last_drawn: RefCell<Vec<i64>>,
+    /// The rows placed on screen this frame, and last frame, with their bounds (`PaintedRow`):
+    /// a Tab stop must be one of them.
+    pub drawn: RefCell<Vec<(i64, Bounds<Pixels>)>>,
+    pub last_drawn: RefCell<Vec<(i64, Bounds<Pixels>)>>,
+    /// The list's bounds as its rows were placed: what counts as on screen.
+    pub viewport: Cell<Bounds<Pixels>>,
+    /// The index of the row placed last this frame (`PaintedRow`).
+    pub placed_ix: Cell<Option<usize>>,
+    /// The Tab stop this frame's rows were drawn with, checked again once they are placed.
+    pub used_stop: Cell<Option<i64>>,
+    /// The row focus was last in, while it was in the list: where focus goes back when the
+    /// control that had it goes away.
+    pub focus_row: Cell<Option<i64>>,
     /// The list's own focus handle: a pointer press anywhere in it focuses the list.
     pub list_focus: FocusHandle,
 }
@@ -347,12 +357,19 @@ impl Shared {
         }
     }
 
-    /// The row that is the list's Tab stop: the one the roving focus last held, else the newest,
-    /// as long as it was drawn last frame; otherwise the newest row drawn (only drawn rows are in
-    /// the window's Tab order).
+    /// The row that is the list's Tab stop, from the rows placed last frame (only those are in the
+    /// window's Tab order). Noted for `MessageList::after_paint`, which checks it against the rows
+    /// this frame placed.
     pub(crate) fn tab_stop_seq(&self) -> Option<i64> {
+        let stop = self.tab_stop_among(&self.last_drawn.borrow());
+        self.used_stop.set(stop);
+        stop
+    }
+
+    /// The roving row (else the newest) when it is on screen in `placed`; otherwise the newest
+    /// row wholly on screen, else the newest partly on screen.
+    pub(crate) fn tab_stop_among(&self, placed: &[(i64, Bounds<Pixels>)]) -> Option<i64> {
         let rows = self.rows.borrow();
-        let drawn = self.last_drawn.borrow();
         let wanted = self
             .roving
             .get()
@@ -363,15 +380,48 @@ impl Shared {
                     .and_then(|ix| rows.get(ix))
                     .map(|row| row.seq)
             })?;
-        if drawn.is_empty() || drawn.contains(&wanted) {
+        if placed.is_empty() {
             return Some(wanted);
         }
-        drawn
+        let viewport = self.viewport.get();
+        let on_screen = |bounds: &Bounds<Pixels>| !bounds.intersect(&viewport).is_empty();
+        let inside = |bounds: &Bounds<Pixels>| {
+            bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom()
+        };
+        let present = |seq: &i64| rows.by_seq(*seq).is_some();
+        if placed
             .iter()
-            .copied()
-            .filter(|seq| rows.by_seq(*seq).is_some())
-            .max()
+            .any(|(seq, bounds)| *seq == wanted && on_screen(bounds))
+        {
+            return Some(wanted);
+        }
+        let newest = |keep: &dyn Fn(&Bounds<Pixels>) -> bool| {
+            placed
+                .iter()
+                .filter(|(seq, bounds)| present(seq) && keep(bounds))
+                .map(|(seq, _)| *seq)
+                .max()
+        };
+        newest(&inside)
+            .or_else(|| newest(&on_screen))
             .or(Some(wanted))
+    }
+
+    /// Whether the Tab stop this frame's rows were drawn with is not the one the rows it placed
+    /// call for: the list then draws again (`MessageList::after_paint`).
+    pub(crate) fn tab_stop_is_stale(&self) -> bool {
+        self.tab_stop_among(&self.drawn.borrow()) != self.used_stop.get()
+    }
+
+    /// Where the row was placed last, if it was.
+    pub(crate) fn row_bounds(&self, seq: i64) -> Option<Bounds<Pixels>> {
+        let find = |placed: &[(i64, Bounds<Pixels>)]| {
+            placed
+                .iter()
+                .find(|(placed, _)| *placed == seq)
+                .map(|(_, bounds)| *bounds)
+        };
+        find(&self.drawn.borrow()).or_else(|| find(&self.last_drawn.borrow()))
     }
 
     /// The rows' focus handles for `range` of the store, for the list (`splice_focusable`): only
@@ -1393,10 +1443,10 @@ pub(crate) fn render_row(
         _ => MessageState::Sent,
     };
     let focus = shared.row_focus(seq, cx);
-    shared.drawn.borrow_mut().push(seq);
     let focus_within = focus.handle.contains_focused(window, cx);
     if focus_within {
         shared.roving.set(Some(seq));
+        shared.focus_row.set(Some(seq));
     }
     let tab_stop = shared.tab_stop_seq() == Some(seq);
     let mut kit_row = KitRow::new(
@@ -1513,8 +1563,17 @@ pub(crate) fn render_row(
     // pointer that kept focus, can't show a second toolbar.
     let toolbar_held =
         staged || shared.menu_for.get() == Some(row.seq) || shared.hovered.get() == Some(row.seq);
-    if !is_editing && (toolbar_held || (focus_within && window.last_input_was_keyboard())) {
-        let actions = toolbar_buttons(shared, &row, staged, shared.phone.get());
+    let keyboard = focus_within && window.last_input_was_keyboard();
+    if !is_editing && (toolbar_held || keyboard) {
+        // The keyboard gets every action as a button, at any width: the menu and the phone's
+        // sheet take no keys yet (they become kit pieces in PR 4).
+        let actions = toolbar_buttons(
+            shared,
+            &row,
+            staged,
+            shared.phone.get() && !keyboard,
+            keyboard,
+        );
         if !actions.is_empty() {
             kit_row = kit_row.actions(actions).actions_shown(toolbar_held);
         }
@@ -1564,7 +1623,7 @@ pub(crate) fn render_row(
         .filter(|divider| divider.after_seq == row.seq && ix + 1 < total)
         .map(|divider| ListSeparator::unread("unread-divider", unread_label(divider.count)));
 
-    match (decor.day, divider) {
+    let element = match (decor.day, divider) {
         (None, None) => container.into_any_element(),
         (day, divider) => div()
             .w_full()
@@ -1572,7 +1631,8 @@ pub(crate) fn render_row(
             .child(container)
             .children(divider)
             .into_any_element(),
-    }
+    };
+    super::painted::PaintedRow::new(seq, ix, shared.clone(), element).into_any_element()
 }
 
 /// Side padding of a row in the list, outside the kit row's own.

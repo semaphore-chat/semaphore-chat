@@ -21,6 +21,7 @@ mod format;
 #[cfg(test)]
 mod link_tests;
 mod media;
+mod painted;
 pub mod palette;
 #[cfg(test)]
 mod player_tests;
