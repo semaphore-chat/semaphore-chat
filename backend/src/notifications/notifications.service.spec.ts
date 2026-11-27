@@ -2687,4 +2687,28 @@ describe('NotificationsService', () => {
       expect(channelAccessService.viewerUserIds).not.toHaveBeenCalled();
     });
   });
+
+  describe('push text and bidi controls', () => {
+    const base = {
+      type: NotificationType.CHANNEL_MESSAGE,
+      author: { username: 'u', displayName: 'Jo\u202Ehn' },
+      channel: { name: 'gen\u2066eral' },
+      message: { spans: [{ text: 'hi\u202E there' }] },
+    };
+
+    it('drops bidi controls from the name parts and the text of the body', () => {
+      const body = (service as any).formatPushBody(base);
+      expect(body).toBe('John: hi there');
+    });
+
+    it('drops them from the title (channel and author names)', () => {
+      expect((service as any).formatPushTitle(base)).toBe('#general');
+      expect(
+        (service as any).formatPushTitle({
+          ...base,
+          type: NotificationType.DIRECT_MESSAGE,
+        }),
+      ).toBe('Message from John');
+    });
+  });
 });

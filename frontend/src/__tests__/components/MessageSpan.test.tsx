@@ -47,8 +47,9 @@ describe('MessageSpan URL rendering', () => {
   it('renders a URL as a clickable link', () => {
     const span: Span = { type: SpanType.PLAINTEXT, text: 'Visit https://example.com for info' };
     renderWithProviders(<MessageSpan span={span} index={0} />);
-    const link = screen.getByRole('link', { name: 'https://example.com' });
-    expect(link).toHaveAttribute('href', 'https://example.com');
+    // The kit's link check: the parsed address is what is shown and followed.
+    const link = screen.getByRole('link', { name: 'https://example.com/' });
+    expect(link).toHaveAttribute('href', 'https://example.com/');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
@@ -56,8 +57,8 @@ describe('MessageSpan URL rendering', () => {
   it('renders multiple URLs in one span', () => {
     const span: Span = { type: SpanType.PLAINTEXT, text: 'See https://a.com and http://b.com here' };
     renderWithProviders(<MessageSpan span={span} index={0} />);
-    expect(screen.getByRole('link', { name: 'https://a.com' })).toHaveAttribute('href', 'https://a.com');
-    expect(screen.getByRole('link', { name: 'http://b.com' })).toHaveAttribute('href', 'http://b.com');
+    expect(screen.getByRole('link', { name: 'https://a.com/' })).toHaveAttribute('href', 'https://a.com/');
+    expect(screen.getByRole('link', { name: 'http://b.com/' })).toHaveAttribute('href', 'http://b.com/');
   });
 
   it('does not render non-URL text as a link', () => {
@@ -70,8 +71,19 @@ describe('MessageSpan URL rendering', () => {
   it('strips trailing sentence punctuation from URLs', () => {
     const span: Span = { type: SpanType.PLAINTEXT, text: 'Check https://example.com.' };
     renderWithProviders(<MessageSpan span={span} index={0} />);
-    const link = screen.getByRole('link', { name: 'https://example.com' });
-    expect(link).toHaveAttribute('href', 'https://example.com');
+    const link = screen.getByRole('link', { name: 'https://example.com/' });
+    expect(link).toHaveAttribute('href', 'https://example.com/');
+  });
+
+  it('draws an address with a user name as text, and a non-ASCII host as punycode', () => {
+    renderWithProviders(
+      <MessageSpan span={{ type: SpanType.PLAINTEXT, text: 'a https://bank.example@other.example/x b' }} index={0} />,
+    );
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getByText('https://bank.example@other.example/x')).toBeInTheDocument();
+    renderWithProviders(<MessageSpan span={{ type: SpanType.PLAINTEXT, text: 'go https://\u0430pple.com/login' }} index={0} />);
+    const link = screen.getByRole('link', { name: 'https://xn--pple-43d.com/login' });
+    expect(link).toHaveAttribute('href', 'https://xn--pple-43d.com/login');
   });
 
   it('preserves dots within URL paths', () => {

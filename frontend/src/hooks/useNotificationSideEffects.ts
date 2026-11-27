@@ -17,6 +17,7 @@ import type { NewNotificationPayload } from '@semaphore-chat/shared';
 import { notificationsControllerGetSettingsOptions } from '../api-client/@tanstack/react-query.gen';
 import { useServerEvent } from '../socket-hub/useServerEvent';
 import { isDndActive } from '../utils/dnd';
+import { plainSpanText } from '../utils/notificationHelpers';
 import {
   showNotification,
   formatNotificationContent,
@@ -134,10 +135,7 @@ export function useNotificationSideEffects(options: UseNotificationSideEffectsOp
 
     // Desktop notification (skip if already shown via push handler)
     if (showDesktopNotifications && isNotificationPermissionGranted() && !isNotificationShown(payload.notificationId)) {
-      const messageText = payload.message?.spans
-        .filter((span) => span.type === 'PLAINTEXT')
-        .map((span) => span.text)
-        .join('');
+      const messageText = payload.message ? plainSpanText(payload.message.spans) : undefined;
 
       const { title, body } = formatNotificationContent({
         type: payload.type,

@@ -5,6 +5,12 @@
  * Segments are inline and drawn in order, except `codeBlock`, which is a block of its own.
  */
 
+import { checkLink } from '../../utils/links';
+import { stripBidi, stripBidiOverrides, stripUnpairedBidi } from '../../utils/bidi';
+
+export { checkLink, stripBidi, stripBidiOverrides, stripUnpairedBidi };
+export type { CheckedLink } from '../../utils/links';
+
 /** The inline formatting a run of words can carry. A link inside a formatted span keeps it (`**see https://x.y**`). */
 export interface SegmentStyle {
   bold?: boolean;
@@ -84,12 +90,17 @@ export type MessageSegment =
   | MentionSegment
   | EmojiSegment;
 
-/** Bidi controls (embeddings, overrides, isolates, marks): they reorder what is drawn, so a shown address drops them. */
-const BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
-
-/** `text` without bidi control characters. */
-export function stripBidi(text: string): string {
-  return text.replace(BIDI_CONTROLS, '');
+/**
+ * The segments with unpaired bidi controls dropped from every text, code and code-block run, and every control
+ * from a mention's text (a mention is drawn in an isolate of its own).
+ */
+export function cleanSegments(segments: readonly MessageSegment[]): MessageSegment[] {
+  return segments.map((segment) => {
+    if (segment.type === 'text' || segment.type === 'code' || segment.type === 'codeBlock') {
+      return { ...segment, text: stripUnpairedBidi(segment.text) };
+    }
+    return segment.type === 'mention' ? { ...segment, text: stripBidiOverrides(segment.text) } : segment;
+  });
 }
 
 /** Whether `text` has a C0 control character (tab, line break, …) or DEL. */
@@ -99,35 +110,6 @@ function hasControl(text: string): boolean {
     if (code < 0x20 || code === 0x7f) return true;
   }
   return false;
-}
-
-/** A web link the kit will open: the address to follow and the label to show. */
-export interface CheckedLink {
-  /** The parsed address (`URL.href`): punycode host, percent-encoded path. */
-  href: string;
-  /**
-   * What is shown: the parsed address as the parser serialises it (protocol, punycode host, percent-encoded path,
-   * query and fragment), never decoded, so a space, an invisible character or a bidi control stays `%xx`.
-   */
-  label: string;
-}
-
-/**
- * A link segment's address checked and the label drawn for it; null for an address that is not drawn as a link:
- * anything but http or https, and any address with a user name or password (`https://bank.example@evil.example/`
- * reads as one host and goes to another).
- */
-export function checkLink(href: string): CheckedLink | null {
-  let url: URL;
-  try {
-    url = new URL(href);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-  if (url.username !== '' || url.password !== '') return null;
-  const label = `${url.protocol}//${url.host}${url.pathname}${url.search}${url.hash}`;
-  return { href: url.href, label: stripBidi(label) };
 }
 
 /** A link segment's address, if it is one the kit will open (http or https), as parsed; otherwise null. */

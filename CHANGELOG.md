@@ -15,8 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Settings > Privacy: "Load pictures and previews from other sites".** On by default. Turn it off and the app stops loading pictures from other sites on its own: link previews show their title, site and description with a plain link icon, a GIF link stays a link, and webhooks show their initial instead of their avatar. Other sites then never see your IP address because of a message. GIFs you browse in the GIF picker still load. Both the current and the new design honour it. The setting is `loadRemoteContent` on `GET`/`PATCH /appearance-settings`; older app versions ignore it and keep loading pictures.
 
+### Changed
+
+- **Message links show the address they open.** A link in a message now reads as the address it goes to (a trailing slash on a bare domain, a lower-case host, a non-ASCII host as punycode, a non-ASCII path as `%xx`), in the current and the new design. An address with a user name or password is shown as text, not a link. Link labels and mentions draw in their own left-to-right isolate, and file names and notification text drop bidi control characters. (#911)
+
 ### Fixed
 
+- **Non-ASCII file names from a browser upload are stored as written** instead of garbled. (#911)
 - **Replay recordings now use the intended bitrate.** They were stuck at the encoder default, about 2.4 Mbps, because the bitrate was sent to LiveKit in the wrong unit (bps instead of kbps). (#868)
 - **Replay no longer fails for up to a minute after you stop or switch a screen share.** Stopping a recording whose LiveKit egress had already ended (or was finishing) returned "Could not stop the replay recorder" (400), and the next share's replay then failed to start with the same error until the minute-by-minute cleanup ran. The server now treats LiveKit's "egress with status … cannot be stopped" and "egress does not exist" answers as already stopped. (#876)
 

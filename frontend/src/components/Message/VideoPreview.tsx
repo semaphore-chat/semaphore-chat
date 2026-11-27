@@ -1,3 +1,4 @@
+import { stripBidi } from "../../utils/bidi";
 import React, { useState, useEffect, useRef } from "react";
 import {
   Box,
@@ -177,12 +178,12 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({ metadata }) => {
             <CircularProgress size={32} />
           </GenericPlaceholder>
         ) : thumbnailUrl ? (
-          <ThumbnailImage src={thumbnailUrl} alt={metadata.filename} />
+          <ThumbnailImage src={thumbnailUrl} alt={stripBidi(metadata.filename)} />
         ) : (
           <GenericPlaceholder>
             <VideocamIcon sx={{ fontSize: 'icon.5xl', opacity: 0.5 }} />
             <Typography variant="caption" sx={{ opacity: 0.7 }}>
-              {metadata.filename}
+              {stripBidi(metadata.filename)}
             </Typography>
           </GenericPlaceholder>
         )}

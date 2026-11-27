@@ -1,3 +1,4 @@
+import { stripBidiOverrides } from "../utils/bidi";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { userControllerGetUserByIdOptions } from "../api-client/@tanstack/react-query.gen";
@@ -20,16 +21,16 @@ interface CachedUserSummary {
  * rather than resolved (resolving them would need extra lookups the
  * announcer doesn't otherwise need) — good enough for a truncated preview.
  */
-function buildPreviewText(message: Message): string {
+export function buildPreviewText(message: Message): string {
   const text = message.spans
     .map((span) => {
       switch (span.type) {
         case SpanType.PLAINTEXT:
         case SpanType.CODE_BLOCK:
         case SpanType.EMOJI:
-          return span.text ?? "";
+          return stripBidiOverrides(span.text ?? "");
         case SpanType.SPECIAL_MENTION:
-          return `@${span.specialKind ?? "mention"}`;
+          return `@${stripBidiOverrides(span.specialKind ?? "mention")}`;
         case SpanType.USER_MENTION:
         case SpanType.ALIAS_MENTION:
           return "@mention";

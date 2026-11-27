@@ -3,6 +3,7 @@
  * phone `MobileSearchScreen` (author, channel chip in community scope,
  * relative time, 2-line preview). The query itself is `useMessageSearch`.
  */
+import { stripBidiOverrides } from "../../utils/bidi";
 import React from "react";
 import {
   Box,
@@ -22,7 +23,7 @@ import ListState from "../Common/ListState";
 function getMessagePreview(result: SearchResult, maxLength = 100): string {
   const text = result.spans
     .filter((span) => span.text)
-    .map((span) => span.text)
+    .map((span) => stripBidiOverrides(span.text ?? ""))
     .join(" ");
   return text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
 }

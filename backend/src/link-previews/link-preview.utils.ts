@@ -27,7 +27,9 @@ export interface LinkPreviewData {
   authorName?: string;
 }
 
-const URL_PATTERN = /(https?:\/\/[^\s<>)"']*[^\s<>)"'.,!?;:])/g;
+// Bidi controls end an address, as in the clients: they are never part of one.
+const URL_PATTERN =
+  /(https?:\/\/[^\s<>)"'\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]*[^\s<>)"'.,!?;:\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069])/g;
 const MAX_URLS_PER_MESSAGE = 5;
 
 /**

@@ -1,3 +1,4 @@
+import { stripBidiControls } from '@/common/utils/bidi.utils';
 import {
   Injectable,
   Logger,
@@ -65,7 +66,7 @@ export class ClipLibraryService {
       capturedAt: clip.capturedAt,
       downloadUrl: `/file/${clip.fileId}`,
       sizeBytes: clip.file.size,
-      filename: clip.file.filename,
+      filename: stripBidiControls(clip.file.filename),
     };
   }
 

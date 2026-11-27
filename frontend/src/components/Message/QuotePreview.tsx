@@ -6,6 +6,7 @@
  * Clicking navigates to the original message.
  */
 
+import { stripBidiOverrides } from "../../utils/bidi";
 import React from "react";
 import { Box, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
@@ -35,7 +36,7 @@ const QuotePreview: React.FC<QuotePreviewProps> = ({
   const isDeleted = !!replyTo.deletedAt;
   const previewText = isDeleted
     ? "[Original message was deleted]"
-    : replyTo.spans.find((s) => s.type === "PLAINTEXT")?.text || "Message";
+    : stripBidiOverrides(replyTo.spans.find((s) => s.type === "PLAINTEXT")?.text ?? "") || "Message";
 
   const handleClick = () => {
     if (isDeleted) return;
