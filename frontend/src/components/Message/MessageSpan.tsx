@@ -13,6 +13,17 @@ import type { CustomEmojiDto } from "../../api-client/types.gen";
 import { getFileUrl } from "../../utils/fileHelpers";
 import { useNavigate } from "react-router-dom";
 import { useChannelMentionTarget } from "../../hooks/useChannelMentionTarget";
+import { stripBidiOverrides } from "../../kit";
+
+/**
+ * A left-to-right isolate: a link label or mention draws as written, whatever
+ * precedes it in the line, and cannot reorder the text around it.
+ */
+const Isolate: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <bdi dir="ltr" style={{ unicodeBidi: "isolate" }}>
+    {children}
+  </bdi>
+);
 
 /** What a #channel mention shows when the reader can't see the channel. */
 export const HIDDEN_CHANNEL_MENTION_LABEL = "#private-channel";
@@ -41,7 +52,7 @@ const ChannelMention: React.FC<{ channelId?: string | null }> = ({ channelId }) 
         title="You don't have access to this channel"
         style={{ ...chipStyle, color: theme.palette.text.secondary, fontStyle: "italic" }}
       >
-        {HIDDEN_CHANNEL_MENTION_LABEL}
+        <Isolate>{HIDDEN_CHANNEL_MENTION_LABEL}</Isolate>
       </span>
     );
   }
@@ -62,7 +73,7 @@ const ChannelMention: React.FC<{ channelId?: string | null }> = ({ channelId }) 
         cursor: "pointer",
       }}
     >
-      #{channel.name}
+      <Isolate>#{stripBidiOverrides(channel.name)}</Isolate>
     </a>
   );
 };
@@ -113,7 +124,7 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
       const emoji = span.emojiId ? emojiById?.get(span.emojiId) : undefined;
       if (!emoji) {
         // Unknown/deleted emoji — render the literal shortcode.
-        return <span key={index}>{span.text || ""}</span>;
+        return <span key={index}>{stripBidiOverrides(span.text || "")}</span>;
       }
       return (
         <span key={index}>
@@ -124,19 +135,19 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
     case SpanType.USER_MENTION:
       return (
         <span key={index} style={{ color: theme.palette.primary.main, fontWeight: 600 }}>
-          {span.text || span.userId}
+          <Isolate>{stripBidiOverrides(span.text || span.userId || "")}</Isolate>
         </span>
       );
     case SpanType.SPECIAL_MENTION:
       return (
         <span key={index} style={{ color: theme.palette.semantic.status.positive, fontWeight: 600 }}>
-          @{span.specialKind}
+          <Isolate>@{span.specialKind}</Isolate>
         </span>
       );
     case SpanType.COMMUNITY_MENTION:
       return (
         <span key={index} style={{ color: theme.palette.primary.light, fontWeight: 600 }}>
-          {span.text || span.communityId}
+          <Isolate>{stripBidiOverrides(span.text || span.communityId || "")}</Isolate>
         </span>
       );
     case SpanType.CHANNEL_MENTION:
@@ -144,7 +155,7 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
     case SpanType.ALIAS_MENTION:
       return (
         <span key={index} style={{ color: theme.palette.warning.main, fontWeight: 600 }}>
-          {span.text || span.aliasId}
+          <Isolate>{stripBidiOverrides(span.text || span.aliasId || "")}</Isolate>
         </span>
       );
     case SpanType.CODE_BLOCK:
@@ -169,7 +180,7 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
             wordBreak: 'break-word',
           }}
         >
-          <code>{span.text ?? ""}</code>
+          <code>{stripBidiOverrides(span.text ?? "")}</code>
         </Box>
       );
     case SpanType.PLAINTEXT:
@@ -190,13 +201,13 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
               fontSize: '0.85em',
             }}
           >
-            {span.text ?? ""}
+            {stripBidiOverrides(span.text ?? "")}
           </code>
         );
       } else {
         // Split text into segments: plain text and URLs (auto-link).
         const urlPattern = /(https?:\/\/[^\s<>)"']*[^\s<>)"'.,!?;:])/g;
-        const parts = (span.text ?? "").split(urlPattern);
+        const parts = stripBidiOverrides(span.text ?? "").split(urlPattern);
 
         content = parts.map((part, i) =>
           /^https?:\/\//.test(part) ? (
@@ -207,7 +218,7 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
               rel="noopener noreferrer"
               style={{ color: theme.palette.primary.main, textDecoration: 'underline' }}
             >
-              {part}
+              <Isolate>{part}</Isolate>
             </a>
           ) : (
             <React.Fragment key={i}>{part}</React.Fragment>

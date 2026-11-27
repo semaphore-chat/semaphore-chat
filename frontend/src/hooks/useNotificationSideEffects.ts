@@ -9,6 +9,7 @@
  * is for side effects only.
  */
 
+import { stripBidiOverrides } from '../kit/chat/messageSegments';
 import { useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -136,7 +137,7 @@ export function useNotificationSideEffects(options: UseNotificationSideEffectsOp
     if (showDesktopNotifications && isNotificationPermissionGranted() && !isNotificationShown(payload.notificationId)) {
       const messageText = payload.message?.spans
         .filter((span) => span.type === 'PLAINTEXT')
-        .map((span) => span.text)
+        .map((span) => stripBidiOverrides(span.text ?? ''))
         .join('');
 
       const { title, body } = formatNotificationContent({

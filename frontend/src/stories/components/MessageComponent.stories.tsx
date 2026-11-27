@@ -203,3 +203,18 @@ export const RemoteContentOff = defineComponent(remoteOffScenario, () => (
     />
   </>
 ));
+
+/** Right-to-left words, an override before a link and a user mention: the link label and the mention draw left to right. */
+export const BidiIsolation = defineComponent(bigCommunityScenario, () => (
+  <MessageComponent
+    message={createMessage({
+      ...common,
+      spans: [
+        createSpan({ text: 'مرحبا، pay at ‮https://docs.semaphorechat.app/guide today ⁧ok⁩ ' }),
+        createSpan({ type: SpanType.USER_MENTION, text: '@aiko', userId: bigCommunityScenario.users[1].id }),
+        createSpan({ text: ' ‏شكرا' }),
+      ],
+    })}
+    {...contextProps}
+  />
+));

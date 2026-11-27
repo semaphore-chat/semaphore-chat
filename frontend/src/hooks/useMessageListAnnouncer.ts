@@ -1,3 +1,4 @@
+import { stripBidiOverrides } from "../kit/chat/messageSegments";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { userControllerGetUserByIdOptions } from "../api-client/@tanstack/react-query.gen";
@@ -27,7 +28,7 @@ function buildPreviewText(message: Message): string {
         case SpanType.PLAINTEXT:
         case SpanType.CODE_BLOCK:
         case SpanType.EMOJI:
-          return span.text ?? "";
+          return stripBidiOverrides(span.text ?? "");
         case SpanType.SPECIAL_MENTION:
           return `@${span.specialKind ?? "mention"}`;
         case SpanType.USER_MENTION:

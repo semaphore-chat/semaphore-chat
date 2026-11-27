@@ -1,3 +1,4 @@
+import { stripBidiOverrides } from '../kit/chat/messageSegments';
 import { formatDistanceToNow } from 'date-fns';
 import { NotificationType } from '../types/notification.type';
 import type { Notification } from '../types/notification.type';
@@ -62,7 +63,7 @@ export const getMessagePreview = (notification: Notification): string => {
 
   const text = notification.message.spans
     .filter((s) => s.type === 'PLAINTEXT')
-    .map((s) => s.text || '')
+    .map((s) => stripBidiOverrides(s.text || ''))
     .join('')
     .trim();
 
