@@ -21,7 +21,7 @@ interface CachedUserSummary {
  * rather than resolved (resolving them would need extra lookups the
  * announcer doesn't otherwise need) — good enough for a truncated preview.
  */
-function buildPreviewText(message: Message): string {
+export function buildPreviewText(message: Message): string {
   const text = message.spans
     .map((span) => {
       switch (span.type) {
@@ -30,7 +30,7 @@ function buildPreviewText(message: Message): string {
         case SpanType.EMOJI:
           return stripBidiOverrides(span.text ?? "");
         case SpanType.SPECIAL_MENTION:
-          return `@${span.specialKind ?? "mention"}`;
+          return `@${stripBidiOverrides(span.specialKind ?? "mention")}`;
         case SpanType.USER_MENTION:
         case SpanType.ALIAS_MENTION:
           return "@mention";

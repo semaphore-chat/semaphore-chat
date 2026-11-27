@@ -13,11 +13,11 @@ import type { CustomEmojiDto } from "../../api-client/types.gen";
 import { getFileUrl } from "../../utils/fileHelpers";
 import { useNavigate } from "react-router-dom";
 import { useChannelMentionTarget } from "../../hooks/useChannelMentionTarget";
-import { stripBidiOverrides } from "../../kit";
+import { checkLink, stripBidi, stripBidiOverrides, stripUnpairedBidi } from "../../kit";
 
 /**
- * A left-to-right isolate: a link label or mention draws as written, whatever
- * precedes it in the line, and cannot reorder the text around it.
+ * A left-to-right isolate: a link label draws as written, whatever precedes it
+ * in the line, and cannot reorder the text around it.
  */
 const Isolate: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <bdi dir="ltr" style={{ unicodeBidi: "isolate" }}>
@@ -39,7 +39,10 @@ const ChannelMention: React.FC<{ channelId?: string | null }> = ({ channelId }) 
   const navigate = useNavigate();
   const channel = useChannelMentionTarget(channelId);
 
+  // The chip is its own isolate, taking its direction from its own name: its
+  // sign stays at the name's start, and a chip that wraps keeps its edges.
   const chipStyle: React.CSSProperties = {
+    unicodeBidi: "isolate",
     fontWeight: 600,
     borderRadius: 4,
     padding: "0 2px",
@@ -49,10 +52,11 @@ const ChannelMention: React.FC<{ channelId?: string | null }> = ({ channelId }) 
     return (
       <span
         data-testid="channel-mention-hidden"
+        dir="auto"
         title="You don't have access to this channel"
         style={{ ...chipStyle, color: theme.palette.text.secondary, fontStyle: "italic" }}
       >
-        <Isolate>{HIDDEN_CHANNEL_MENTION_LABEL}</Isolate>
+        {HIDDEN_CHANNEL_MENTION_LABEL}
       </span>
     );
   }
@@ -61,6 +65,7 @@ const ChannelMention: React.FC<{ channelId?: string | null }> = ({ channelId }) 
     <a
       href={`/community/${channel.communityId}/channel/${channel.id}`}
       data-testid="channel-mention"
+      dir="auto"
       onClick={(e) => {
         e.preventDefault();
         navigate(`/community/${channel.communityId}/channel/${channel.id}`);
@@ -73,7 +78,7 @@ const ChannelMention: React.FC<{ channelId?: string | null }> = ({ channelId }) 
         cursor: "pointer",
       }}
     >
-      <Isolate>#{stripBidiOverrides(channel.name)}</Isolate>
+      #{stripBidiOverrides(channel.name)}
     </a>
   );
 };
@@ -95,7 +100,7 @@ const EmojiImage: React.FC<{ emoji: CustomEmojiDto; fallback: string }> = ({
 }) => {
   const [failed, setFailed] = useState(false);
   const src = getFileUrl(emoji.fileId);
-  if (failed || !src) return <>{fallback}</>;
+  if (failed || !src) return <>{stripBidiOverrides(fallback)}</>;
   return (
     <img
       src={src}
@@ -134,28 +139,28 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
     }
     case SpanType.USER_MENTION:
       return (
-        <span key={index} style={{ color: theme.palette.primary.main, fontWeight: 600 }}>
-          <Isolate>{stripBidiOverrides(span.text || span.userId || "")}</Isolate>
+        <span key={index} dir="auto" style={{ color: theme.palette.primary.main, fontWeight: 600, unicodeBidi: "isolate" }}>
+          {stripBidiOverrides(span.text || span.userId || "")}
         </span>
       );
     case SpanType.SPECIAL_MENTION:
       return (
-        <span key={index} style={{ color: theme.palette.semantic.status.positive, fontWeight: 600 }}>
-          <Isolate>@{span.specialKind}</Isolate>
+        <span key={index} dir="auto" style={{ color: theme.palette.semantic.status.positive, fontWeight: 600, unicodeBidi: "isolate" }}>
+          @{stripBidiOverrides(span.specialKind ?? "")}
         </span>
       );
     case SpanType.COMMUNITY_MENTION:
       return (
-        <span key={index} style={{ color: theme.palette.primary.light, fontWeight: 600 }}>
-          <Isolate>{stripBidiOverrides(span.text || span.communityId || "")}</Isolate>
+        <span key={index} dir="auto" style={{ color: theme.palette.primary.light, fontWeight: 600, unicodeBidi: "isolate" }}>
+          {stripBidiOverrides(span.text || span.communityId || "")}
         </span>
       );
     case SpanType.CHANNEL_MENTION:
       return <ChannelMention key={index} channelId={span.channelId} />;
     case SpanType.ALIAS_MENTION:
       return (
-        <span key={index} style={{ color: theme.palette.warning.main, fontWeight: 600 }}>
-          <Isolate>{stripBidiOverrides(span.text || span.aliasId || "")}</Isolate>
+        <span key={index} dir="auto" style={{ color: theme.palette.warning.main, fontWeight: 600, unicodeBidi: "isolate" }}>
+          {stripBidiOverrides(span.text || span.aliasId || "")}
         </span>
       );
     case SpanType.CODE_BLOCK:
@@ -180,7 +185,7 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
             wordBreak: 'break-word',
           }}
         >
-          <code>{stripBidiOverrides(span.text ?? "")}</code>
+          <code>{stripUnpairedBidi(span.text ?? "")}</code>
         </Box>
       );
     case SpanType.PLAINTEXT:
@@ -201,29 +206,32 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
               fontSize: '0.85em',
             }}
           >
-            {stripBidiOverrides(span.text ?? "")}
+            {stripUnpairedBidi(span.text ?? "")}
           </code>
         );
       } else {
         // Split text into segments: plain text and URLs (auto-link).
         const urlPattern = /(https?:\/\/[^\s<>)"']*[^\s<>)"'.,!?;:])/g;
-        const parts = stripBidiOverrides(span.text ?? "").split(urlPattern);
+        const parts = stripUnpairedBidi(span.text ?? "").split(urlPattern);
 
-        content = parts.map((part, i) =>
-          /^https?:\/\//.test(part) ? (
+        content = parts.map((part, i) => {
+          if (!/^https?:\/\//.test(part)) return <React.Fragment key={i}>{part}</React.Fragment>;
+          // The same check as the kit: an address with a user name or password is drawn as text, and a link
+          // shows the parsed address (punycode host), not what was typed.
+          const link = checkLink(part);
+          if (link === null) return <Isolate key={i}>{stripBidi(part)}</Isolate>;
+          return (
             <a
               key={i}
-              href={part}
+              href={link.href}
               target="_blank"
               rel="noopener noreferrer"
               style={{ color: theme.palette.primary.main, textDecoration: 'underline' }}
             >
-              <Isolate>{part}</Isolate>
+              <Isolate>{link.label}</Isolate>
             </a>
-          ) : (
-            <React.Fragment key={i}>{part}</React.Fragment>
-          )
-        );
+          );
+        });
       }
 
       // Compose the inline-formatting flags by nesting wrappers.

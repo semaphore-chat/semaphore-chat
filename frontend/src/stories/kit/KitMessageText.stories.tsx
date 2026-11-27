@@ -92,6 +92,13 @@ const ISOLATED: MessageSegment[] = [
   { type: 'text', text: ' \u200Fشكرا' },
 ];
 
+// A message that starts with a link and goes on in right-to-left words: it keeps the direction of its words.
+const LINK_FIRST_RTL: MessageSegment[] = [
+  { type: 'link', href: 'https://docs.semaphorechat.app/guide' },
+  { type: 'text', text: ' مرحبا بالجميع، هل نلعب الليلة؟ ' },
+  { type: 'mention', kind: 'user', text: '@سارة', id: 'u5' },
+];
+
 const EMOJI_ONLY: MessageSegment[][] = [
   [{ type: 'text', text: '😂🔥👍' }],
   [
@@ -110,6 +117,7 @@ const Body = () => (
         <MessageText segments={LONG_LINK} />
         <MessageText segments={RTL} onMention={noop} />
         <MessageText segments={ISOLATED} onMention={noop} />
+        <MessageText segments={LINK_FIRST_RTL} onMention={noop} />
         {EMOJI_ONLY.map((segments, index) => (
           <MessageText key={`e${index}`} segments={segments} />
         ))}

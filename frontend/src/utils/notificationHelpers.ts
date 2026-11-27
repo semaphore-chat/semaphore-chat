@@ -69,3 +69,10 @@ export const getMessagePreview = (notification: Notification): string => {
 
   return text.length > 100 ? text.substring(0, 100) + '...' : text;
 };
+
+/** A message's plain words (its PLAINTEXT spans) as one string, without bidi overrides: a desktop notification body. */
+export const plainSpanText = (spans: readonly { type: string; text?: string | null }[]): string =>
+  spans
+    .filter((span) => span.type === 'PLAINTEXT')
+    .map((span) => stripBidiOverrides(span.text ?? ''))
+    .join('');

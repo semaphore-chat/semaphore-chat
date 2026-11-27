@@ -11,6 +11,7 @@ import { Spinner } from '../display/Spinner';
 import { LinearProgress } from '../display/LinearProgress';
 import { Button } from '../controls/Button';
 import { IconButton } from '../controls/IconButton';
+import { stripBidi } from './messageSegments';
 import { useRowTabIndex } from './rowTabScope';
 import { IMAGE_MAX, IMAGE_MIN_SIDE, imageBox } from './attachmentBox';
 
@@ -247,7 +248,7 @@ const FileDetail = styled('span')(({ theme }) => ({
  */
 export function AttachmentTile({ onRemove, progress, error, onRetry, ...tile }: AttachmentTileProps): JSX.Element {
   if (onRemove === undefined && progress === undefined && error === undefined) return <Tile {...tile} />;
-  const { name } = tile;
+  const name = stripBidi(tile.name);
   return (
     <Wrap>
       <Line>
@@ -274,7 +275,7 @@ export function AttachmentTile({ onRemove, progress, error, onRetry, ...tile }: 
 
 function Tile({
   kind,
-  name,
+  name: shownName,
   detail,
   src,
   poster,
@@ -285,6 +286,7 @@ function Tile({
   onOpen,
   busy = false,
 }: Omit<AttachmentTileProps, 'onRemove' | 'progress' | 'error' | 'onRetry'>): JSX.Element {
+  const name = stripBidi(shownName);
   const on = useSurface();
   const tabIndex = useRowTabIndex();
   const [failed, setFailed] = useState(false);

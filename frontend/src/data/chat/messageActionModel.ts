@@ -9,6 +9,7 @@
  * in lock-step.
  */
 
+import { stripUnpairedBidi } from '../../kit';
 import type { Message } from '../../types/message.type';
 import { spansToText } from '../../utils/mentionParser';
 import { copyToClipboard } from '../../utils/clipboard';
@@ -135,7 +136,7 @@ export function getMessageActionModel(config: MessageActionConfig): MessageActio
     label: 'Copy Message Content',
     group: 'copy',
     run: async () => {
-      const text = spansToText(message.spans, config.channelName);
+      const text = stripUnpairedBidi(spansToText(message.spans, config.channelName));
       try {
         await copyToClipboard(text);
       } catch {

@@ -11,6 +11,7 @@
  * One host per conversation: the screen hands it the message whose actions were asked for. The row had focus when
  * it opened, so closing returns focus there (the overlay stack); Edit and Reply then move it to their field.
  */
+import { stripUnpairedBidi } from '../../../../kit';
 import { useCallback, useEffect, useState, type JSX } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { userControllerGetUserByIdOptions } from '../../../../api-client/@tanstack/react-query.gen';
@@ -146,7 +147,7 @@ function ActionsFor({
   // Copy says whether it worked (a page served over plain http has no clipboard).
   const copy = async () => {
     try {
-      await copyToClipboard(spansToText(message.spans, (id) => findCachedChannel(queryClient, id)?.name));
+      await copyToClipboard(stripUnpairedBidi(spansToText(message.spans, (id) => findCachedChannel(queryClient, id)?.name)));
       announce('Message copied');
     } catch {
       toasts.show({ tone: 'danger', message: "Couldn't copy the message" });

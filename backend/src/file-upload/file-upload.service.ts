@@ -414,7 +414,7 @@ export class FileUploadService {
 
   /**
    * Sanitize the client-supplied original filename before persisting it for
-   * display: strip path separators and control characters, and cap the
+   * display: strip path separators, control characters and bidi controls, and cap the
    * length at 255 characters. The on-disk name is multer-generated and never
    * derived from this value.
    */
@@ -423,6 +423,8 @@ export class FileUploadService {
       .replace(/[/\\]/g, '_')
       // eslint-disable-next-line no-control-regex
       .replace(/[\u0000-\u001f\u007f]/g, '')
+      // Bidi controls (embeddings, overrides, isolates and the marks) reorder the name as drawn.
+      .replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C]/g, '')
       .trim();
 
     return (sanitized.length > 0 ? sanitized : 'file').slice(0, 255);

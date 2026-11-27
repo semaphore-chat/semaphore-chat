@@ -251,9 +251,41 @@ describe('MessageText', () => {
     expect(label).toHaveAttribute('dir', 'ltr');
     expect(label).toHaveStyle({ unicodeBidi: 'isolate' });
     expect(label).toHaveTextContent('https://evil.example/x');
+    // A mention is its own isolate with the direction of its own name (no forced direction).
     const mention = screen.getByText('@aiko');
-    expect(mention.tagName).toBe('BDI');
-    expect(mention).toHaveAttribute('dir', 'ltr');
+    expect(mention).toHaveAttribute('dir', 'auto');
+    expect(mention).toHaveStyle({ unicodeBidi: 'isolate' });
     expect(container.textContent).not.toMatch(/[\u202A-\u202E\u2066-\u2069]/);
+  });
+
+  it.each([
+    ['a user mention button', { type: 'mention', kind: 'user', text: '@\u202Eaiko', id: 'u1' }, 'BUTTON', true],
+    ['a channel mention link', { type: 'mention', kind: 'channel', text: '#\u202Eclips', id: 'c1', href: '#/c/clips' }, 'A', false],
+    ['an unavailable mention', { type: 'mention', kind: 'channel', text: '#\u202Ehidden', unavailable: true }, 'SPAN', false],
+    ['a plain mention', { type: 'mention', kind: 'role', text: '@\u202Emods' }, 'SPAN', false],
+  ] as const)('%s is its own isolate, with no override in its text', (_name, mention, tag, withHandler) => {
+    const { container } = renderWithKit(
+      <MessageText segments={[mention as MessageSegment]} onMention={withHandler ? vi.fn() : undefined} />,
+    );
+    const chip = container.querySelector(tag.toLowerCase() + '[dir="auto"]') as HTMLElement;
+    expect(chip).not.toBeNull();
+    expect(chip).toHaveStyle({ unicodeBidi: 'isolate' });
+    expect(chip.querySelector('bdi')).toBeNull();
+    expect(container.textContent).not.toMatch(/\u202E/);
+  });
+
+  it('draws the text of an address that is not a link in a left-to-right isolate, without controls', () => {
+    const { container } = renderWithKit(<MessageText segments={[{ type: 'link', href: 'javascript:\u202Ealert(1)' }]} />);
+    const text = container.querySelector('bdi[dir="ltr"]');
+    expect(text).not.toBeNull();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/\u202E/);
+  });
+
+  it('keeps balanced embeddings and isolates in message text, and drops overrides', () => {
+    const { container } = renderWithKit(
+      <MessageText segments={[{ type: 'text', text: 'x \u2066123\u2069 y\u202B z\u202DA\u202C' }]} />,
+    );
+    expect(container.textContent).toBe('x \u2066123\u2069 y\u202B zA\u202C');
   });
 });

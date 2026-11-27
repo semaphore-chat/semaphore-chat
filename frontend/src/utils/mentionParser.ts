@@ -1,4 +1,3 @@
-import { stripBidiOverrides } from "../kit/chat/messageSegments";
 import { SpanType, Span as MessageSpan } from "../types/message.type";
 
 export interface MentionMatch {
@@ -481,7 +480,7 @@ export function spansToText(
   /** Resolves a #channel mention's name from the reader's visible channels. */
   channelName?: (channelId: string) => string | undefined,
 ): string {
-  return stripBidiOverrides(spans.map(span => {
+  return spans.map(span => {
     switch (span.type) {
       case SpanType.CHANNEL_MENTION:
         // Spans store no channel name; a channel the reader can't see (or a
@@ -512,7 +511,7 @@ export function spansToText(
         return t;
       }
     }
-  }).join(''));
+  }).join('');
 }
 
 /**

@@ -92,6 +92,9 @@ const mentionLook = ({ theme, $me, $unavailable, $on }: MentionLookProps & { the
   const tint = mix(palette.accent, under, tokens.state.hoverOnFill);
   return {
     display: 'inline',
+    // The chip is its own isolate, taking its direction from its own name: its sign stays at the name's start, and
+    // a chip that wraps keeps its edges.
+    unicodeBidi: 'isolate' as const,
     margin: 0,
     padding: `0 ${tokens.space['2xs']}px`,
     border: 'none',
@@ -155,11 +158,11 @@ function Mention({
   on: Surface;
   tabIndex: -1 | undefined;
 }): JSX.Element {
-  const look = { $me: segment.me === true, $unavailable: segment.unavailable === true, $on: on };
+  const look = { dir: 'auto' as const, $me: segment.me === true, $unavailable: segment.unavailable === true, $on: on };
   if (segment.unavailable === true) {
     return (
       <MentionSpan {...look}>
-        <Isolate dir="ltr">{segment.text}</Isolate>
+        {segment.text}
         <Hidden> (not available to you)</Hidden>
       </MentionSpan>
     );
@@ -176,7 +179,7 @@ function Mention({
     };
     return (
       <MentionLink {...look} href={href} onClick={follow} tabIndex={tabIndex}>
-        <Isolate dir="ltr">{segment.text}</Isolate>
+        {segment.text}
         {spokenMe}
       </MentionLink>
     );
@@ -184,14 +187,14 @@ function Mention({
   if (onMention !== undefined && segment.kind === 'user') {
     return (
       <MentionButton {...look} type="button" onClick={() => onMention(segment)} tabIndex={tabIndex}>
-        <Isolate dir="ltr">{segment.text}</Isolate>
+        {segment.text}
         {spokenMe}
       </MentionButton>
     );
   }
   return (
     <MentionSpan {...look}>
-      <Isolate dir="ltr">{segment.text}</Isolate>
+      {segment.text}
       {spokenMe}
     </MentionSpan>
   );

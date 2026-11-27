@@ -100,13 +100,52 @@ export function stripBidiOverrides(text: string): string {
   return text.replace(BIDI_OVERRIDES, '');
 }
 
-/** The segments with bidi overrides dropped from every text, code and code-block run (and a mention's text). */
+/**
+ * `text` without its unpaired bidi embeddings, overrides and isolates: the ones not closed inside it (or closing
+ * nothing) would run on into the next segment. A balanced embedding or isolate pair is kept, as real right-to-left
+ * text uses it, as the native client does. Overrides (U+202D, U+202E) are always dropped, even balanced: they
+ * rewrite the order of what they wrap. Marks are kept.
+ */
+export function stripUnpairedBidi(text: string): string {
+  const source = text.replace(/[\u202D\u202E]/g, '');
+  const drop = new Set<number>();
+  // Embeddings (LRE, RLE) close with PDF, isolates (LRI, RLI, FSI) with PDI; a PDI also closes the embeddings
+  // opened inside its isolate, and a PDF closes only an embedding opened inside the innermost open isolate.
+  const embeds: number[] = [];
+  const isolates: { at: number; depth: number }[] = [];
+  for (let at = 0; at < source.length; at += 1) {
+    const code = source.charCodeAt(at);
+    if (code === 0x202a || code === 0x202b) embeds.push(at);
+    else if (code >= 0x2066 && code <= 0x2068) isolates.push({ at, depth: embeds.length });
+    else if (code === 0x202c) {
+      const floor = isolates.length > 0 ? isolates[isolates.length - 1].depth : 0;
+      if (embeds.length > floor) embeds.pop();
+      else drop.add(at);
+    } else if (code === 0x2069) {
+      const open = isolates.pop();
+      if (open === undefined) drop.add(at);
+      else for (const unclosed of embeds.splice(open.depth)) drop.add(unclosed);
+    }
+  }
+  for (const at of embeds) drop.add(at);
+  for (const { at } of isolates) drop.add(at);
+  if (drop.size === 0) return source;
+  let kept = '';
+  for (let at = 0; at < source.length; at += 1) if (!drop.has(at)) kept += source[at];
+  return kept;
+}
+
+/**
+ * The segments with unpaired bidi controls dropped from every text, code and code-block run, and every control
+ * from a mention's text (a mention is drawn in an isolate of its own).
+ */
 export function cleanSegments(segments: readonly MessageSegment[]): MessageSegment[] {
-  return segments.map((segment) =>
-    segment.type === 'text' || segment.type === 'code' || segment.type === 'codeBlock' || segment.type === 'mention'
-      ? { ...segment, text: stripBidiOverrides(segment.text) }
-      : segment,
-  );
+  return segments.map((segment) => {
+    if (segment.type === 'text' || segment.type === 'code' || segment.type === 'codeBlock') {
+      return { ...segment, text: stripUnpairedBidi(segment.text) };
+    }
+    return segment.type === 'mention' ? { ...segment, text: stripBidiOverrides(segment.text) } : segment;
+  });
 }
 
 /** Whether `text` has a C0 control character (tab, line break, …) or DEL. */

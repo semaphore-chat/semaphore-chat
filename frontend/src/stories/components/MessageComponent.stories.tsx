@@ -218,3 +218,17 @@ export const BidiIsolation = defineComponent(bigCommunityScenario, () => (
     {...contextProps}
   />
 ));
+
+/** A message that starts with a link and goes on in right-to-left words, with a right-to-left mention. */
+export const BidiLinkFirst = defineComponent(bigCommunityScenario, () => (
+  <MessageComponent
+    message={createMessage({
+      ...common,
+      spans: [
+        createSpan({ text: 'https://docs.semaphorechat.app/guide مرحبا بالجميع، هل نلعب الليلة؟ ' }),
+        createSpan({ type: SpanType.USER_MENTION, text: '@سارة', userId: bigCommunityScenario.users[1].id }),
+      ],
+    })}
+    {...contextProps}
+  />
+));

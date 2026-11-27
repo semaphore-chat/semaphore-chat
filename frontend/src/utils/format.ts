@@ -1,3 +1,4 @@
+import { stripBidi } from "../kit/chat/messageSegments";
 /**
  * Formats a byte count into a human-readable file size string.
  * e.g. 1024 → "1 KB", 1048576 → "1 MB"
@@ -43,7 +44,7 @@ export const getErrorMessage = (err: unknown, defaultMessage: string): string =>
 export const downloadBlob = (blobUrl: string, filename: string): void => {
   const link = document.createElement("a");
   link.href = blobUrl;
-  link.download = filename;
+  link.download = stripBidi(filename);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

@@ -8,6 +8,7 @@
  * tray, files dropped on the conversation too (`composerDrop`), and ↑ in the empty field edits the reader's last
  * message (`onEditLastMessage`). Neither picker is offered while the reader cannot write (the notice shows instead).
  */
+import { stripBidiOverrides } from '../../../../kit';
 import { useCallback, useEffect, useId, useRef, useState, type JSX, type RefObject } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -89,7 +90,7 @@ function useReplyBanner(replyTo: Message | null, onCancel: () => void): Composer
   });
   if (replyTo === null) return undefined;
   const name = replyTo.webhook?.name ?? (author?.displayName || author?.username || 'a message');
-  const line = spansToText(replyTo.spans).split('\n')[0];
+  const line = stripBidiOverrides(spansToText(replyTo.spans).split('\n')[0]);
   return { kind: 'reply', title: `Replying to ${name}`, detail: line || undefined, cancelLabel: 'Cancel reply', onCancel };
 }
 
