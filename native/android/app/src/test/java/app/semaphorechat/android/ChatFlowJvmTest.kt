@@ -7,7 +7,15 @@
 
 package app.semaphorechat.android
 
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import app.semaphorechat.android.kit.chat.MentionTarget
+import app.semaphorechat.android.kit.chat.PieceKind
 import app.semaphorechat.android.screens.ChatConnection
+import app.semaphorechat.android.screens.ChatMessage
+import app.semaphorechat.android.screens.ComposerAccess
+import app.semaphorechat.android.screens.MessageState
+import app.semaphorechat.android.screens.SuggestionKind
 import app.semaphorechat.android.screens.ChatFace
 import java.net.HttpURLConnection
 import java.net.URI
@@ -100,6 +108,144 @@ class ChatFlowJvmTest {
             .filter { "\"$channelId\"" in it }
             .mapNotNull { Regex("\"lastReadMessageId\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) }
             .toList()
+    }
+
+    /** The socket events of [name] the fake server has seen from clients for the channel. */
+    private fun clientEvents(name: String): Int {
+        val connection = URI("$server/__control/requests").toURL().openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.outputStream.use { it.write("{}".toByteArray()) }
+        val body = connection.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
+        connection.disconnect()
+        return Regex("\\{[^{}]*\"event\":\"$name\"[^{}]*\"payload\":\\{([^{}]*)\\}")
+            .findAll(body)
+            .count { "\"$channelId\"" in it.groupValues[1] }
+    }
+
+    private fun startCore(pipe: EventPipe) = runBlocking {
+        start(
+            MobileConfig(
+                dataDir = Files.createTempDirectory("semaphore-chat").toFile().path,
+                userAgent = "Semaphore-Android/0.0.0 (JVM test)",
+                deviceName = "JVM chat test",
+                appVersion = "0.0.0",
+            ),
+            MemorySecrets(),
+            Clock,
+            pipe,
+        )
+    }
+
+    private fun words(message: ChatMessage) = message.pieces.joinToString("") { it.text }
+
+    @Test
+    fun sendsRetriesDeletesSignalsTypingMentionsAndKeepsDraftsPerChannel() {
+        assumeTrue("android.sh passes the fake server", server != null && channelId != null && authorId != null)
+        val pipe = EventPipe()
+        val host = startCore(pipe)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val core = host.core()
+            val store = CoreStore(core, scope, pipe.events)
+            runBlocking { core.signIn(server!!, "me", "pw") }
+            until("sign-in and the socket") {
+                core.session() is SessionState.SignedIn && core.connection() == ConnectionState.CONNECTED
+            }
+            until("the channel listed") { core.communities().any { c -> core.channels(c.id).any { it.id == channelId } } }
+            val communityId = core.communities().first { c -> core.channels(c.id).any { it.id == channelId } }.id
+            val chat = store.conversation(Conversation.Channel(channelId!!))
+            val composer = store.composer(communityId, channelId)
+            chat.open()
+            until("the first page") { chat.state.value.face == ChatFace.Ready }
+            assertEquals(ComposerAccess.Open, composer.state.value.access)
+
+            // Typing out: "started" once while keys arrive within the interval, "stopped" on send.
+            val startedBefore = clientEvents("typingStart")
+            val stoppedBefore = clientEvents("typingStop")
+            composer.onDraftChange(TextFieldValue("h", TextRange(1)))
+            composer.onDraftChange(TextFieldValue("he", TextRange(2)))
+            composer.onDraftChange(TextFieldValue("hello from the composer", TextRange(23)))
+            until("the typing signal") { clientEvents("typingStart") == startedBefore + 1 }
+            composer.send()
+            assertEquals("the field clears at once", "", composer.draft.text)
+            until("the sent row") { chat.state.value.messages.lastOrNull()?.let(::words) == "hello from the composer" }
+            until("the stop signal") { clientEvents("typingStop") == stoppedBefore + 1 }
+            until("confirmed") { chat.state.value.messages.last().state == MessageState.Sent }
+            assertEquals("only one start in the interval", startedBefore + 1, clientEvents("typingStart"))
+            assertTrue(chat.state.value.messages.last().clientNonce != null)
+
+            // Cleared by hand: "stopped" too.
+            composer.onDraftChange(TextFieldValue("x", TextRange(1)))
+            composer.onDraftChange(TextFieldValue(""))
+            until("the stop on clearing") { clientEvents("typingStop") == stoppedBefore + 2 }
+            // A blank draft sends nothing.
+            val rows = chat.state.value.messages.size
+            composer.onDraftChange(TextFieldValue("   \n  "))
+            composer.send()
+            assertEquals("   \n  ", composer.draft.text)
+            composer.onDraftChange(TextFieldValue(""))
+
+            // A failed send says so; Retry sends it with the same nonce, once.
+            control("fail_next_send", """{"code":"RATE_LIMITED"}""")
+            composer.onDraftChange(TextFieldValue("try me twice", TextRange(12)))
+            composer.send()
+            until("the failed row") { chat.state.value.messages.lastOrNull()?.let { words(it) == "try me twice" && it.state is MessageState.Failed } == true }
+            val failed = chat.state.value.messages.last()
+            chat.retrySend(failed.clientNonce!!)
+            until("the retried row confirmed") {
+                chat.state.value.messages.lastOrNull()?.let { words(it) == "try me twice" && it.state == MessageState.Sent } == true
+            }
+            assertEquals("one row for the message", 1, chat.state.value.messages.count { words(it) == "try me twice" })
+
+            // Delete throws a failed one away.
+            control("fail_next_send", """{"code":"RATE_LIMITED"}""")
+            composer.onDraftChange(TextFieldValue("throw me away", TextRange(13)))
+            composer.send()
+            until("the second failed row") { chat.state.value.messages.lastOrNull()?.let { words(it) == "throw me away" && it.state is MessageState.Failed } == true }
+            chat.discardSend(chat.state.value.messages.last().clientNonce!!)
+            until("the row gone") { chat.state.value.messages.none { words(it) == "throw me away" } }
+            assertTrue(chat.state.value.messages.size >= rows + 1)
+
+            // Mentions: "@" lists members (re-read as core finds them); picking one after an emoji
+            // sends a user mention whose byte range core reads back as the same name.
+            composer.onDraftChange(TextFieldValue("👩‍👩‍👧 hi @", TextRange("👩‍👩‍👧 hi @".length)))
+            until("member suggestions") { composer.state.value.suggestions.any { it.kind == SuggestionKind.User } }
+            val member = composer.state.value.suggestions.first { it.kind == SuggestionKind.User }
+            composer.pick(member)
+            assertEquals("👩‍👩‍👧 hi ${member.insertText} ", composer.draft.text)
+            assertEquals(composer.draft.text.length, composer.draft.selection.end)
+            assertTrue("picking closes the list", composer.state.value.suggestions.isEmpty())
+            composer.onDraftChange(composer.draft.copy(text = composer.draft.text + "😀 look"))
+            composer.send()
+            until("the mention confirmed") {
+                chat.state.value.messages.lastOrNull()?.let { it.state == MessageState.Sent && words(it).startsWith("👩‍👩‍👧 hi") } == true
+            }
+            val mention = chat.state.value.messages.last().pieces.single { it.kind is PieceKind.Mention }
+            assertEquals(MentionTarget.User(member.id), (mention.kind as PieceKind.Mention).target)
+            // "#" lists channels.
+            composer.onDraftChange(TextFieldValue("#", TextRange(1)))
+            until("channel suggestions") { composer.state.value.suggestions.any { it.kind == SuggestionKind.Channel } }
+            composer.onDraftChange(TextFieldValue(""))
+            assertTrue(composer.state.value.suggestions.isEmpty())
+
+            // Drafts are per channel and stay while the app runs.
+            composer.onDraftChange(TextFieldValue("half a thought", TextRange(14)))
+            val other = store.composer(communityId, "another-channel")
+            assertEquals("", other.draft.text)
+            other.onDraftChange(TextFieldValue("elsewhere", TextRange(9)))
+            assertTrue(store.composer(communityId, channelId) === composer)
+            assertEquals("half a thought", store.composer(communityId, channelId).draft.text)
+            assertEquals("elsewhere", store.composer(communityId, "another-channel").draft.text)
+
+            // Signing out drops the drafts with the lists.
+            runBlocking { core.signOut() }
+            until("the drafts dropped") { store.composer(communityId, channelId) !== composer }
+        } finally {
+            pipe.close()
+            scope.cancel()
+            host.shutdown()
+        }
     }
 
     @Test

@@ -210,7 +210,7 @@ private fun Screens(model: AppModel, links: LinkOpener, openWeb: (String) -> Uni
                     ?.firstOrNull { it.id == route.communityId }?.name.orEmpty()
                 // Keyed: another channel at this call site (a #mention, then Back) is a new chat, with
                 // its own remembered state and effects.
-                key(route.channelId) { ChannelChat(model, links, route.channelId, ChatHeaderModel(channel?.name.orEmpty(), channel?.icon ?: app.semaphorechat.android.screens.ChannelIcon.Hash, communityName)) }
+                key(route.channelId) { ChannelChat(model, links, route.communityId, route.channelId, ChatHeaderModel(channel?.name.orEmpty(), channel?.icon ?: app.semaphorechat.android.screens.ChannelIcon.Hash, communityName)) }
             }
         }
         notice?.let {
@@ -225,9 +225,11 @@ private fun Screens(model: AppModel, links: LinkOpener, openWeb: (String) -> Uni
 
 /** A text channel's chat, over its [ConversationStore], opened when the screen shows. */
 @Composable
-private fun ChannelChat(model: AppModel, links: LinkOpener, channelId: String, header: ChatHeaderModel) {
+private fun ChannelChat(model: AppModel, links: LinkOpener, communityId: String, channelId: String, header: ChatHeaderModel) {
     val context = LocalContext.current
     val chat = remember(channelId) { model.chat(channelId) }
+    val composer = remember(communityId, channelId) { model.composer(communityId, channelId) }
+    val composerState by composer.state.collectAsState()
     LaunchedEffect(chat) { chat.open() }
     val state by chat.state.collectAsState()
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
@@ -252,7 +254,12 @@ private fun ChannelChat(model: AppModel, links: LinkOpener, channelId: String, h
             onSeenNewest = chat::markSeen,
             onOpenLink = { links.open(it) },
             onOpenChannel = model::openMentionedChannel,
+            onDraftChange = composer::onDraftChange,
+            onSend = composer::send,
+            onPickMention = composer::pick,
+            onRetrySend = chat::retrySend,
+            onDiscardSend = chat::discardSend,
         )
     }
-    ChatScreen(header, state, format, actions, chat.listState)
+    ChatScreen(header, state, format, actions, chat.listState, composer.draft, composerState)
 }

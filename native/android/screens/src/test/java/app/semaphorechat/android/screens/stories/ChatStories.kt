@@ -3,6 +3,13 @@
 package app.semaphorechat.android.screens.stories
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import app.semaphorechat.android.screens.BlockedKind
+import app.semaphorechat.android.screens.ComposerAccess
+import app.semaphorechat.android.screens.ComposerModel
+import app.semaphorechat.android.screens.MentionSuggestion
+import app.semaphorechat.android.screens.SuggestionKind
 import app.semaphorechat.android.kit.chat.ChatPiece
 import app.semaphorechat.android.kit.chat.MentionTarget
 import app.semaphorechat.android.kit.chat.PieceKind
@@ -80,9 +87,16 @@ private val CONVERSATION: List<ChatMessage> = listOf(
 )
 
 @Composable
-private fun Chat(chat: ChatModel, header: ChatHeaderModel = HEADER) {
-    ChatScreen(header, chat, FORMAT, ChatActions())
+private fun Chat(
+    chat: ChatModel,
+    header: ChatHeaderModel = HEADER,
+    draft: TextFieldValue = TextFieldValue(),
+    composer: ComposerModel = ComposerModel(),
+) {
+    ChatScreen(header, chat, FORMAT, ChatActions(), draft = draft, composer = composer)
 }
+
+private fun suggestion(kind: SuggestionKind, id: String, label: String, insert: String) = MentionSuggestion(kind, id, label, insert)
 
 private fun ready(messages: List<ChatMessage>, atStart: Boolean = false) =
     ChatModel(face = ChatFace.Ready, messages = messages, atStart = atStart)
@@ -101,8 +115,8 @@ val CHAT_STORIES: List<Story> = listOf(
         Chat(
             ready(
                 CONVERSATION.take(4) + listOf(
-                    message(20, "You", "u-me", 1, text("This one is on its way"), MessageState.Pending),
-                    message(21, "You", "u-me", 0, text("This one didn't make it"), MessageState.Failed("You are sending messages too quickly.")),
+                    message(20, "You", "u-me", 1, text("This one is on its way"), MessageState.Pending).copy(clientNonce = "n20"),
+                    message(21, "You", "u-me", 0, text("This one didn't make it"), MessageState.Failed("You are sending messages too quickly.")).copy(clientNonce = "n21"),
                 ),
             ),
         )
@@ -123,6 +137,61 @@ val CHAT_STORIES: List<Story> = listOf(
                 },
             ),
             long,
+        )
+    },
+    Story("screen-chat-retrying") {
+        Chat(
+            ready(
+                CONVERSATION.take(4) + listOf(
+                    message(21, "You", "u-me", 0, text("Not sent, retrying"), MessageState.Failed("Not sent", retrying = true)).copy(clientNonce = "n21"),
+                ),
+            ),
+        )
+    },
+    Story("screen-composer-typed") {
+        Chat(ready(CONVERSATION), draft = TextFieldValue("On it, give me ten 🙂", TextRange(21)))
+    },
+    Story("screen-composer-long") {
+        val long = (1..8).joinToString("\n") { "Line $it of a long message that wraps on a phone screen" }
+        Chat(ready(CONVERSATION), draft = TextFieldValue(long, TextRange(long.length)))
+    },
+    Story("screen-composer-cant-post") {
+        Chat(
+            ready(CONVERSATION),
+            HEADER.copy(name = "announcements", icon = ChannelIcon.Megaphone),
+            composer = ComposerModel(ComposerAccess.Blocked("You can't send messages in #announcements", BlockedKind.NoPermission)),
+        )
+    },
+    Story("screen-composer-read-only") {
+        Chat(
+            ready(CONVERSATION),
+            HEADER.copy(name = "announcements", icon = ChannelIcon.Megaphone),
+            composer = ComposerModel(ComposerAccess.Blocked("#announcements is read-only. Only Moderator and Admin can post.", BlockedKind.ReadOnly)),
+        )
+    },
+    Story("screen-composer-timed-out") {
+        Chat(ready(CONVERSATION), composer = ComposerModel(ComposerAccess.Blocked("Timed out, 12 min left", BlockedKind.TimedOut)))
+    },
+    Story("screen-composer-mentions") {
+        Chat(
+            ready(CONVERSATION),
+            draft = TextFieldValue("Thanks @pr", TextRange(10)),
+            composer = ComposerModel(
+                suggestions = listOf(
+                    suggestion(SuggestionKind.User, "u-priya", "Priya Raman", "@priya"),
+                    suggestion(SuggestionKind.User, "u-prem", "Prem", "@prem"),
+                    suggestion(SuggestionKind.User, "u-pr", "A member whose display name is far too long for one line", "@prudence_with_a_long_username"),
+                ),
+            ),
+        )
+    },
+    Story("screen-composer-channels") {
+        Chat(
+            ready(CONVERSATION),
+            draft = TextFieldValue("See #", TextRange(5)),
+            composer = ComposerModel(
+                suggestions = (1..9).map { suggestion(SuggestionKind.Channel, "ch-$it", "design-$it", "#design-$it") },
+            ),
         )
     },
 )
