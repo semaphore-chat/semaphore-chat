@@ -2,7 +2,12 @@
 
 package app.semaphorechat.android.screens.stories
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import app.semaphorechat.android.screens.BlockedKind
@@ -193,5 +198,20 @@ val CHAT_STORIES: List<Story> = listOf(
                 suggestions = (1..9).map { suggestion(SuggestionKind.Channel, "ch-$it", "design-$it", "#design-$it") },
             ),
         )
+    },
+    Story("screen-composer-mentions-keyboard") {
+        // The room a 360x800 phone leaves with the keyboard up: the list shrinks, the field stays.
+        Box(Modifier.fillMaxWidth().height(500.dp)) {
+            Chat(
+                ready(CONVERSATION),
+                draft = TextFieldValue("Thanks @", TextRange(8)),
+                composer = ComposerModel(
+                    suggestions = listOf(
+                        suggestion(SuggestionKind.Special, "here", "here", "@here"),
+                        suggestion(SuggestionKind.Special, "channel", "channel", "@channel"),
+                    ) + (1..10).map { suggestion(SuggestionKind.User, "u-$it", "Member $it", "@member$it") },
+                ),
+            )
+        }
     },
 )

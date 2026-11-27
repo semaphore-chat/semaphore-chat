@@ -1123,6 +1123,18 @@ impl SemaphoreCore {
             .await
     }
 
+    /// As `send_message`, but refused (nothing sent) unless the pending row shows at once: the
+    /// conversation is loaded at its newest messages. A client that clears its field on send uses
+    /// it so a send never leaves without a row to carry the text.
+    pub async fn send_message_with_row(
+        &self,
+        conversation: Conversation,
+        draft: MessageDraft,
+    ) -> Result<String, CoreError> {
+        self.run(move |core| async move { core.send_message_with_row(conversation, draft).await })
+            .await
+    }
+
     /// The user started typing here (`started`), or stopped. The app debounces, as the web does.
     pub async fn send_typing(
         &self,

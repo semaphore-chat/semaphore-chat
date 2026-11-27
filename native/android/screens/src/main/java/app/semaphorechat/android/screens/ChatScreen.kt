@@ -146,10 +146,11 @@ fun ChatScreen(
             }
             TypingLine(chat.typing)
             val scope = rememberCoroutineScope()
-            ComposerArea(header.name, draft, composer, actions) {
+            // Sending needs the list loaded: the pending row is what carries the text once sent.
+            ComposerArea(header.name, draft, composer, actions, ready = chat.face == ChatFace.Ready) {
                 actions.onSend()
-                // What was sent lands at the bottom: go there, as Discord does, from history too.
-                if (!chat.atLiveEdge) actions.onJump()
+                // What was sent lands at the bottom: go there, as Discord does. From history the
+                // store brings the newest rows back before it sends.
                 scope.launch { listState.scrollToItem(0) }
             }
         }
@@ -157,7 +158,14 @@ fun ChatScreen(
 }
 
 @Composable
-private fun ComposerArea(channel: String, draft: TextFieldValue, composer: ComposerModel, actions: ChatActions, onSend: () -> Unit) {
+private fun ComposerArea(
+    channel: String,
+    draft: TextFieldValue,
+    composer: ComposerModel,
+    actions: ChatActions,
+    ready: Boolean,
+    onSend: () -> Unit,
+) {
     Column(
         Modifier.fillMaxWidth().padding(start = Tokens.Space.Sm, end = Tokens.Space.Sm, bottom = Tokens.Space.Sm),
         verticalArrangement = Arrangement.spacedBy(Tokens.Space.Xs),
@@ -189,6 +197,9 @@ private fun ComposerArea(channel: String, draft: TextFieldValue, composer: Compo
                     },
                     shown = ComposerCaps.SUGGESTIONS_SHOWN,
                     onPick = { index -> suggestions.getOrNull(index)?.let(actions.onPickMention) },
+                    // Measured after the field: with the keyboard up the list gets only what is
+                    // left, and never squeezes the field and Send.
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 ComposerField(
                     value = draft,
@@ -197,7 +208,7 @@ private fun ComposerArea(channel: String, draft: TextFieldValue, composer: Compo
                     // The keyboard is up when it takes room at the bottom (`isImeVisible` reads true
                     // where no insets are dispatched at all, as under Robolectric).
                     maxLines = if (WindowInsets.ime.getBottom(LocalDensity.current) > 0) ComposerCaps.KEYBOARD_ROWS else ComposerCaps.PHONE_ROWS,
-                    canSend = draft.text.isNotBlank(),
+                    canSend = ready && draft.text.isNotBlank(),
                     onSend = onSend,
                 )
             }

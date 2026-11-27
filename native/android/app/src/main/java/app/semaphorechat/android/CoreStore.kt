@@ -211,7 +211,7 @@ class CoreStore(
         // A new session starts with no lists: the old one's rows are another account's.
         if (session !is SessionState.SignedIn) {
             synchronized(conversations) { conversations.clear() }
-            synchronized(composers) { composers.clear() }
+            synchronized(composers) { composers.values.toList().also { composers.clear() } }.forEach { it.close() }
         }
         sessionState.value = session
         val connection = core.connection()

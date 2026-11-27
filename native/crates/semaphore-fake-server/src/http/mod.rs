@@ -644,6 +644,18 @@ async fn control(
             lock(&inner.faults).drop_acks =
                 request.get("drop").and_then(Value::as_bool).unwrap_or(true);
         }
+        "time_out" => {
+            // A moderator's timeout of `userId` in `communityId` for `seconds`, as the timeout
+            // route makes it (stored, and `userTimedOut` to the user and the community).
+            let (Some(community_id), Some(user_id)) = (
+                request.get("communityId").and_then(Value::as_str),
+                request.get("userId").and_then(Value::as_str),
+            ) else {
+                return invalid("communityId and userId are required");
+            };
+            let seconds = request.get("seconds").and_then(Value::as_i64).unwrap_or(600);
+            moderation::time_out_for_control(&inner, community_id, user_id, seconds);
+        }
         "fail_next_send" => {
             let code = request
                 .get("code")

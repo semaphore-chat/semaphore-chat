@@ -14,6 +14,8 @@ import app.semaphorechat.android.screens.MentionSuggestion
 import app.semaphorechat.android.screens.SuggestionKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import uniffi.semaphore.ChannelPermissions
@@ -54,17 +56,42 @@ class ComposerRulesTest {
         "𝔘𝔫𝔦𝔠𝔬𝔡𝔢 math",
     )
 
+    /** A strict encoder, as the FFI's (`CodingErrorAction.REPORT`): malformed UTF-16 throws. */
+    private fun strictBytes(text: String): Int =
+        Charsets.UTF_8.newEncoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+            .encode(java.nio.CharBuffer.wrap(text))
+            .remaining()
+
     @Test
-    fun utf8OffsetsAreWhatTheEncoderProducesAtEveryCodePointBoundary() {
+    fun loneSurrogatesBecomeTheReplacementCharacterAndPairsStay() {
+        assertEquals("\uFFFD", wellFormed("\uD83D"))
+        assertEquals("\uFFFD", wellFormed("\uDE00"))
+        assertEquals("\uFFFD\uFFFD reversed", wellFormed("\uDE00\uD83D reversed"))
+        assertEquals("a😀b", wellFormed("a😀b"))
+        assertEquals("x\uFFFD😀\uFFFD", wellFormed("x\uD83D😀\uDE00"))
+        val plain = "no surrogates é 日"
+        assertTrue("untouched text is the same string", wellFormed(plain) === plain)
         for (text in awkward) {
-            val whole = text.toByteArray(Charsets.UTF_8).size
-            assertEquals("whole of \"$text\"", whole, utf8Offset(text, text.length))
+            val clean = wellFormed(text)
+            assertEquals("one char for one char", text.length, clean.length)
+            // Strictly encodable now: what the FFI would have refused.
+            strictBytes(clean)
+        }
+    }
+
+    @Test
+    fun utf8OffsetsAreWhatAStrictEncoderProducesAtEveryCodePointBoundary() {
+        for (raw in awkward) {
+            val text = wellFormed(raw)
+            assertEquals("whole of \"$text\"", strictBytes(text), utf8Offset(text, text.length))
+            assertEquals("a lone surrogate counts as the U+FFFD it becomes", utf8Offset(text, text.length), utf8Offset(raw, raw.length))
             var i = 0
             while (i <= text.length) {
                 val pairSplit = i in 1 until text.length && text[i - 1].isHighSurrogate() && text[i].isLowSurrogate()
                 if (!pairSplit) {
-                    // The prefix encodes alone exactly as it does inside the whole string here.
-                    assertEquals("\"$text\" up to $i", text.substring(0, i).toByteArray(Charsets.UTF_8).size, utf8Offset(text, i))
+                    assertEquals("\"$text\" up to $i", strictBytes(text.substring(0, i)), utf8Offset(text, i))
                 }
                 i++
             }
@@ -80,7 +107,7 @@ class ComposerRulesTest {
         assertEquals(6, utf8Offset(text, 4))
         assertEquals(0, utf8Offset(text, -3))
         assertEquals(6, utf8Offset(text, 99))
-        assertEquals("a lone surrogate is the encoder's 1-byte '?'", 1, utf8Offset("\uD83D", 1))
+        assertEquals("a lone surrogate counts as U+FFFD, 3 bytes", 3, utf8Offset("\uD83D", 1))
         assertEquals(4, utf8Offset("😀", 2))
         assertEquals(3, utf8Offset("日", 1))
         assertEquals(2, utf8Offset("é", 1))
@@ -138,13 +165,13 @@ class ComposerRulesTest {
             "👩‍👩‍👧‍👦 @priya 😀 #design" to listOf(26u to 32u, 38u to 45u),
             "日本 @priya" to listOf(7u to 13u),
             "é́@priya" to listOf(4u to 10u),
-            "\uD83D @priya" to listOf(2u to 8u),
+            "\uD83D @priya" to listOf(4u to 10u),
             "🇬🇧@priya🇯🇵#design" to listOf(8u to 14u, 22u to 29u),
         )
         for ((text, ranges) in cases) {
-            val mentions = draftMentions(text, listOf(priya, design))
+            val mentions = draftMentions(wellFormed(text), listOf(priya, design))
             assertEquals(text, ranges, mentions.map { it.start to it.end })
-            val bytes = text.toByteArray(Charsets.UTF_8)
+            val bytes = wellFormed(text).toByteArray(Charsets.UTF_8)
             mentions.forEach { m ->
                 val cut = String(bytes, m.start.toInt(), (m.end - m.start).toInt(), Charsets.UTF_8)
                 assertEquals("the bytes of \"$text\" name the mention", if (m.kind == MentionKind.CHANNEL) "#design" else "@priya", cut)
@@ -153,6 +180,19 @@ class ComposerRulesTest {
         val kinds = draftMentions("@priya #design @here", listOf(priya, design, here))
         assertEquals(listOf(MentionKind.USER, MentionKind.CHANNEL, MentionKind.SPECIAL), kinds.map { it.kind })
         assertEquals(listOf("u-priya", "ch-design", "here"), kinds.map { it.id })
+    }
+
+    @Test
+    fun aNameTypedOutInFullIsAMentionWhenTheLookupKnowsIt() {
+        val known = mapOf("@priya" to priya, "#design" to design)
+        val text = "hi @priya and #design, not @priyanka or @nobody"
+        val found = findMentions(text, emptyList()) { known[it] }
+        assertEquals(listOf("@priya", "#design"), found.map { text.substring(it.start, it.end) })
+        // A pick wins over the lookup, and the lookup's answer must be the whole token.
+        val wrong = MentionSuggestion(SuggestionKind.User, "u-x", "X", "@pri")
+        assertEquals(emptyList<FoundMention>(), findMentions("@priya", emptyList()) { wrong })
+        assertEquals(listOf(priyaR), findMentions("@priya_r", listOf(priyaR)) { priya }.map { it.suggestion })
+        assertEquals("a lone @ looks nothing up", emptyList<FoundMention>(), findMentions("@ #", emptyList()) { error("asked") })
     }
 
     @Test
@@ -211,14 +251,10 @@ class ComposerRulesTest {
         assertEquals(ComposerCaps.SUGGESTIONS_SHOWN, caps.suggestionsShown.toInt())
 
         val plain = TextStyle(bold = false, italic = false, strikethrough = false, code = false)
-        // Lone surrogates aside: the FFI's encoder turns them into '?', so the texts would differ.
-        fun lone(text: String) = text.indices.any { i ->
-            val c = text[i]
-            (c.isHighSurrogate() && text.getOrNull(i + 1)?.isLowSurrogate() != true) ||
-                (c.isLowSurrogate() && text.getOrNull(i - 1)?.isHighSurrogate() != true)
-        }
-        for (prefix in awkward.filterNot(::lone)) {
-            val text = "$prefix @priya ${prefix.filter { !it.isSurrogate() }.reversed()} #design end"
+        // The FFI refuses a lone surrogate outright, which is why everything sent is made well formed.
+        assertThrows(Exception::class.java) { uniffi.semaphore.messagePieces("\uD83D", emptyList()) }
+        for (prefix in awkward) {
+            val text = wellFormed("$prefix @priya ${prefix.reversed()} #design end")
             val mentions = draftMentions(text, listOf(priya, design))
             assertEquals(text, 2, mentions.size)
             // The mention ranges as segments: Rust slices the same characters out of the text.

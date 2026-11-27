@@ -199,7 +199,8 @@ fun SuggestionList(
         }
         // Each row is at least the large control's height: [shown] of them, and a little of the next.
         val max = with(LocalDensity.current) { (row.toPx() * (shown.coerceAtLeast(1) + 0.5f)).toDp() }
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = max.coerceAtLeast(48.dp))) {
+        // Fewer rows when the space it is given is short (the keyboard is up): it scrolls.
+        LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = max.coerceAtLeast(48.dp))) {
             itemsIndexed(items) { index, item ->
                 ListRow(
                     primary = item.label,

@@ -634,6 +634,31 @@ fn timeout_by(
     w5_reply(inner, result)
 }
 
+/// The control API's timeout (`/__control/time_out`): what [`timeout_user`] stores and emits, with
+/// no actor's permission check, by the scenario's owner.
+pub(crate) fn time_out_for_control(inner: &Inner, community_id: &str, user_id: &str, seconds: i64) {
+    let now = inner.now();
+    let expires_at = now + jiff::SignedDuration::from_secs(seconds);
+    let moderator = rbac::community(inner, community_id, |state, _| {
+        state.timeouts.insert(
+            user_id.to_owned(),
+            rbac::Timeout {
+                moderator_id: String::new(),
+                reason: None,
+                created_at: now,
+                expires_at,
+            },
+        );
+    });
+    if moderator.is_none() {
+        return;
+    }
+    let mut payload = rbac::moderation_payload(community_id, user_id, "", &None);
+    payload["durationSeconds"] = json!(seconds);
+    payload["expiresAt"] = json!(expires_at);
+    inner.emit_to_user(user_id, "userTimedOut", payload);
+}
+
 async fn remove_timeout(
     State(inner): State<Arc<Inner>>,
     headers: HeaderMap,

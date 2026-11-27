@@ -17,6 +17,7 @@ import app.semaphorechat.android.screens.ComposerAccess
 import app.semaphorechat.android.screens.ComposerModel
 import app.semaphorechat.android.screens.MentionSuggestion
 import app.semaphorechat.android.screens.SuggestionKind
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -24,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import uniffi.semaphore.ChannelKind
 import uniffi.semaphore.ChannelPermissions
 import uniffi.semaphore.Conversation
 import uniffi.semaphore.CoreException
@@ -38,6 +40,9 @@ import uniffi.semaphore.SemaphoreCore
  * and desktop's `TYPING_EVERY`.
  */
 const val TYPING_EVERY_MS = 3_000L
+
+/** How many listed candidates a composer remembers for names typed out in full. */
+private const val SEEN_MAX = 500
 
 /** At most this many suggestions are listed; the list shows [ComposerCaps.SUGGESTIONS_SHOWN] then scrolls. */
 const val SUGGESTIONS_MAX = 25
@@ -85,9 +90,34 @@ fun insertMention(text: String, cursor: Int, insertText: String): Pair<String, I
 }
 
 /**
- * How many UTF-8 bytes the first [index] UTF-16 units of [text] are, as core counts them in the
- * string the FFI hands it: a surrogate pair is 4 bytes, and a lone surrogate (which the FFI's
- * encoder replaces with `?`) is 1. An [index] between a pair's halves counts up to the pair.
+ * [text] with every unpaired surrogate replaced by U+FFFD. The FFI's encoder refuses malformed
+ * UTF-16 (it throws), and a keyboard that deletes half an emoji, or a paste cut mid-pair, can leave
+ * one, so anything sent goes through this first.
+ */
+fun wellFormed(text: String): String {
+    if (text.none { it.isSurrogate() }) return text
+    val out = StringBuilder(text.length)
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        when {
+            c.isHighSurrogate() && i + 1 < text.length && text[i + 1].isLowSurrogate() -> {
+                out.append(c).append(text[i + 1])
+                i += 2
+                continue
+            }
+            c.isSurrogate() -> out.append('\uFFFD')
+            else -> out.append(c)
+        }
+        i++
+    }
+    return out.toString()
+}
+
+/**
+ * How many UTF-8 bytes the first [index] UTF-16 units of [text] are, as core counts them: a
+ * surrogate pair is 4 bytes. [text] is [wellFormed] (a lone surrogate counts 3, as the U+FFFD it
+ * becomes). An [index] between a pair's halves counts up to the pair.
  */
 fun utf8Offset(text: String, index: Int): Int {
     val end = index.coerceIn(0, text.length)
@@ -102,7 +132,6 @@ fun utf8Offset(text: String, index: Int): Int {
                 i += 2
                 continue
             }
-            c.isSurrogate() -> bytes += 1
             c.code < 0x80 -> bytes += 1
             c.code < 0x800 -> bytes += 2
             else -> bytes += 3
@@ -116,11 +145,16 @@ fun utf8Offset(text: String, index: Int): Int {
 data class FoundMention(val start: Int, val end: Int, val suggestion: MentionSuggestion)
 
 /**
- * The picked mentions still in [text] (desktop's `resolve_mentions`, without the typed-name
- * lookup): at each `@` or `#` that starts a token, the longest picked insert text that is there
- * whole. Text changed after picking simply no longer matches, so ranges aren't tracked through edits.
+ * The mentions in [text] (desktop's `resolve_mentions`): at each `@` or `#` that starts a token,
+ * the longest picked insert text that is there whole, or else the token typed out in full if
+ * [lookup] knows it (a member's `@username`, a `#channel`). Text changed after picking simply no
+ * longer matches, so ranges aren't tracked through edits.
  */
-fun findMentions(text: String, picked: List<MentionSuggestion>): List<FoundMention> {
+fun findMentions(
+    text: String,
+    picked: List<MentionSuggestion>,
+    lookup: (String) -> MentionSuggestion? = { null },
+): List<FoundMention> {
     val found = mutableListOf<FoundMention>()
     var at = 0
     while (at < text.length) {
@@ -133,20 +167,27 @@ fun findMentions(text: String, picked: List<MentionSuggestion>): List<FoundMenti
         val pick = picked
             .filter { text.startsWith(it.insertText, at) && text.getOrNull(at + it.insertText.length)?.let(::isNameChar) != true }
             .maxByOrNull { it.insertText.length }
-        if (pick != null) {
-            found += FoundMention(at, at + pick.insertText.length, pick)
-            at += pick.insertText.length
+        var end = at + 1
+        while (end < text.length && isNameChar(text[end])) end++
+        val typed = if (pick == null && end > at + 1) lookup(text.substring(at, end))?.takeIf { it.insertText == text.substring(at, end) } else null
+        val mention = pick ?: typed
+        if (mention != null) {
+            found += FoundMention(at, at + mention.insertText.length, mention)
+            at += mention.insertText.length
         } else {
-            at++
-            while (at < text.length && isNameChar(text[at])) at++
+            at = end
         }
     }
     return found
 }
 
 /** The mentions of [text] as core takes them: byte ranges into the UTF-8 text. */
-fun draftMentions(text: String, picked: List<MentionSuggestion>): List<DraftMention> =
-    findMentions(text, picked).map { found ->
+fun draftMentions(
+    text: String,
+    picked: List<MentionSuggestion>,
+    lookup: (String) -> MentionSuggestion? = { null },
+): List<DraftMention> =
+    findMentions(text, picked, lookup).map { found ->
         DraftMention(
             start = utf8Offset(text, found.start).toUInt(),
             end = utf8Offset(text, found.end).toUInt(),
@@ -241,6 +282,14 @@ class ComposerStore(
     private var access: ComposerAccess = ComposerAccess.Open
     private var lastStartedMs: Long? = null
     private var tick: Job? = null
+    /** On screen with the app resumed: only then does a timeout count down. */
+    private var shown = false
+    private var closed = false
+    /**
+     * Every candidate listed while typing, by its insert text: a name typed out in full and sent at
+     * once is still known when core's search for that exact name hasn't come back yet.
+     */
+    private val seen = LinkedHashMap<String, MentionSuggestion>()
     private val stateFlow = MutableStateFlow(ComposerModel())
     val state: StateFlow<ComposerModel> = stateFlow
 
@@ -303,24 +352,69 @@ class ComposerStore(
         onDraftChange(TextFieldValue(text, TextRange(caret)))
     }
 
+    /** A token typed out in full (`@sam`, `#design`): what core or the list while typing knows it as. */
+    private fun lookup(token: String): MentionSuggestion? =
+        core.mentionCandidates(communityId, token).firstOrNull { it.insertText == token }?.let(::suggestionOf)
+            ?: synchronized(lock) { seen[token] }
+            // A #channel: the community's text channels are loaded already, mentionables or not.
+            ?: token.takeIf { it.startsWith('#') }?.let { name ->
+                core.channels(communityId).firstOrNull { it.kind == ChannelKind.TEXT && "#${it.name}" == name }
+                    ?.let { MentionSuggestion(SuggestionKind.Channel, it.id, it.name, name) }
+            }
+
     /**
-     * Sends the draft: the field clears at once, and the pending row arrives through the list's
-     * changes. If core refuses before making a row (signed out, say), the text comes back.
+     * Sends the draft, trimmed, as the web and desktop do: the field clears at once, and the pending
+     * row carries the text from then on. From history the list goes back to the newest first. Core
+     * sends nothing unless that row shows (`send_message_with_row`), so if it can't (the list isn't
+     * loaded, the jump failed) or anything else goes wrong, the text and its mentions come back.
      */
     fun send() {
-        val text = draft.text
-        if (text.isBlank()) return
-        val mentions = synchronized(lock) { draftMentions(text, picked).also { picked.clear() } }
+        val raw = draft.text
+        val text = wellFormed(raw).trim()
+        if (text.isEmpty()) return
+        val picks = synchronized(lock) { picked.toList().also { picked.clear() } }
         stopTyping()
         onDraftChange(TextFieldValue())
         scope.launch {
             try {
-                core.sendMessage(conversation, MessageDraft(text, mentions, null, emptyList()))
-            } catch (_: CoreException) {
-                // Snapshot state may be written from any thread; the field picks it up next frame.
-                if (draft.text.isEmpty()) draft = TextFieldValue(text, TextRange(text.length))
+                val mentions = draftMentions(text, picks, ::lookup)
+                if (!core.atLiveEdge(conversation)) core.jumpToPresent(conversation)
+                core.sendMessageWithRow(conversation, MessageDraft(text, mentions, null, emptyList()))
+            } catch (cancelled: CancellationException) {
+                restore(raw, picks)
+                throw cancelled
+            } catch (_: Exception) {
+                // Not only CoreException: nothing that goes wrong here may end the process or the text.
+                restore(raw, picks)
             }
         }
+    }
+
+    /** Puts an unsent draft back: alone if the field is still empty, else before what was typed since. */
+    private fun restore(text: String, picks: List<MentionSuggestion>) {
+        synchronized(lock) { picks.filter { it !in picked }.forEach { picked += it } }
+        // Snapshot state may be written from any thread; the field picks it up next frame.
+        val now = draft.text
+        val back = if (now.isEmpty()) text else "$text\n$now"
+        draft = TextFieldValue(back, TextRange(back.length))
+    }
+
+    /** On screen with the app resumed, or not: a timeout's countdown runs only while shown. */
+    fun setShown(shown: Boolean) {
+        synchronized(lock) { this.shown = shown }
+        if (shown) refresh() else synchronized(lock) { tick?.cancel(); tick = null }
+    }
+
+    /** A timeout's countdown is running (for the tests). */
+    val countingDown: Boolean get() = synchronized(lock) { tick?.isActive == true }
+
+    /** The session ended: stop the typing sender and the countdown. */
+    fun close(): Unit = synchronized(lock) {
+        closed = true
+        tick?.cancel()
+        tick = null
+        typingOut.close()
+        Unit
     }
 
     /** Re-reads who may post (on CoreStore's collector, after each burst). */
@@ -332,8 +426,9 @@ class ComposerStore(
             access = now
             publish()
         }
-        // A timeout counts down: read again each second until it is over.
-        if (access is ComposerAccess.Blocked && (access as ComposerAccess.Blocked).kind == BlockedKind.TimedOut && tick?.isActive != true) {
+        // A timeout counts down while shown: read again each second until it is over.
+        val timedOut = (access as? ComposerAccess.Blocked)?.kind == BlockedKind.TimedOut
+        if (timedOut && shown && !closed && tick?.isActive != true) {
             tick = scope.launch {
                 delay(1_000)
                 synchronized(lock) { tick = null }
@@ -349,7 +444,10 @@ class ComposerStore(
     private fun publish() {
         val typed = query
         val suggestions = if (typed != null && access == ComposerAccess.Open) {
-            core.mentionCandidates(communityId, typed).take(SUGGESTIONS_MAX).map(::suggestionOf)
+            core.mentionCandidates(communityId, typed).take(SUGGESTIONS_MAX).map(::suggestionOf).onEach {
+                seen[it.insertText] = it
+                if (seen.size > SEEN_MAX) seen.remove(seen.keys.first())
+            }
         } else {
             emptyList()
         }

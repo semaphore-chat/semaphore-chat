@@ -236,8 +236,16 @@ private fun ChannelChat(model: AppModel, links: LinkOpener, communityId: String,
     val resumed = lifecycle.currentStateFlow.collectAsState().value.isAtLeast(Lifecycle.State.RESUMED)
     // Shown while the app is resumed: core counts unread and the newest row is marked read only
     // then. Leaving closes the conversation in core, so it counts as unread again.
-    LaunchedEffect(chat, resumed) { chat.setShown(resumed) }
-    DisposableEffect(chat) { onDispose { chat.leave() } }
+    LaunchedEffect(chat, resumed) {
+        chat.setShown(resumed)
+        composer.setShown(resumed)
+    }
+    DisposableEffect(chat) {
+        onDispose {
+            chat.leave()
+            composer.setShown(false)
+        }
+    }
     // The phone's 12/24-hour setting and zone, read when the screen shows.
     val format = remember(context) {
         ChatFormat(ZoneId.systemDefault(), android.text.format.DateFormat.is24HourFormat(context)) { System.currentTimeMillis() }
