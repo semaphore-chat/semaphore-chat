@@ -6,15 +6,16 @@
 # end to end:
 #
 #   1. A portrait (600 x 1200) and a panorama (1600 x 300) in one message: the list asks for each
-#      picture's /thumbnail (never the full file) and draws two 250-wide boxes at the pictures'
-#      own aspects. The thumbnail route is held for a few seconds so the reserved boxes can be
+#      picture's /thumbnail (never the full file) and draws two boxes at the pictures' own
+#      aspects. The thumbnail route is held for a few seconds so the reserved boxes can be
 #      photographed before the bytes arrive (`snap 01-boxes-before-load`) and after (`shot 02-loaded`).
 #   2. A tiny 64 x 64 picture in its own message has no thumbnail: the list asks for its full file
 #      and draws it at its own size.
 #   3. Opening the viewer fetches the portrait's full file.
 #
-# The box sizes are the UI's: a message with several attachments gives each a 250 px cell, so a
-# 2:1 portrait is 250 x 500 and a 16:3 panorama is 250 x 46.875. A lone 64 x 64 picture is 64 x 64.
+# The box sizes are the kit AttachmentTile's (`semaphore_design::chat::image_box`): the picture's
+# own size shrunk to fit 320 x 240, so the 2:1 portrait is 120 x 240 and the 16:3 panorama
+# 320 x 60. A 64 x 64 picture keeps its own size.
 
 app 1280 800
 # Hold the thumbnail route so the boxes can be seen before the pictures load. The upload, message
@@ -50,8 +51,8 @@ wait core requests MessagesController_addAttachment >= 2
 # and numbers uploads from there: one message's first two are the 13th and 14th.
 snap 01-boxes-before-load
 # The boxes' shapes come from the attachment's dimensions, before any pixels arrive.
-wait core w7t box "two pictures" portrait.png 250 500 within 15
-wait core w7t box "two pictures" panorama.png 250 47 within 15
+wait core w7t box "two pictures" portrait.png 120 240 within 15
+wait core w7t box "two pictures" panorama.png 320 60 within 15
 shot 02-loaded
 
 # 1, continued: each large picture was fetched through /thumbnail, and neither at full size.

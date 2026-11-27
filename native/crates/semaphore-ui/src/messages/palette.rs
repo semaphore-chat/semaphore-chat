@@ -46,15 +46,8 @@ impl Fonts {
     }
 }
 
-/// The column text wraps at. The web caps at `80ch`, about 720 px at 16 px.
-pub const TEXT_MAX_WIDTH: f32 = 720.;
-pub const CODE_MAX_WIDTH: f32 = 1080.;
 pub const AVATAR: f32 = 32.;
-pub const AVATAR_GUTTER: f32 = 44.;
 pub const BODY_SIZE: f32 = 16.;
-pub const BODY_LINE: f32 = 24.;
-pub const CODE_SIZE: f32 = 13.6;
-pub const CAPTION_SIZE: f32 = 12.;
 pub const NAME_SIZE: f32 = 14.;
 
 #[derive(Clone, Copy, Debug)]
@@ -77,9 +70,6 @@ pub struct Palette {
     pub avatar_bg: Hsla,
     pub skeleton: Hsla,
     pub selection: Hsla,
-    /// The theme's tooltip pair (`Sem::tooltip_bg`, `Sem::tooltip_text`).
-    pub tip_bg: Hsla,
-    pub tip_text: Hsla,
 }
 
 impl Palette {
@@ -111,17 +101,10 @@ impl Palette {
                 a: 0.35,
                 ..sem.primary
             },
-            tip_bg: sem.tooltip_bg,
-            tip_text: sem.tooltip_text,
         }
     }
 
     pub fn tint(&self, color: Hsla, a: f32) -> Hsla {
         Hsla { a, ..color }
-    }
-
-    /// The reaction tooltip's fill: the theme's tooltip.
-    pub fn tooltip_bg(&self) -> Hsla {
-        self.tip_bg
     }
 }
