@@ -314,6 +314,7 @@ impl MessageList {
     /// (`semaphore_design::chat::TYPING_LINE_HEIGHT`), which floats there, so it never covers a row.
     pub fn set_bottom_room(&mut self, room: Pixels, cx: &mut Context<Self>) {
         self.bottom_room = room;
+        self.shared.bottom_room.set(room);
         cx.notify();
     }
 
@@ -444,8 +445,8 @@ impl MessageList {
             drawn: RefCell::new(Vec::new()),
             last_drawn: RefCell::new(Vec::new()),
             viewport: Cell::new(Bounds::default()),
-            placed_ix: Cell::new(None),
-            used_stop: Cell::new(None),
+            bottom_room: Cell::new(px(8.)),
+            stop: Cell::new(None),
             focus_row: Cell::new(None),
             list_focus: list_focus.clone(),
         });
@@ -866,6 +867,54 @@ impl MessageList {
             window.focus(&self.focus, cx);
         }
         cx.notify();
+    }
+
+    /// The row that is the list's one Tab stop this frame, from where the list is scrolled now
+    /// (only rows drawn are in the window's Tab order): the roving row (else the newest) when it
+    /// is among the rows this frame shows, otherwise the first row wholly on screen. Picked from
+    /// the scroll position before the rows are laid out, so a jump or a scroll needs no second
+    /// frame to have a stop on screen.
+    fn tab_stop(&self) -> Option<i64> {
+        let rows = self.shared.rows.borrow();
+        let last = rows.len().checked_sub(1)?;
+        let wanted = self
+            .shared
+            .roving
+            .get()
+            .and_then(|seq| rows.index_of(seq))
+            .unwrap_or(last);
+        // How many rows the view holds: as many as were wholly on screen last frame, at least one.
+        let shown = {
+            let viewport = self.shared.viewport.get();
+            self.shared
+                .last_drawn
+                .borrow()
+                .iter()
+                .filter(|(_, bounds)| {
+                    bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom()
+                })
+                .count()
+                .max(1)
+        };
+        let (first, end) = if self.list.is_following_tail() {
+            ((last + 1).saturating_sub(shown), last + 1)
+        } else {
+            let top = self.list.logical_scroll_top();
+            let first = if top.offset_in_item > px(0.) && top.item_ix < last {
+                top.item_ix + 1
+            } else {
+                top.item_ix.min(last)
+            };
+            (first, (first + shown).min(last + 1))
+        };
+        let ix = if (first..end).contains(&wanted) {
+            wanted
+        } else if self.list.is_following_tail() {
+            last
+        } else {
+            first
+        };
+        rows.get(ix).map(|row| row.seq)
     }
 
     /// The row holding the list's roving focus (its one Tab stop).
@@ -1455,11 +1504,6 @@ impl MessageList {
 
     /// What's decided by what the last frame showed.
     fn after_paint(&mut self, cx: &mut Context<Self>) {
-        // The Tab stop was picked from last frame's rows: if this frame placed others (a jump, a
-        // scroll into rows not measured yet), draw again so the stop is a row on screen.
-        if self.shared.tab_stop_is_stale() {
-            cx.notify();
-        }
         // The width is known only once laid out: a first frame at a phone's width redraws as one.
         let width = f32::from(self.list.viewport_bounds().size.width);
         if (width > 0. && width < PHONE_WIDTH) != self.shared.phone.get() {
@@ -1511,7 +1555,6 @@ impl Render for MessageList {
             let drawn = std::mem::take(&mut *self.shared.drawn.borrow_mut());
             *self.shared.last_drawn.borrow_mut() = drawn;
         }
-        self.shared.placed_ix.set(None);
         // A row the keyboard focused, or a control in it, that is gone (deleted, or a reset): the
         // list takes focus, so its shortcuts still work. Last frame's tree still has the row.
         let reset = std::mem::take(&mut self.refocus_after_reset);
@@ -1525,6 +1568,7 @@ impl Render for MessageList {
             window.focus(&self.focus, cx);
         }
         self.sync_focusable_row(cx);
+        self.shared.stop.set(self.tab_stop());
         self.shared.list_players.next_frame();
         self.release_frozen_decor();
         if self.follow_theme

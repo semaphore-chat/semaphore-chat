@@ -2207,25 +2207,15 @@ fn after_a_jump_and_wheel_steps_tab_reaches_a_row_on_screen(cx: &mut TestAppCont
         view.scroll_to_seq(100, 0.);
         cx.notify();
     });
-    // One frame: its rows were drawn with the Tab stop picked from the tail's rows. The list sees
-    // the rows it placed and draws again by itself, with a stop on screen.
+    // One frame, and Tab straight after it: the stop was picked from where the list is now
+    // scrolled, not from the tail's rows the frame before showed.
     cx.update(|window, cx| window.draw(cx).clear(cx));
-    cx.run_until_parked();
-    assert!(!view.read_with(cx, |view, _| view.shared.tab_stop_is_stale()));
-    // A frame drawn with the tail's newest row as the stop, which this frame did not place, is
-    // stale: `after_paint` then asks for another frame.
-    view.read_with(cx, |view, _| view.shared.used_stop.set(Some(399)));
-    assert!(view.read_with(cx, |view, _| view.shared.tab_stop_is_stale()));
-    draw(cx);
-    let used = view
-        .read_with(cx, |view, _| view.shared.used_stop.get())
-        .unwrap();
+    let stop = view.read_with(cx, |view, _| view.focused_row()).unwrap();
     assert!(
-        on_screen(&view, used, cx),
-        "the last frame's Tab stop {used} is on screen"
+        on_screen(&view, stop, cx),
+        "the Tab stop {stop} is on screen"
     );
-    draw(cx);
-    tab(cx);
+    cx.update(|window, cx| window.focus_next(cx));
     let focused = focused_row_seq(&view, cx).expect("Tab after the jump reaches a row");
     assert!(on_screen(&view, focused, cx), "{focused} is on screen");
     for step in 0..6 {

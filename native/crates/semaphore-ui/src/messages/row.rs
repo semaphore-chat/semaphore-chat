@@ -151,10 +151,10 @@ pub(crate) struct Shared {
     pub last_drawn: RefCell<Vec<(i64, Bounds<Pixels>)>>,
     /// The list's bounds as its rows were placed: what counts as on screen.
     pub viewport: Cell<Bounds<Pixels>>,
-    /// The index of the row placed last this frame (`PaintedRow`).
-    pub placed_ix: Cell<Option<usize>>,
-    /// The Tab stop this frame's rows were drawn with, checked again once they are placed.
-    pub used_stop: Cell<Option<i64>>,
+    /// The room under the last row (`MessageList::set_bottom_room`), for `PaintedRow`.
+    pub bottom_room: Cell<Pixels>,
+    /// The Tab stop this frame's rows are drawn with (`MessageList::tab_stop`).
+    pub stop: Cell<Option<i64>>,
     /// The row focus was last in, while it was in the list: where focus goes back when the
     /// control that had it goes away.
     pub focus_row: Cell<Option<i64>>,
@@ -357,21 +357,10 @@ impl Shared {
         }
     }
 
-    /// The row that is the list's Tab stop, from the rows placed last frame (only those are in the
-    /// window's Tab order). Noted for `MessageList::after_paint`, which checks it against the rows
-    /// this frame placed.
+    /// The row that is the list's Tab stop this frame.
     pub(crate) fn tab_stop_seq(&self) -> Option<i64> {
-        let stop = self.tab_stop_among(&self.last_drawn.borrow());
-        self.used_stop.set(stop);
-        stop
-    }
-
-    /// The roving row (else the newest) when it is on screen in `placed`; otherwise the newest
-    /// row wholly on screen, else the newest partly on screen.
-    pub(crate) fn tab_stop_among(&self, placed: &[(i64, Bounds<Pixels>)]) -> Option<i64> {
         let rows = self.rows.borrow();
-        let wanted = self
-            .roving
+        self.stop
             .get()
             .filter(|seq| rows.by_seq(*seq).is_some())
             .or_else(|| {
@@ -379,38 +368,7 @@ impl Shared {
                     .checked_sub(1)
                     .and_then(|ix| rows.get(ix))
                     .map(|row| row.seq)
-            })?;
-        if placed.is_empty() {
-            return Some(wanted);
-        }
-        let viewport = self.viewport.get();
-        let on_screen = |bounds: &Bounds<Pixels>| !bounds.intersect(&viewport).is_empty();
-        let inside = |bounds: &Bounds<Pixels>| {
-            bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom()
-        };
-        let present = |seq: &i64| rows.by_seq(*seq).is_some();
-        if placed
-            .iter()
-            .any(|(seq, bounds)| *seq == wanted && on_screen(bounds))
-        {
-            return Some(wanted);
-        }
-        let newest = |keep: &dyn Fn(&Bounds<Pixels>) -> bool| {
-            placed
-                .iter()
-                .filter(|(seq, bounds)| present(seq) && keep(bounds))
-                .map(|(seq, _)| *seq)
-                .max()
-        };
-        newest(&inside)
-            .or_else(|| newest(&on_screen))
-            .or(Some(wanted))
-    }
-
-    /// Whether the Tab stop this frame's rows were drawn with is not the one the rows it placed
-    /// call for: the list then draws again (`MessageList::after_paint`).
-    pub(crate) fn tab_stop_is_stale(&self) -> bool {
-        self.tab_stop_among(&self.drawn.borrow()) != self.used_stop.get()
+            })
     }
 
     /// Where the row was placed last, if it was.
@@ -1632,7 +1590,7 @@ pub(crate) fn render_row(
             .children(divider)
             .into_any_element(),
     };
-    super::painted::PaintedRow::new(seq, ix, shared.clone(), element).into_any_element()
+    super::painted::PaintedRow::new(seq, shared.clone(), element).into_any_element()
 }
 
 /// Side padding of a row in the list, outside the kit row's own.
