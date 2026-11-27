@@ -23,15 +23,32 @@ on:
 
 concurrency:
   group: native-spike-${{ github.ref }}
-  cancel-in-progress: true
+  # Not on main: a cancelled run there saves no cargo cache.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
+
+# Caches (#887): the build and NSIS images come from GHCR by their content-hash tag
+# (native/scripts/image-cache.sh; a miss builds and, outside fork pull requests, pushes once), and
+# the cargo registry is a host directory bind-mounted in place of the Docker volume, restored with
+# actions/cache keyed on Cargo.lock and saved by runs on main only. The target directory is not
+# cached: it is tens of GB, more than the repository's whole cache allowance.
+env:
+  NATIVE_IMAGE_REGISTRY: ghcr.io/semaphore-chat
+  # Fork pull requests pull only; every other run pushes an image it had to build.
+  NATIVE_IMAGE_PUSH: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '1' || '0' }}
+  NATIVE_CARGO_CACHE: ${{ github.workspace }}/../native-cache/cargo
+  # TEMPORARY (#887 proof): also this branch's pull request; removed before review.
+  NATIVE_CACHE_SAVE: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/native-image-cache' }}
 
 jobs:
   checks:
     name: Build, policy and headless render (Linux)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     # 60 minutes was enough for verify.sh; the native UI review below renders every story three
     # times (about 80 CPU-minutes, so roughly 20 on the runner's 4 cores) on pull requests. A change
     # that touches every story (a theme change, as in #863) also writes a composite for every shot:
@@ -45,6 +62,24 @@ jobs:
           # request's merge commit, whose changes --no-merges leaves out.
           fetch-depth: 0
           persist-credentials: false
+      - name: Image cache helper
+        run: native/scripts/test-image-cache.sh
+      - name: Log in to GHCR (the native image cache)
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Restore the cargo registry
+        id: cargo-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ env.NATIVE_CARGO_CACHE }}/registry/index
+            ${{ env.NATIVE_CARGO_CACHE }}/registry/cache
+            ${{ env.NATIVE_CARGO_CACHE }}/git/db
+          key: native-cargo-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: native-cargo-
       # The release and packaging scripts, which nothing else runs before a native-v* tag goes
       # out: assembly and the manifest checks with a throwaway key, and the installer compiled in
       # the NSIS image (native/docker/Dockerfile.nsis). First, so a break here shows up in
@@ -58,6 +93,16 @@ jobs:
         run: native/scripts/verify.sh
         env:
           RESULT_SCHEMA_HOST: ${{ github.workspace }}/scripts/native-baseline/result.schema.json
+      # Right after Verify, which has fetched every crate the workspace builds.
+      - name: Save the cargo registry
+        if: ${{ !cancelled() && env.NATIVE_CACHE_SAVE == 'true' && steps.cargo-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ env.NATIVE_CARGO_CACHE }}/registry/index
+            ${{ env.NATIVE_CARGO_CACHE }}/registry/cache
+            ${{ env.NATIVE_CARGO_CACHE }}/git/db
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
       # Before/after renders of every story against the pull request's base, the same script and
       # image as a local run (which the Verify step above has already built rig-shot for). Visual
       # changes do not fail this: the report is the review. A story that won't render does.

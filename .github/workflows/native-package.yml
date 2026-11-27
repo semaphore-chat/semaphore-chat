@@ -67,10 +67,24 @@ jobs:
     name: Build and verify Linux packages
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    # The package image comes from GHCR by its content-hash tag (native/scripts/image-cache.sh,
+    # #887); a miss builds it and, outside fork pull requests, pushes it once.
+    permissions:
+      contents: read
+      packages: write
+    env:
+      NATIVE_IMAGE_REGISTRY: ghcr.io/semaphore-chat
+      NATIVE_IMAGE_PUSH: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '1' || '0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      - name: Log in to GHCR (the native image cache)
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
       - name: Build AppImage, .deb and .rpm
         env:
           SEMAPHORE_VERSION: ${{ inputs.version }}
