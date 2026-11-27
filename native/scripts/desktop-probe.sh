@@ -23,14 +23,20 @@ set -euo pipefail
 NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [ "${1:-}" != --inner ]; then
-  base="$("$NATIVE_DIR/scripts/in-image.sh" --print-image)"
+  # The build image's name only: it is pulled or built below only if this image has to be built.
+  # The uid the Dockerfile takes is already in the base's tag.
+  base="$("$NATIVE_DIR/scripts/in-image.sh" --print-name)"
+  # Everything the image is built from: the base and the Dockerfile (it copies no files).
   tag="$( { echo "$base"; cat "$NATIVE_DIR/docker/Dockerfile.desktop"; } | sha256sum | cut -c1-12)"
   image="semaphore-native-desktop:$tag"
-  if ! docker image inspect "$image" >/dev/null 2>&1; then
+  # shellcheck source=image-cache.sh
+  . "$NATIVE_DIR/scripts/image-cache.sh"
+  if ! native_image_fetch "$image"; then
+    "$NATIVE_DIR/scripts/in-image.sh" --print-image >/dev/null
     echo "desktop-probe: building $image" >&2
-    docker build -q -f "$NATIVE_DIR/docker/Dockerfile.desktop" --build-arg "BASE=$base" \
+    native_image_build "$image" -f "$NATIVE_DIR/docker/Dockerfile.desktop" --build-arg "BASE=$base" \
       --build-arg "HOST_UID=$(id -u)" \
-      -t "$image" "$NATIVE_DIR/docker" >/dev/null
+      "$NATIVE_DIR/docker"
   fi
   NATIVE_IMAGE="$image" exec "$NATIVE_DIR/scripts/in-image.sh" bash scripts/desktop-probe.sh --inner
 fi
