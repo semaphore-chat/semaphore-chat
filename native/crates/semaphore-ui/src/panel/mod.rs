@@ -32,6 +32,8 @@ pub struct PinsPanel {
     focus: FocusHandle,
     /// The pin Unpin was pressed on, and where it was: focus goes to its neighbour once it's gone.
     unpinned: Option<(String, usize)>,
+    /// Draws left that hold focus in the panel (see [`HOLD_FOCUS_DRAWS`]).
+    hold_focus: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,13 +61,16 @@ impl PinsPanel {
             scroll: ScrollHandle::new(),
             focus: cx.focus_handle(),
             unpinned: None,
+            hold_focus: 0,
         }
     }
 
     /// Moves focus into the panel, as the web's panel does when it opens: its first pin, else
     /// the panel itself.
-    pub fn focus_in(&self, window: &mut Window, cx: &mut App) {
+    pub fn focus_in(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus, cx);
+        self.hold_focus = HOLD_FOCUS_DRAWS;
+        cx.notify();
     }
 
     /// `Core::pinned_messages`, read again on `ViewChanged { Pins }`; `can_unpin` from
@@ -145,6 +150,8 @@ pub struct SearchPanel {
     focus_next: Option<String>,
     /// What to announce in the next frame: how many results came back.
     announce: Option<String>,
+    /// Draws left that hold the caret in the field (see [`HOLD_FOCUS_DRAWS`]).
+    hold_focus: u8,
     scroll: ScrollHandle,
     clock: PanelClock,
     focus: FocusHandle,
@@ -179,6 +186,7 @@ impl SearchPanel {
             chosen: None,
             focus_next: None,
             announce: None,
+            hold_focus: 0,
             scroll: ScrollHandle::new(),
             clock: PanelClock::default(),
             focus: cx.focus_handle(),
@@ -235,12 +243,40 @@ impl SearchPanel {
     }
 
     /// Puts the caret in the search field, as the web does when the panel opens.
-    pub fn focus_field(&self, window: &mut Window, cx: &mut App) {
+    pub fn focus_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.field.update(cx, |field, cx| field.focus(window, cx));
+        self.hold_focus = HOLD_FOCUS_DRAWS;
+        cx.notify();
     }
 }
 
 impl EventEmitter<SearchPanelEvent> for SearchPanel {}
+
+/// How many draws a panel that just opened keeps focus where it put it. Opened from the header's
+/// More, the panel appears as the menu goes, and the window's overlay stack gives focus back to
+/// More a frame later because the panel's control was not drawn yet when the menu closed; the
+/// panel takes it back. Short, so it never fights the user.
+pub(crate) const HOLD_FOCUS_DRAWS: u8 = 3;
+
+/// One draw of a panel holding focus: `handle` takes it again if it lost it. Asks for another
+/// draw while the hold lasts.
+pub(crate) fn hold_focus<V: 'static>(
+    hold: &mut u8,
+    handle: &FocusHandle,
+    window: &mut Window,
+    cx: &mut Context<V>,
+) {
+    if *hold == 0 {
+        return;
+    }
+    *hold -= 1;
+    if !handle.contains_focused(window, cx) {
+        window.focus(handle, cx);
+    }
+    if *hold > 0 {
+        cx.notify();
+    }
+}
 
 impl Focusable for SearchPanel {
     fn focus_handle(&self, _: &App) -> FocusHandle {

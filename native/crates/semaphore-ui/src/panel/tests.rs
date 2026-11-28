@@ -703,3 +703,28 @@ fn an_unpinned_rows_neighbour_takes_focus(cx: &mut TestAppContext) {
     });
     assert_eq!(focused, Some(true));
 }
+
+#[gpui_kit::test]
+fn a_panel_that_just_opened_takes_its_focus_back_once(cx: &mut TestAppContext) {
+    let rig = SearchRig::new(cx);
+    let elsewhere = cx.update(|cx| cx.focus_handle());
+    rig.with(cx, |panel, window, cx| {
+        panel.update(cx, |panel, cx| panel.focus_field(window, cx));
+        // What the overlay stack does as a menu closes: focus back to the menu's button.
+        window.focus(&elsewhere, cx);
+    });
+    let in_field = rig.with(cx, |panel, window, cx| {
+        panel
+            .read(cx)
+            .field
+            .read(cx)
+            .focus_handle(cx)
+            .is_focused(window)
+    });
+    assert!(in_field, "the field took focus back");
+    // The hold is over: focus moved by the user stays where they put it.
+    rig.with(cx, |_, window, cx| window.focus(&elsewhere, cx));
+    rig.with(cx, |_, _, _| {});
+    let stayed = rig.with(cx, |_, window, _| elsewhere.is_focused(window));
+    assert!(stayed, "no hold after the first draws");
+}

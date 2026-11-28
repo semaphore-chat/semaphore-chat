@@ -231,6 +231,8 @@ impl Render for PinsPanel {
                 window.focus(&self.focus, cx);
             }
         }
+        let focus = self.focus.clone();
+        super::hold_focus(&mut self.hold_focus, &focus, window, cx);
         let body = match &self.pins.state {
             LoadState::Loading => self.loading(),
             LoadState::Failed { .. } => self.failed(cx),

@@ -532,6 +532,8 @@ impl Render for SearchPanel {
         if let Some(words) = self.announce.take() {
             announce(words, Politeness::Polite, window, cx);
         }
+        let field = self.field.read(cx).focus_handle(cx);
+        super::hold_focus(&mut self.hold_focus, &field, window, cx);
         let header = panel_heading(
             "search-heading",
             "Search messages",

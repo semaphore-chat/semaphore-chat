@@ -23,7 +23,7 @@ use crate::kit::PhonePane;
 use frame::pane_for;
 pub use source::{CoreSource, Load, MemberRow, RailCounts, ShellSource};
 
-use crate::kit::{Icon, IconButton, Menu, MenuItem, on_core_event};
+use crate::kit::{Icon, IconButton, Menu, MenuCloseReason, MenuItem, on_core_event};
 use crate::nav::{NavModel, Route};
 use crate::theme::SemTheme;
 pub(crate) use faces::{community_avatar, user_avatar};
@@ -644,13 +644,7 @@ impl Shell {
             );
             let items = vec![
                 MenuItem::new("header-more-search", "Search messages", move |_, cx| {
-                    search
-                        .update(cx, |shell, cx| {
-                            shell.more_open = false;
-                            cx.emit(ShellEvent::OpenSearch);
-                            cx.notify();
-                        })
-                        .ok();
+                    open_from_menu(&search, ShellEvent::OpenSearch, cx);
                 })
                 .icon(IconName::Search),
                 MenuItem::new(
@@ -661,23 +655,21 @@ impl Shell {
                         "Pinned messages".to_owned()
                     },
                     move |_, cx| {
-                        pins.update(cx, |shell, cx| {
-                            shell.more_open = false;
-                            cx.emit(ShellEvent::OpenPins);
-                            cx.notify();
-                        })
-                        .ok();
+                        open_from_menu(&pins, ShellEvent::OpenPins, cx);
                     },
                 )
                 .icon(IconName::PushPin),
             ];
             let menu = Menu::new("Channel menu", items)
                 .id("header-more-menu")
-                .on_close(move |_, window, cx| {
+                .on_close(move |reason, window, cx| {
                     close
                         .update(cx, |shell, cx| {
                             shell.more_open = false;
-                            shell.focus_more(window, cx);
+                            // A choice opens a panel, which takes focus itself.
+                            if reason != MenuCloseReason::Selected {
+                                shell.focus_more(window, cx);
+                            }
                             cx.notify();
                         })
                         .ok();
@@ -704,6 +696,17 @@ impl Shell {
             .children(open)
             .into_any_element()
     }
+}
+
+/// A More item: the menu closes and the shell asks for the item's panel.
+fn open_from_menu(shell: &WeakEntity<Shell>, event: ShellEvent, cx: &mut App) {
+    shell
+        .update(cx, |shell, cx| {
+            shell.more_open = false;
+            cx.emit(event);
+            cx.notify();
+        })
+        .ok();
 }
 
 #[cfg(feature = "stories")]
