@@ -76,6 +76,16 @@ export interface ActionsMenuPlacement {
   point?: { x: number; y: number };
 }
 
+/**
+ * Beside an anchor the Menu opens at its end edge (where the toolbar is), below it, or above it when the anchor is in
+ * the lower half of the window: a menu that does not fit below would otherwise be pushed up over the message.
+ */
+function besideAnchor(anchor: HTMLElement | null): 'bottom-end' | 'top-end' {
+  if (anchor === null) return 'bottom-end';
+  const box = anchor.getBoundingClientRect();
+  return box.top + box.height / 2 > window.innerHeight / 2 ? 'top-end' : 'bottom-end';
+}
+
 export interface MessageActionsSheetProps {
   /** The message whose actions are open, or null. */
   message: Message | null;
@@ -242,6 +252,7 @@ function ActionsFor({
           open={open}
           anchor={menu.anchor}
           point={menu.point}
+          placement={menu.point === undefined ? besideAnchor(menu.anchor) : undefined}
           // The Menu calls this after an item's own `onSelect`, which has already closed it.
           onClose={close}
           label={authorName ? `Actions for ${authorName}'s message` : 'Message actions'}
