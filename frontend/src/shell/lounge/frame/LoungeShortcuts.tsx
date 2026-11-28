@@ -179,6 +179,7 @@ export function ShortcutSheet({ open, onClose, mac = isMacPlatform() }: Shortcut
       open={open}
       onClose={onClose}
       title="Keyboard shortcuts"
+      size="md"
       actions={
         <Button onClick={onClose}>
           Close

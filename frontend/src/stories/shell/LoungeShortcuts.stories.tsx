@@ -28,3 +28,8 @@ export const ShortcutSheetLight = () => <Page mode="light" />;
 
 /** A Mac's keys: ⌘, ⌥ and ⇧. */
 export const ShortcutSheetMac = () => <Page mode="dark" mac />;
+
+// A phone has no keyboard shortcuts: the sheet only opens at tablet and desktop width.
+ShortcutSheet.meta = { viewports: ['tablet', 'desktop'] };
+ShortcutSheetLight.meta = { viewports: ['tablet', 'desktop'] };
+ShortcutSheetMac.meta = { viewports: ['tablet', 'desktop'] };
