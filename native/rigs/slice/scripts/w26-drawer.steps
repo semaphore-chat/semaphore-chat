@@ -22,7 +22,8 @@ wait core rows >= 5
 wait idle
 
 # 1. Pins in the drawer; Escape closes it.
-click header-pins
+click header-more
+click header-more-pins
 wait core side-panel pins
 wait core element drawer-panel
 wait idle

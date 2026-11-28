@@ -4,7 +4,6 @@
 use super::search::{DEBOUNCE, SearchModel, Shown};
 use super::*;
 // `gpui_kit::*` brings GPUI's `test` attribute in too, and it would win.
-use crate::messages::NoMedia;
 use crate::messages::fixture::{self, Body, NOW_MS};
 use core::prelude::v1::test;
 use gpui_kit::test::TestWindowExt as _;
@@ -284,7 +283,7 @@ fn the_scope_toggle_searches_at_once(cx: &mut TestAppContext) {
     rig.typed(cx, "deploy");
     cx.executor().advance_clock(DEBOUNCE);
     cx.run_until_parked();
-    rig.with(cx, |_, window, cx| window.click("scope-community", cx));
+    rig.with(cx, |_, window, cx| window.click("search-scope-1", cx));
     assert_eq!(
         rig.searches(),
         vec![
@@ -321,14 +320,12 @@ fn arrows_and_enter_in_the_field_move_through_and_open_hits(cx: &mut TestAppCont
             panel.focus_field(window, cx);
         })
     });
+    // Down from the field takes focus to the first result; then the list's own arrows move,
+    // stopping at the last.
     rig.with(cx, |_, window, cx| window.press("down", cx));
     rig.with(cx, |_, window, cx| window.press("down", cx));
     rig.with(cx, |_, window, cx| window.press("down", cx));
-    assert_eq!(
-        cx.update(|cx| rig.panel.read(cx).selected()),
-        2,
-        "stops at the last"
-    );
+    rig.with(cx, |_, window, cx| window.press("down", cx));
     rig.with(cx, |_, window, cx| window.press("up", cx));
     rig.with(cx, |_, window, cx| window.press("enter", cx));
     let jumped = rig.events.borrow().iter().find_map(|event| match event {
@@ -433,6 +430,7 @@ fn more_results_emits_more(cx: &mut TestAppContext) {
 
 struct PinsRig {
     window: AnyWindowHandle,
+    panel: Entity<PinsPanel>,
     events: std::rc::Rc<RefCell<Vec<PinsPanelEvent>>>,
 }
 
@@ -440,10 +438,12 @@ fn pins_rig(cx: &mut TestAppContext, can_unpin: bool) -> PinsRig {
     init(cx);
     let events = std::rc::Rc::new(RefCell::new(Vec::new()));
     let log = events.clone();
+    let made = std::rc::Rc::new(RefCell::new(None));
+    let keep = made.clone();
     let window = cx.update(|cx| {
         gpui_kit::open_window(window_options(), cx, |_, cx| {
             let panel = cx.new(|cx| {
-                let mut panel = PinsPanel::new(std::rc::Rc::new(NoMedia), cx);
+                let mut panel = PinsPanel::new(cx);
                 let rows = vec![
                     PinnedRow {
                         row: row(1, "first"),
@@ -468,12 +468,18 @@ fn pins_rig(cx: &mut TestAppContext, can_unpin: bool) -> PinsRig {
                 log.borrow_mut().push(event.clone());
             })
             .detach();
+            *keep.borrow_mut() = Some(panel.clone());
             panel
         })
         .expect("window")
         .0
     });
-    PinsRig { window, events }
+    let panel = made.borrow_mut().take().expect("built");
+    PinsRig {
+        window,
+        panel,
+        events,
+    }
 }
 
 impl PinsRig {
@@ -534,4 +540,166 @@ fn escape_in_pins_closes_the_panel(cx: &mut TestAppContext) {
     cx.simulate_keystrokes(rig.window, "escape");
     rig.with(cx, |_, _| {});
     assert_eq!(rig.events.borrow().as_slice(), [PinsPanelEvent::Close]);
+}
+
+// ---- What the rows say. ----
+
+/// A message with a lookalike host, as the server sends it: the address as typed.
+fn lookalike(seq: i64) -> MessageRow {
+    fixture::message(
+        seq,
+        fixture::user("u-ava", "ava", Some("Ava Chen")),
+        NOW_MS - seq * 60_000,
+        Body::default().text("log in at ").link(
+            "https://\u{0430}pple.com/login",
+            "https://\u{0430}pple.com/login",
+        ),
+    )
+}
+
+#[test]
+fn previews_show_links_the_way_messages_do() {
+    let hit = SearchHit {
+        row: lookalike(1),
+        ..hit(1)
+    };
+    assert_eq!(
+        super::search::result_words(&hit),
+        "log in at https://xn--pple-43d.com/login"
+    );
+    let pin = PinnedRow {
+        row: lookalike(2),
+        parent_message_id: None,
+    };
+    assert_eq!(
+        super::pins::pin_secondary(&pin),
+        "log in at https://xn--pple-43d.com/login"
+    );
+}
+
+#[test]
+fn a_pin_without_words_says_its_files_or_no_text() {
+    let pin = |row: MessageRow| PinnedRow {
+        row,
+        parent_message_id: None,
+    };
+    let file = semaphore_core::model::AttachmentView {
+        file_id: "f1".into(),
+        filename: "notes.txt".into(),
+        mime_type: "text/plain".into(),
+        size_bytes: 10,
+        kind: semaphore_core::model::AttachmentKind::Other,
+        has_thumbnail: false,
+        width: None,
+        height: None,
+    };
+    let mut row = row(3, "");
+    assert_eq!(super::pins::pin_secondary(&pin(row.clone())), "No text");
+    row.attachments = vec![file.clone()];
+    assert_eq!(super::pins::pin_secondary(&pin(row.clone())), "1 file");
+    let mut row = self::row(4, "see these");
+    row.attachments = vec![file.clone(), file];
+    assert_eq!(super::pins::pin_secondary(&pin(row)), "see these · 2 files");
+}
+
+#[test]
+fn the_results_announcement_says_how_many_and_where() {
+    use super::search::results_announcement;
+    assert_eq!(results_announcement(0, Here), "No messages found");
+    assert_eq!(
+        results_announcement(1, Here),
+        "1 message found in this channel"
+    );
+    assert_eq!(
+        results_announcement(4, Community),
+        "4 messages found in all channels"
+    );
+}
+
+#[gpui_kit::test]
+fn enter_in_the_field_opens_the_first_result(cx: &mut TestAppContext) {
+    let rig = SearchRig::new(cx);
+    rig.typed(cx, "deploy");
+    cx.executor().advance_clock(DEBOUNCE);
+    cx.run_until_parked();
+    rig.with(cx, |panel, window, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_results(Here, "deploy".into(), ready(vec![hit(1), hit(2)]), cx);
+            panel.focus_field(window, cx);
+        })
+    });
+    rig.with(cx, |_, window, cx| window.press("enter", cx));
+    assert!(matches!(
+        rig.events.borrow().last(),
+        Some(SearchPanelEvent::Jump(hit)) if hit.row.seq == 1
+    ));
+}
+
+#[gpui_kit::test]
+fn no_results_here_offers_all_channels(cx: &mut TestAppContext) {
+    let rig = SearchRig::new(cx);
+    rig.typed(cx, "deploy");
+    cx.executor().advance_clock(DEBOUNCE);
+    cx.run_until_parked();
+    rig.with(cx, |panel, _, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_results(Here, "deploy".into(), ready(vec![]), cx)
+        })
+    });
+    rig.with(cx, |_, window, cx| window.click("search-all", cx));
+    assert_eq!(
+        rig.searches().last(),
+        search(Community, "deploy").as_ref(),
+        "Search all channels asks the community at once"
+    );
+}
+
+#[gpui_kit::test]
+fn focus_comes_back_to_the_result_a_thread_was_opened_from(cx: &mut TestAppContext) {
+    let rig = SearchRig::new(cx);
+    rig.typed(cx, "deploy");
+    cx.executor().advance_clock(DEBOUNCE);
+    cx.run_until_parked();
+    rig.with(cx, |panel, _, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_results(Here, "deploy".into(), ready(vec![hit(1), hit(2)]), cx)
+        })
+    });
+    let id = hit(2).row.id.unwrap();
+    rig.with(cx, |panel, _, cx| {
+        panel.update(cx, |panel, cx| panel.focus_result(&id, cx))
+    });
+    let focused = rig.with(cx, |_, window, _| {
+        window.find(format!("search-hit-{id}")).focused()
+    });
+    assert_eq!(focused, Some(true));
+}
+
+#[gpui_kit::test]
+fn an_unpinned_rows_neighbour_takes_focus(cx: &mut TestAppContext) {
+    let rig = pins_rig(cx, true);
+    let (first, second) = (row(1, "").id.unwrap(), row(2, "").id.unwrap());
+    rig.with(cx, |window, cx| window.click(format!("unpin-{first}"), cx));
+    // The list without it, as core sends once the server agreed.
+    let panel = rig.panel.clone();
+    rig.with(cx, |_, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_pins(
+                PinnedList {
+                    state: LoadState::Ready,
+                    rows: vec![PinnedRow {
+                        row: row(2, "in a thread"),
+                        parent_message_id: Some("parent-9".into()),
+                    }],
+                },
+                true,
+                cx,
+            )
+        });
+    });
+    rig.with(cx, |_, _| {});
+    let focused = rig.with(cx, |window, _| {
+        window.find(format!("pin-{second}")).focused()
+    });
+    assert_eq!(focused, Some(true));
 }

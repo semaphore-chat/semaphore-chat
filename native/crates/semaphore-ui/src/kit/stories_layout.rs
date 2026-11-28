@@ -909,5 +909,85 @@ pub fn stories() -> Vec<Story> {
                 ..STACK
             }
         ),
+        Story::new("kit-panel-pane-scrolling", |_, window, cx| {
+            panel_pane_demo(Mode::Dark, 30, window, cx)
+        }),
+        Story::new("kit-panel-pane-scrolling-light", |_, window, cx| {
+            panel_pane_demo(Mode::Light, 30, window, cx)
+        }),
+        Story::new("kit-panel-pane-short", |_, window, cx| {
+            panel_pane_demo(Mode::Dark, 2, window, cx)
+        }),
     ]
+}
+
+/// A PanelPane in a right column, as the web's `KitPanelPane` stories: a heading with Close, a
+/// field fixed at the top, and `rows` rows under it, the only part that scrolls.
+struct PanelPaneDemo {
+    field: Entity<InputState>,
+    rows: usize,
+}
+
+fn panel_pane_demo(mode: Mode, rows: usize, window: &mut Window, cx: &mut App) -> AnyView {
+    theme::apply(ThemeInput::new(DEFAULT_BASE, mode, Intensity::Minimal), cx);
+    let field = text_state(window, cx, false);
+    cx.new(|_| PanelPaneDemo { field, rows }).into()
+}
+
+impl Render for PanelPaneDemo {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sem = cx.sem();
+        let phone = WidthRange::current(window).is_phone();
+        let header = div()
+            .flex()
+            .items_center()
+            .gap(px(SPACE_SM))
+            .child(
+                type_text(t::TEXT_TITLE, "Search messages")
+                    .flex_1()
+                    .min_w_0()
+                    .truncate(),
+            )
+            .child(IconButton::new("demo-close", I::Close, "Close").lounge_icon(LoungeIcon::X));
+        let top = TextField::new("demo-field", &self.field, "Search messages")
+            .label_hidden()
+            .shape(FieldShape::Round)
+            .start_icon(LoungeIcon::Search)
+            .placeholder("Search this channel");
+        let pane = super::PanelPane::new("demo-panel-pane", header)
+            .top(top)
+            .list_label("Results")
+            .children((0..self.rows).map(|index| {
+                ListRow::new(
+                    ("demo-row", index),
+                    format!("Ava Chen · {}m ago", index + 1),
+                )
+                .size(RowSize::Lg)
+                .secondary("The deploy finished, staging is on 0.9.1 now.")
+                .leading(
+                    Avatar::new("Ava Chen")
+                        .size(AvatarSize::Md)
+                        .decorative(true),
+                )
+                .on_click(|_, _| {})
+            }));
+        div()
+            .size_full()
+            .flex()
+            .justify_end()
+            .bg(sem.role.ground)
+            .p(px(if phone { 0. } else { t::LAYOUT_GUTTER }))
+            .child(
+                div()
+                    .h_full()
+                    .when(!phone, |column| column.w(px(t::LAYOUT_RIGHT_COLUMN)))
+                    .when(phone, |column| column.w_full())
+                    .child(
+                        Island::new("demo-panel-island")
+                            .padding(Padding::None)
+                            .scroll(true)
+                            .child(pane),
+                    ),
+            )
+    }
 }

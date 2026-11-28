@@ -717,6 +717,7 @@ impl Render for Shell {
                         .size_full()
                         .child(panel),
                 )
+                .right_fill(true)
                 .right_label("Details");
         } else if let Some(id) = &community_id {
             islands = islands

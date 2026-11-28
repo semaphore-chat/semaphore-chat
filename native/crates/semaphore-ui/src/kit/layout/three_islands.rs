@@ -62,6 +62,7 @@ pub struct ThreeIslands {
     phone_pane: PhonePane,
     left_scroll: Option<ScrollHandle>,
     right_scroll: Option<ScrollHandle>,
+    right_fill: bool,
 }
 
 impl ThreeIslands {
@@ -88,6 +89,7 @@ impl ThreeIslands {
             phone_pane: PhonePane::Centre,
             left_scroll: None,
             right_scroll: None,
+            right_fill: false,
         }
     }
 
@@ -146,6 +148,13 @@ impl ThreeIslands {
     /// Likewise the right content's, island or Sheet.
     pub fn right_scroll(mut self, handle: &ScrollHandle) -> Self {
         self.right_scroll = Some(handle.clone());
+        self
+    }
+
+    /// The right content fills its island with no padding of its own and brings its own
+    /// scrolling (a [`super::PanelPane`] or a thread), as the web's `rightFill`.
+    pub fn right_fill(mut self, fill: bool) -> Self {
+        self.right_fill = fill;
         self
     }
 
@@ -229,6 +238,7 @@ impl RenderOnce for ThreeIslands {
                         .child(
                             Island::new("three-islands-right-island")
                                 .aside(name.clone())
+                                .when(self.right_fill, |island| island.padding(Padding::None))
                                 .scroll(true)
                                 .when_some(self.right_scroll.clone(), |island, handle| {
                                     island.track_scroll(&handle)

@@ -1,7 +1,7 @@
-//! What the side panels share: the header, the empty and error blocks, relative times and icon
+//! What the side panels share: the heading, the empty and error blocks, relative times and icon
 //! buttons with the web's MUI icons. The thread pane uses these too.
 
-use crate::kit::{Button, LiveElement, Variant, icon_path, spacing, text};
+use crate::kit::{Button, IconButton, LiveElement, Variant, icon_path, spacing, text};
 use crate::shell::PHONE;
 use crate::theme::SemTheme;
 use gpui_kit::accesskit::Live;
@@ -9,7 +9,10 @@ use gpui_kit::base;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use semaphore_core::model::MessageRow;
 use semaphore_design::Icon as DesignIcon;
+use semaphore_design::LoungeIcon;
+use semaphore_design::lounge::{SPACE_SM, TEXT_TITLE};
 
 /// `TOUCH_TARGETS.MINIMUM`.
 pub(crate) const TOUCH_TARGET: f32 = 44.;
@@ -54,7 +57,40 @@ pub(crate) fn icon_button(
         .child(design_icon(icon, 20., color))
 }
 
-/// The header every panel draws: a primary-coloured icon, the title, then `actions` at the end.
+/// A panel's header, as the web's PanelPane headers and the thread's: the heading (`title`, an
+/// h2 under the screen's own) and Close at the end.
+pub(crate) fn panel_heading(
+    id: &'static str,
+    title: impl Into<SharedString>,
+    close_id: &'static str,
+    close_label: &'static str,
+    on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Div {
+    let title: SharedString = title.into();
+    div()
+        .flex()
+        .items_center()
+        .gap(px(SPACE_SM))
+        .min_w_0()
+        .child(
+            crate::kit::type_text(TEXT_TITLE, title.clone())
+                .id(id)
+                .test_support()
+                .role(Role::Heading)
+                .aria_label(title)
+                .flex_1()
+                .min_w_0()
+                .truncate(),
+        )
+        .child(
+            IconButton::new(close_id, DesignIcon::Close, close_label)
+                .lounge_icon(LoungeIcon::X)
+                .on_click(on_close),
+        )
+}
+
+/// The old panels' header: a primary-coloured icon, the title, then `actions` at the end. Only
+/// the notification centre still draws it (B14).
 pub(crate) fn panel_header(
     icon: DesignIcon,
     title: impl Into<SharedString>,
@@ -237,6 +273,12 @@ pub(crate) fn relative_time(now_ms: i64, then_ms: i64) -> String {
     } else {
         format!("{distance} ago")
     }
+}
+
+/// A message's words as a panel previews them: as the row draws them (an emoji as its `:name:`,
+/// a link as its drawn label), on one line and without bidi controls.
+pub(crate) fn message_preview(row: &MessageRow, max_chars: Option<usize>) -> String {
+    preview_text(&crate::messages::plain_text(row), max_chars)
 }
 
 /// The message text a panel previews: the display string on one line, as the web joins spans,

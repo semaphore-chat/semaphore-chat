@@ -750,12 +750,19 @@ impl ConversationPane {
                     Some(parent) => {
                         this.landed(conversation.clone(), community_id, Some(parent.clone()), cx);
                         this.open_thread_in(parent, conversation, window, cx);
+                        let from_result = this.from_result.take();
                         if let Some(thread) = &mut this.thread {
                             thread.flash = Some(message_id);
+                            if from_result.is_some() {
+                                thread.from_result = from_result;
+                            }
                         }
                         this.flash_if_loaded(cx);
                     }
-                    None => this.landed(conversation, community_id, Some(message_id), cx),
+                    None => {
+                        this.from_result = None;
+                        this.landed(conversation, community_id, Some(message_id), cx)
+                    }
                 }
             },
         );

@@ -75,6 +75,9 @@ pub enum PaneEvent {
     OpenProfile { user_id: String },
     /// A list's "Load" card: turn the third-party media switch on (`AppRoot::media_set_third_party`).
     EnableThirdPartyMedia,
+    /// The pins or search panel closed by the user's hand: focus goes back to what opened it,
+    /// the channel header's More.
+    FocusOpener,
 }
 
 /// Which of the pane's lists something happened in.
@@ -153,6 +156,9 @@ pub struct ConversationPane {
     pinned_count: Option<u32>,
     pub(crate) thread: Option<side::ThreadView>,
     pub(crate) side: Option<side::Side>,
+    /// A search result being jumped to that opens a thread: the thread remembers it, so closing
+    /// it gives the result focus back.
+    pub(crate) from_result: Option<String>,
     pub(crate) editing: Option<actions::Editing>,
     pub(crate) picker: Option<actions::OpenPicker>,
     /// WP: what "Seen by" last asked core for (`seen.rs`).
@@ -226,6 +232,7 @@ impl ConversationPane {
             pinned_count: None,
             thread: None,
             side: None,
+            from_result: None,
             editing: None,
             picker: None,
             seen: seen::SeenAsk::default(),
@@ -811,12 +818,17 @@ impl ConversationPane {
     }
 
     /// Escape that the list, the composer, the search field and every dialog left alone:
-    /// `EscapePane`. One thing per press, as the web's `handleEscape` does: the docked side panel
-    /// (the thread over it, or the pins or search panel) closes, else the conversation is marked
+    /// `EscapePane`. One thing per press, as the web's `handleEscape` does: the side panel's top
+    /// layer (a thread over the search or pins, else the panel) closes, else the conversation is marked
     /// read to its newest message, whatever is on screen.
     fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // One layer per press: a thread over the search goes back to the search.
+        if self.thread.is_some() && self.side.is_some() {
+            self.close_thread(window, cx);
+            return;
+        }
         if self.thread.is_some() || self.side.is_some() {
-            self.close_side(cx);
+            self.close_side_by_hand(cx);
             return;
         }
         let Some(conversation) = self.conversation.clone() else {

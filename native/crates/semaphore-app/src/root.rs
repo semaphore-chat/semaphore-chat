@@ -1388,6 +1388,11 @@ impl AppRoot {
             }),
             PaneEvent::OpenProfile { .. } => {}
             PaneEvent::EnableThirdPartyMedia => self.media_set_third_party(true, cx),
+            PaneEvent::FocusOpener => {
+                if matches!(shell.read(cx).nav().current(), Route::Channel { .. }) {
+                    shell.update(cx, |shell, cx| shell.focus_more(window, cx));
+                }
+            }
         }
     }
 
@@ -1448,12 +1453,12 @@ impl AppRoot {
             }
             ShellEvent::OpenPins => {
                 if let Some(pane) = &self.pane {
-                    pane.update(cx, |pane, cx| pane.toggle_pins(window, cx));
+                    pane.update(cx, |pane, cx| pane.show_pins(window, cx));
                 }
             }
             ShellEvent::OpenSearch => {
                 if let Some(pane) = &self.pane {
-                    pane.update(cx, |pane, cx| pane.toggle_search(window, cx));
+                    pane.update(cx, |pane, cx| pane.show_search(window, cx));
                 }
             }
             ShellEvent::CloseSidePanel => {
