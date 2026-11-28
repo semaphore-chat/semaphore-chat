@@ -76,6 +76,20 @@ test.describe('The Lounge chat at tablet and desktop (real routes)', () => {
         await channelLink(page, 'lobby').click();
         await expect(page).toHaveURL(hashUrl(chatPath('real', world.c1.id, world.c1.lobbyId)), EVENTUAL);
         await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+        // The chat remembers a channel once its messages have loaded (not when the heading shows): wait for that.
+        await expect
+          .poll(
+            () =>
+              page.evaluate(
+                ([communityId, channelId]) =>
+                  Object.keys(localStorage).some(
+                    (k) => k.startsWith('lastChannel:') && k.endsWith(`:${communityId}`) && localStorage.getItem(k) === channelId,
+                  ),
+                [world.c1.id, world.c1.lobbyId] as const,
+              ),
+            EVENTUAL,
+          )
+          .toBe(true);
         await goTo(page, home);
         await expect(page).toHaveURL(hashUrl(chatPath('real', world.c1.id, world.c1.lobbyId)), EVENTUAL);
         await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
@@ -122,7 +136,7 @@ test.describe('The Lounge chat at tablet and desktop (real routes)', () => {
         const field = thread.getByRole('textbox', { name: 'Reply in thread' });
         await field.fill('a reply from the wide layout');
         await thread.getByRole('button', { name: 'Send message' }).click();
-        await expect(thread.getByText('a reply from the wide layout')).toBeVisible(EVENTUAL);
+        await expect(thread.getByRole('article').filter({ hasText: 'a reply from the wide layout' })).toBeVisible(EVENTUAL);
         await expect(field).toHaveValue('');
 
         await thread.getByRole('button', { name: 'Close thread' }).click();

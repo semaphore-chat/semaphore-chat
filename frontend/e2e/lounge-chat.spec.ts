@@ -385,46 +385,11 @@ test.describe('The Lounge chat (390 px)', () => {
         await expect(page.locator('[data-shell="lounge"]'), step).toBeAttached();
         await expect(chatHeading(page, 'lobby'), step).toBeVisible(EVENTUAL);
         await expect(page, step).toHaveURL(hashUrl(real));
-        // The scroll place across the resize: the fixme test below (#921).
+        // The scroll place across the resize is covered by the chat-fixture test (#921, fixed in #925).
         await expect(page.getByRole('textbox', { name: 'Message #lobby' }), step).toHaveValue('half a thought', EVENTUAL);
         // Back to the community on a phone only: at 820 px the community's list is beside the chat.
         await expect(page.getByRole('button', { name: 'Back to the community' }), step).toHaveCount(viewport === PHONE ? 1 : 0);
         expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), step).toBe(false);
-      }
-    } finally {
-      await context.close();
-    }
-  });
-
-  // #921: back at 390 the list is left near the oldest messages. Unfixme once the fix is on main (it lands before this
-  // spec's PR merges). The assertions are the ones the shell-swap version of this test had: after scrolling back to an
-  // older message, each resize opens the list at the newest message.
-  test.fixme('resizing across the phone boundary after scrolling back opens the list at the newest message each time (#921)', async ({
-    browser,
-    request,
-  }) => {
-    const world = await loungeWorld(request);
-    for (let i = 1; i <= 40; i += 1) await sendTestMessage(request, world.c1.lobbyId, `numbered message ${i}`, world.owner.token);
-    const { context, page } = await openSession(browser, world.member, PHONE);
-    try {
-      await openChat(page, world.c1.id, world.c1.lobbyId, '', 'real');
-      await expect(row(page, 'numbered message 40')).toBeVisible(EVENTUAL);
-      // Scroll back to an older message: the newest leaves the view.
-      const older = row(page, 'numbered message 12');
-      const box = await messages(page).boundingBox();
-      await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-      for (let i = 0; i < 30 && !(await older.isVisible().catch(() => false)); i += 1) await page.mouse.wheel(0, -400);
-      await older.scrollIntoViewIfNeeded();
-      await expect(older).toBeInViewport();
-      await expect(row(page, 'numbered message 40')).not.toBeInViewport();
-
-      for (const viewport of [{ width: 820, height: 1180 }, PHONE]) {
-        const step = `${viewport.width}px`;
-        await page.setViewportSize(viewport);
-        await expect(chatHeading(page, 'lobby'), step).toBeVisible(EVENTUAL);
-        await expect(row(page, 'numbered message 40'), step).toBeInViewport(EVENTUAL);
-        // Bounded and auto-retrying: a row virtua dropped from the DOM counts as out of view and does not hang.
-        await expect(row(page, 'numbered message 12'), step).not.toBeInViewport(EVENTUAL);
       }
     } finally {
       await context.close();
