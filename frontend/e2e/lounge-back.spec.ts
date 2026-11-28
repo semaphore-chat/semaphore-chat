@@ -8,7 +8,7 @@
  * Run: scripts/run-e2e.sh lounge-back
  */
 import type { Browser, Page } from '@playwright/test';
-import { test, expect, API_BASE, sendTestMessage, deleteWorlds } from './fixtures';
+import { test, expect, API_BASE, sendTestMessage, deleteWorlds, createTestChannel } from './fixtures';
 import { chatPath, loungePath, loungeWorld, openFixture } from './fixtures/lounge';
 
 test.describe.configure({ timeout: 120_000 });
@@ -16,6 +16,8 @@ test.describe.configure({ timeout: 120_000 });
 const EVENTUAL = { timeout: 20_000 };
 /** A Pixel 7's CSS size, with touch: `(pointer: coarse)` matches, so the system Back is on. */
 const PIXEL = { width: 412, height: 915 };
+/** A tablet's CSS size (compact), with touch. */
+const TABLET = { width: 820, height: 1180 };
 
 const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const chatHeading = (page: Page, name: string) => page.getByRole('heading', { name: `# ${name}`, level: 1 });
@@ -23,9 +25,13 @@ const threadHeading = (page: Page) => page.getByRole('heading', { name: 'Thread'
 const messages = (page: Page) => page.getByRole('list', { name: 'Messages' });
 const row = (page: Page, text: string) => messages(page).getByRole('article').filter({ hasText: text });
 
-async function openTouchSession(browser: Browser, credentials: { username: string; password: string }) {
+async function openTouchSession(
+  browser: Browser,
+  credentials: { username: string; password: string },
+  viewport: { width: number; height: number } = PIXEL,
+) {
   const context = await browser.newContext({
-    viewport: PIXEL,
+    viewport,
     hasTouch: true,
     isMobile: true,
     deviceScaleFactor: 2.625,
@@ -227,6 +233,62 @@ test.describe('Android Back closes the top layer (412 px, touch)', () => {
       await expect(field).toHaveValue('hello there');
       await page.goBack();
       await expect(page).not.toHaveURL(onChat(path), EVENTUAL);
+    } finally {
+      await context.close();
+    }
+  });
+});
+
+test.describe('Android Back on a tablet (820 px, touch)', () => {
+  test('a search result jump closes the search Sheet and leaves no entry behind: one Back is the channel before (#926)', async ({
+    browser,
+    request,
+  }) => {
+    const world = await loungeWorld(request);
+    const garden = await createTestChannel(request, world.c1.id, { name: 'garden' }, world.owner.token);
+    await sendTestMessage(request, world.c1.lobbyId, 'a zebra wandered into the lobby', world.owner.token);
+    for (let i = 0; i < 40; i++) await sendTestMessage(request, world.c1.lobbyId, `filler ${i}`, world.owner.token);
+    const { context, page } = await openTouchSession(browser, world.member, TABLET);
+    const gardenPath = chatPath('real', world.c1.id, garden.id);
+    const lobbyPath = chatPath('real', world.c1.id, world.c1.lobbyId);
+    try {
+      await openChat(page, world.c1.id, garden.id);
+      await expect(chatHeading(page, 'garden')).toBeVisible(EVENTUAL);
+      await page.getByRole('navigation', { name: 'Community', exact: true }).getByRole('link', { name: /^lobby/ }).tap();
+      await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+      await expect(row(page, 'filler 39')).toBeVisible(EVENTUAL);
+
+      await page.getByRole('button', { name: 'More' }).tap();
+      await page.getByRole('menuitem', { name: 'Search messages' }).tap();
+      const sheet = page.getByRole('dialog', { name: 'Search messages' });
+      await expect(sheet).toBeVisible(EVENTUAL);
+      await sheet.getByRole('searchbox', { name: 'Search messages' }).fill('zebra');
+      await sheet.getByRole('button', { name: /^Show the message from .*: a zebra wandered into the lobby$/ }).tap();
+      await expect(sheet).toHaveCount(0, EVENTUAL);
+      await expect(row(page, 'a zebra wandered into the lobby')).toBeInViewport(EVENTUAL);
+      await expect(page).toHaveURL(onChat(lobbyPath), EVENTUAL);
+
+      // One Back: the garden (neither the Sheet's entry nor a second lobby entry is left).
+      await page.goBack();
+      await expect(page).toHaveURL(onChat(gardenPath), EVENTUAL);
+      await expect(chatHeading(page, 'garden')).toBeVisible(EVENTUAL);
+
+      // From the garden, an "All channels" result in the lobby: still one Back, to the garden.
+      await page.getByRole('button', { name: 'More' }).tap();
+      await page.getByRole('menuitem', { name: 'Search messages' }).tap();
+      const allSheet = page.getByRole('dialog', { name: 'Search messages' });
+      await expect(allSheet).toBeVisible(EVENTUAL);
+      await allSheet.getByRole('tab', { name: 'All channels' }).tap();
+      await allSheet.getByRole('searchbox', { name: 'Search messages' }).fill('zebra');
+      await allSheet
+        .getByRole('button', { name: /^Show the message from .* in #lobby: a zebra wandered into the lobby$/ })
+        .tap();
+      await expect(allSheet).toHaveCount(0, EVENTUAL);
+      await expect(page).toHaveURL(onChat(lobbyPath), EVENTUAL);
+      await expect(row(page, 'a zebra wandered into the lobby')).toBeInViewport(EVENTUAL);
+      await page.goBack();
+      await expect(page).toHaveURL(onChat(gardenPath), EVENTUAL);
+      await expect(chatHeading(page, 'garden')).toBeVisible(EVENTUAL);
     } finally {
       await context.close();
     }

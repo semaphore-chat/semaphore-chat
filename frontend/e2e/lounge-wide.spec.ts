@@ -6,7 +6,8 @@
  *   - the community home opens the last channel, else the first text channel;
  *   - a thread opens in the right island at 1440 and in the filling right Sheet at 820;
  *   - a pin jumps to its message;
- *   - a search result jumps, in this channel and in another one, with the panel kept;
+ *   - a search result jumps, in this channel and in another one, with the panel kept at 1440 and the Sheet closed at
+ *     820 (#926);
  *   - resizing 1440 → 1000 → 500 → 1440 keeps the URL and the typed draft (files queued in a composer are not kept
  *     across a resize: a known gap, #917).
  *
@@ -181,7 +182,7 @@ test.describe('The Lounge chat at tablet and desktop (real routes)', () => {
       }
     });
 
-    test(`a search result jumps in this channel and to another channel, with the panel kept (${label} px)`, async ({
+    test(`a search result jumps in this channel and to another channel, ${wide ? 'with the panel kept' : 'closing the Sheet'} (${label} px)`, async ({
       browser,
       request,
     }, testInfo) => {
@@ -206,13 +207,12 @@ test.describe('The Lounge chat at tablet and desktop (real routes)', () => {
           await field.fill('zebra');
         };
         /**
-         * The panel stays open after a jump. At 820 it is the filling right Sheet, a modal layer over the chat (the
-         * chat under it is inert), so the chat is checked once the Sheet is closed.
+         * At 1440 the panel stays open after a jump, beside the chat. At 820 it is the filling right Sheet, a modal
+         * layer over the chat, and the jump closes it (#926), so the message shows.
          */
-        const closeSheet = async () => {
-          if (wide) return;
-          await search.getByRole('button', { name: 'Close search' }).click();
-          await expect(search).toHaveCount(0, EVENTUAL);
+        const afterJump = async () => {
+          if (wide) await expect(search).toBeVisible();
+          else await expect(search).toHaveCount(0, EVENTUAL);
         };
         await openSearch();
 
@@ -223,24 +223,24 @@ test.describe('The Lounge chat at tablet and desktop (real routes)', () => {
         await shot(page, testInfo, `w4-search-channel-${label}`);
         await here.click();
         await expect(page).toHaveURL(hashUrl(lobbyPath), EVENTUAL);
-        await expect(search).toBeVisible();
-        await closeSheet();
+        await afterJump();
         await expect(row(page, 'a zebra wandered into the lobby')).toBeInViewport(EVENTUAL);
         // Reopened at 820, the search starts afresh (#920).
         if (!wide) await openSearch();
 
-        // All channels: the garden's message, named with its channel. It opens the garden with the panel still open,
-        // its text and scope kept.
+        // All channels: the garden's message, named with its channel. It opens the garden; at 1440 with the panel still
+        // open, its text and scope kept.
         await search.getByRole('tab', { name: 'All channels' }).click();
         const there = search.getByRole('button', { name: /^Show the message from .* in #garden: a zebra grazing in the garden$/ });
         await expect(there).toBeVisible(EVENTUAL);
         await shot(page, testInfo, `w4-search-all-${label}`);
         await there.click();
         await expect(page).toHaveURL(hashUrl(gardenPath), EVENTUAL);
-        await expect(search).toBeVisible();
-        await expect(field).toHaveValue('zebra');
-        await expect(search.getByRole('tab', { name: 'All channels' })).toHaveAttribute('aria-selected', 'true');
-        await closeSheet();
+        await afterJump();
+        if (wide) {
+          await expect(field).toHaveValue('zebra');
+          await expect(search.getByRole('tab', { name: 'All channels' })).toHaveAttribute('aria-selected', 'true');
+        }
         await expect(chatHeading(page, 'garden')).toBeVisible(EVENTUAL);
         await expect(row(page, 'a zebra grazing in the garden')).toBeInViewport(EVENTUAL);
 

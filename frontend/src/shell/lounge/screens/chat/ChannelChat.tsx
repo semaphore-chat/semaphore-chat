@@ -147,7 +147,7 @@ function useChatBack(communityId: string): { onBack: (() => void) | undefined; g
 
 /**
  * The search panel's state (compact and wide), held above the chat so a jump to a result in another channel (a new
- * chat) keeps the panel open with its text and scope.
+ * chat) keeps the panel open with its text and scope at wide. At compact a jump closes it (#926).
  */
 interface ChatSearch {
   open: boolean;
@@ -432,11 +432,19 @@ function ChannelChatBody({ communityId, channelId, search }: { communityId: stri
   }, [range, navigate, communityId, channelId, search, closeThreadForOther]);
   const closeSearch = useCallback(() => {
     search.setOpen(false);
-    // The More button it was opened from (also after a jump to another channel: this chat's own More).
+    // The More button it was opened from (a jump closes the panel itself, with the focus its own case takes).
     requestAnimationFrame(() => {
       if (moreRef.current?.isConnected) moreRef.current.focus({ preventScroll: true });
     });
   }, [search]);
+  // A jump chosen in the compact Sheet, run once the frame has taken the Sheet down (`jumpToResult`).
+  const pendingJump = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (shownPanel !== null || pendingJump.current === null) return;
+    const run = pendingJump.current;
+    pendingJump.current = null;
+    navigateAfterLayers(run);
+  }, [shownPanel]);
   const jumpToResult = useCallback(
     (result: SearchResult) => {
       if (!result.channelId) return;
@@ -444,20 +452,45 @@ function ChannelChatBody({ communityId, channelId, search }: { communityId: stri
       const target = pinnedJumpTarget({ id: result.id, parentMessageId: result.parentMessageId });
       const here = result.channelId === channelId;
       const path = here ? chatPath : pathOf(links.channel(communityId, result.channelId));
+      // At compact the search is a modal Sheet over the chat: the jump closes it, so the message shows (as Discord's
+      // app does; #926). At wide it sits beside the chat and stays open, to step through the results.
+      const keepOpen = range === 'wide';
       // The panel mounts again (another channel's chat, or after the thread): focus goes back to this result.
-      if (!here || target.thread !== undefined) search.memory.focus = { result: result.id };
-      if (!here) search.memory.carry = true;
-      if (target.thread !== undefined) {
-        threadOpener.current = null;
-        // Opened from this channel's entry, the thread is a new entry Back closes; in another channel, closing it
-        // replaces the address (Back would leave that channel).
-        navigate(`${path}?highlight=${target.highlight}&${THREAD_PARAM}=${target.thread}`, here ? { state: { threadFrom: chatPath } satisfies ThreadEntryState } : undefined);
-      } else {
-        // In this channel the jump replaces the entry, as a pin's; another channel is a new entry, as the old search.
-        navigate(`${path}?highlight=${target.highlight}`, here ? { replace: true } : undefined);
+      if (keepOpen && (!here || target.thread !== undefined)) search.memory.focus = { result: result.id };
+      if (keepOpen && !here) search.memory.carry = true;
+      const go = () => {
+        if (target.thread !== undefined) {
+          threadOpener.current = null;
+          // Opened from this channel's entry, the thread is a new entry Back closes; in another channel, closing it
+          // replaces the address (Back would leave that channel).
+          navigate(`${path}?highlight=${target.highlight}&${THREAD_PARAM}=${target.thread}`, here ? { state: { threadFrom: chatPath } satisfies ThreadEntryState } : undefined);
+        } else {
+          // In this channel the jump replaces the entry, as a pin's; another channel is a new entry, as the old search.
+          navigate(`${path}?highlight=${target.highlight}`, here ? { replace: true } : undefined);
+        }
+      };
+      if (keepOpen) {
+        go();
+        return;
+      }
+      // The Sheet closes first, and the jump waits until it is gone and its history entry (a touch device's Back) has
+      // been stepped back over: run while the entry is there, the step back would undo the jump. The `pendingJump`
+      // effect above runs it. Closed here rather than through `closeSearch`: that one hands focus to this chat's More,
+      // which a thread or another channel's screen must not lose to.
+      pendingJump.current = go;
+      search.setOpen(false);
+      // The right region with it: a Members island chosen at wide would be the Sheet the panel leaves behind, over
+      // the message just jumped to.
+      setRightOpen(false);
+      // Focus follows the jump: a message in this chat keeps this chat's header, so More (as Close puts it); a thread's
+      // heading takes focus itself, and another channel's screen focuses itself (RouteFocus, its composer).
+      if (here && target.thread === undefined) {
+        requestAnimationFrame(() => {
+          if (moreRef.current?.isConnected) moreRef.current.focus({ preventScroll: true });
+        });
       }
     },
-    [channelId, chatPath, links, communityId, navigate, search],
+    [channelId, chatPath, links, communityId, navigate, search, range, setRightOpen],
   );
   const closePinnedPanel = useCallback(() => {
     setPinnedOpen(false);

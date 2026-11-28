@@ -1,17 +1,20 @@
 /**
  * Search in the new shell's chat at compact and wide (PR 10e, B9), on a faked conversation and search: More → Search
  * opens the panel in the members' place (the right Sheet at compact) with focus in the field; a phone keeps the old
- * search screen; pins and search are one at a time; a result jumps (`?highlight=`) and the panel stays; a result in
+ * search screen; pins and search are one at a time; a result jumps (`?highlight=`) and the panel stays at wide (at
+ * compact the jump closes the Sheet, #926); a result in
  * another channel opens that channel's chat with the panel, its text and focus on the result; a thread reply opens its
  * parent's thread, and closing the thread brings the search back; Close hands focus to More.
  */
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { KitProvider } from '../../../kit';
+import { KitProvider, useWidthRange } from '../../../kit';
 import { FileCacheProvider } from '../../../contexts/AvatarCacheContext';
+import { setLayerEntryRunner } from '../../../data/systemBack';
 import { ChannelChat } from '../../../shell/lounge/screens/chat/ChannelChat';
+import { RouteFocus } from '../../../shell/lounge/frame/RouteFocus';
 import { LoungeLinksContext, type LoungeLinks } from '../../../shell/lounge/links';
 import { FIXTURE_LINKS } from '../../../shell/lounge/screens/fixtureLinks';
 import { NO_SCREEN_CHROME, ScreenChromeContext, type RightPanel } from '../../../shell/lounge/screen';
@@ -150,10 +153,16 @@ function Where() {
   return <output data-testid="where">{location.pathname + location.search}</output>;
 }
 
-/** The frame's right region, as in the thread tests: the screen's panel in a real slot inside an `aside`. */
+/**
+ * The frame's right region, as in the thread tests: the screen's panel in a real slot inside an `aside`, and (below
+ * wide, as the kit's `ThreeIslands`) the right Sheet while the region is open: the panel's, else what the user had
+ * (`rightChoice`, null for the template's default).
+ */
 const lastPanel = vi.hoisted(() => ({ current: null as RightPanel | null }));
 function PanelChrome({ children }: { children: React.ReactNode }) {
+  const range = useWidthRange();
   const [panel, setPanel] = React.useState<RightPanel | null>(null);
+  const [rightChoice, setRightChoice] = React.useState<boolean | null>(null);
   const [target, setTarget] = React.useState<HTMLElement | null>(null);
   lastPanel.current = panel;
   // As the frame's `showRight`: the screen's `closeAll` when it has one, else `onClose`.
@@ -162,15 +171,26 @@ function PanelChrome({ children }: { children: React.ReactNode }) {
   const showRight = React.useCallback(() => {
     const open = panelRef.current;
     (open?.closeAll ?? open?.onClose)?.();
+    setRightChoice(true);
   }, []);
+  const rightOpen = panel !== null ? true : (rightChoice ?? range === 'wide');
   const chrome = React.useMemo(
-    () => ({ ...NO_SCREEN_CHROME, rightOpen: true, showRight, panel, setPanel, panelTarget: panel === null ? null : target }),
-    [panel, target, showRight],
+    () => ({
+      ...NO_SCREEN_CHROME,
+      rightOpen,
+      setRightOpen: setRightChoice,
+      showRight,
+      panel,
+      setPanel,
+      panelTarget: panel === null ? null : target,
+    }),
+    [rightOpen, panel, target, showRight],
   );
   return (
     <ScreenChromeContext value={chrome}>
       {children}
       <aside aria-label={panel?.label ?? 'Members'}>{panel === null ? <span>the members</span> : <div ref={setTarget} />}</aside>
+      {range !== 'wide' && rightOpen && <div role="dialog" aria-label={panel?.label ?? 'Members'} />}
     </ScreenChromeContext>
   );
 }
@@ -179,6 +199,33 @@ function PanelChrome({ children }: { children: React.ReactNode }) {
 function RoutedChat() {
   const params = useParams();
   return <ChannelChat params={{ communityId: params.communityId, channelId: params.channelId }} />;
+}
+
+/** The route's screen and the frame's route focus: a path change focuses the screen that now shows (M9). */
+function RoutedApp() {
+  const root = React.useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  return (
+    <div ref={root} style={{ display: 'contents' }}>
+      <Routes>
+        {/* The frame's centre island is the main landmark (ThreeIslands): RouteFocus focuses its heading. */}
+        <Route
+          path="/__lounge/community/:communityId/channel/:channelId"
+          element={
+            <main>
+              <RoutedChat />
+            </main>
+          }
+        />
+      </Routes>
+      <Where />
+      {/* The left island's channel list: a row picked there keeps focus (RouteFocus leaves a shown nav alone). */}
+      <nav aria-label="Community">
+        <GoElsewhere />
+      </nav>
+      <RouteFocus rootRef={root} pathname={location.pathname} title={null} />
+    </div>
+  );
 }
 
 function setup(entries: string[] = [CHAT]) {
@@ -194,11 +241,7 @@ function setup(entries: string[] = [CHAT]) {
       <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
         <LoungeLinksContext value={FIXTURE_LINKS as LoungeLinks}>
           <PanelChrome>
-            <Routes>
-              <Route path="/__lounge/community/:communityId/channel/:channelId" element={<RoutedChat />} />
-            </Routes>
-            <Where />
-            <GoElsewhere />
+            <RoutedApp />
           </PanelChrome>
         </LoungeLinksContext>
       </KitProvider>
@@ -230,6 +273,9 @@ describe('ChannelChat search (compact and wide)', () => {
     searchState.isError = false;
   });
 
+  // A runner registered here must not outlive its test (the next would defer every navigation).
+  afterEach(() => setLayerEntryRunner(null));
+
   it('at wide More → Search opens the panel in the members’ place with focus in the field; Close hands focus to More', async () => {
     const { user } = setup();
     const field = await openSearch(user);
@@ -257,6 +303,93 @@ describe('ChannelChat search (compact and wide)', () => {
     const { user } = setup();
     await openSearch(user);
     expect(lastPanel.current).toMatchObject({ label: 'Search messages', fill: true });
+  });
+
+  it('at compact a result in this channel jumps and closes the Sheet, focus to More (#926)', async () => {
+    mockViewport(WIDTH.compact);
+    const { user } = setup();
+    const field = await openSearch(user);
+    await user.type(field, 'deploy');
+    await user.click(screen.getByRole('button', { name: /Show the message from Aiko: the deploy is green/ }));
+    await waitFor(() => expect(where()).toBe(`${CHAT}?highlight=m-5`));
+    expect(navCalls[navCalls.length - 1]).toEqual([`${CHAT}?highlight=m-5`, { replace: true }]);
+    await waitFor(() => expect(lastPanel.current).toBeNull());
+    expect(screen.queryByRole('searchbox', { name: 'Search messages' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'More' })));
+  });
+
+  it('at compact the jump waits for the Sheet’s entry to be gone before it navigates (#926)', async () => {
+    mockViewport(WIDTH.compact);
+    let release: (() => void) | null = null;
+    const runner = vi.fn((run: () => void) => {
+      release = run;
+    });
+    setLayerEntryRunner(runner);
+    const { user } = setup();
+    const field = await openSearch(user);
+    await user.type(field, 'deploy');
+    await user.click(screen.getByRole('button', { name: /Show the message from Aiko: the deploy is green/ }));
+    // The panel is gone and its entry is being stepped back over: nothing navigates yet.
+    await waitFor(() => expect(lastPanel.current).toBeNull());
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(navCalls).toEqual([]);
+    expect(where()).toBe(CHAT);
+    act(() => release!());
+    await waitFor(() => expect(where()).toBe(`${CHAT}?highlight=m-5`));
+  });
+
+  it('at compact a result in another channel opens that chat with the Sheet closed; reopened, a new search (#926)', async () => {
+    mockViewport(WIDTH.compact);
+    searchState.results = [result('m-7', 'deploy notes', { channelId: 'ch-2', channelName: 'random' })];
+    const { user } = setup();
+    const field = await openSearch(user);
+    await user.type(field, 'deploy');
+    await user.click(screen.getByRole('tab', { name: 'All channels' }));
+    await user.click(screen.getByRole('button', { name: /deploy notes/ }));
+    await waitFor(() => expect(where()).toBe(`${OTHER}?highlight=m-7`));
+    expect(navCalls[navCalls.length - 1]).toEqual([`${OTHER}?highlight=m-7`, undefined]);
+    // That chat's own screen takes focus (RouteFocus): not the unmounted chat's More.
+    const heading = await screen.findByRole('heading', { level: 1, name: '# random' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    await waitFor(() => expect(lastPanel.current).toBeNull());
+    const again = await openSearch(user);
+    expect(again).toHaveValue('');
+    expect(screen.getByRole('tab', { name: 'This channel' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('at compact a thread reply opens its thread with the search closed; closing the thread shows the channel (#926)', async () => {
+    mockViewport(WIDTH.compact);
+    searchState.results = [result('r-1', 'a reply about deploys', { parentMessageId: 'm-1' })];
+    const { user } = setup();
+    const field = await openSearch(user);
+    await user.type(field, 'deploy');
+    await user.click(screen.getByRole('button', { name: /a reply about deploys/ }));
+    await waitFor(() => expect(where()).toBe(`${CHAT}?highlight=m-1&thread=m-1`));
+    // The thread's heading takes focus when it opens: not this chat's More under it.
+    const threadTitle = await screen.findByRole('heading', { level: 2, name: 'Thread' });
+    await waitFor(() => expect(document.activeElement).toBe(threadTitle));
+    expect(lastPanel.current).toMatchObject({ label: 'Thread' });
+    await user.click(screen.getByRole('button', { name: 'Close thread' }));
+    await waitFor(() => expect(where()).toBe(CHAT));
+    await waitFor(() => expect(lastPanel.current).toBeNull());
+    expect(screen.queryByRole('searchbox', { name: 'Search messages' })).toBeNull();
+  });
+
+  it('at compact a jump closes the right Sheet, even when Members was chosen at wide (#929)', async () => {
+    const viewport = mockViewport(WIDTH.wide);
+    const { user } = setup();
+    // Chosen by hand at wide (shown by default: the first press hides the members, the second chooses them).
+    await user.click(screen.getByRole('button', { name: 'Members' }));
+    await user.click(screen.getByRole('button', { name: 'Members' }));
+    const field = await openSearch(user);
+    await user.type(field, 'deploy');
+    await viewport.setWidth(WIDTH.compact);
+    expect(screen.getByRole('dialog', { name: 'Search messages' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Show the message from Aiko: the deploy is green/ }));
+    await waitFor(() => expect(where()).toBe(`${CHAT}?highlight=m-5`));
+    expect(lastPanel.current).toBeNull();
+    // The members' Sheet does not take the search's place over the message.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('on a phone Search is the old search screen', async () => {
