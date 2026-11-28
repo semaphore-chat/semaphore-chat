@@ -47,11 +47,10 @@ import { DropZoneOverlay } from "./DropZoneOverlay";
 import { useMentionHandling } from "../../data/chat/useMentionHandling";
 import type { MentionSuggestion } from "../../data/chat/useMentionHandling";
 import { useComposerKeys } from "../../data/chat/useComposerKeys";
-import type { SimpleMentionState } from "../../data/chat/useComposerKeys";
+import { useDmMentionList } from "../../data/chat/useDmMentionList";
 import { useMentionAutocomplete } from "../../hooks/useMentionAutocomplete";
 import {
   parseMessageWithMentions,
-  getCurrentMention,
   insertMention,
 } from "../../utils/mentionParser";
 import type {
@@ -337,19 +336,12 @@ export default function MessageInput({
     [customEmojis],
   );
 
-  // Local mention state for DMs
-  const [dmMentionState, setDmMentionState] = useState<SimpleMentionState>({
-    isOpen: false,
-    suggestions: [],
-    selectedIndex: 0,
-    query: "",
-    type: null,
-    isLoading: false,
-  });
-
-  const closeDmMentions = useCallback(() => {
-    setDmMentionState(prev => ({ ...prev, isOpen: false }));
-  }, []);
+  // Local mention list for DMs
+  const {
+    state: dmMentionState,
+    setState: setDmMentionState,
+    close: closeDmMentions,
+  } = useDmMentionList({ enabled: !isChannel, text, cursorPosition, userMentions });
 
   const handleDmInsertMention = useCallback(
     (mention: MentionSuggestion) => {
@@ -357,46 +349,6 @@ export default function MessageInput({
     },
     [insertMentionUtil, text, setText, closeDmMentions]
   );
-
-  // DM mention detection
-  useEffect(() => {
-    if (isChannel) return;
-
-    const currentMention = getCurrentMention(text, cursorPosition);
-    if (currentMention && currentMention.query) {
-      const filteredUsers = userMentions.filter(user =>
-        (user.displayName || user.username).toLowerCase().includes(currentMention.query.toLowerCase())
-      );
-
-      setDmMentionState(prev => {
-        const newSuggestions = filteredUsers.map(user => ({
-          id: user.id,
-          type: 'user' as const,
-          displayName: user.displayName || user.username,
-          subtitle: user.username !== user.displayName ? `@${user.username}` : undefined,
-          username: user.username,
-        }));
-
-        const shouldOpen = filteredUsers.length > 0;
-        if (prev.isOpen === shouldOpen &&
-            prev.query === currentMention.query &&
-            JSON.stringify(prev.suggestions) === JSON.stringify(newSuggestions)) {
-          return prev;
-        }
-
-        return {
-          isOpen: shouldOpen,
-          suggestions: newSuggestions,
-          selectedIndex: 0,
-          query: currentMention.query,
-          type: 'user' as const,
-          isLoading: false,
-        };
-      });
-    } else {
-      setDmMentionState(prev => prev.isOpen ? { ...prev, isOpen: false } : prev);
-    }
-  }, [text, cursorPosition, userMentions, isChannel]);
 
   // --- Unified mention state ---
   const mentionIsOpen = isChannel ? mentionHook.state.isOpen : dmMentionState.isOpen;

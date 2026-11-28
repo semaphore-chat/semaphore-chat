@@ -13,6 +13,10 @@
  * once as its own message, pasted and dropped files into the tray, and ↑ in the empty field editing the reader's
  * last message (`onEditLastMessage`).
  *
+ * A DM group's composer (`target: { kind: 'dm', dmGroupId }`) is the old DM composer's: its own draft (`dm:<id>`),
+ * always available, typing to the group, and the `@` list filtered locally from the group's members
+ * (`useDmMentionList`); no channels, alias groups or custom emoji to resolve.
+ *
  * Headless: no UI imports (see the `src/data` lint block in eslint.config.js).
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
@@ -20,8 +24,8 @@ import { useQuery } from '@tanstack/react-query';
 import {
   aliasGroupsControllerGetCommunityAliasGroupsOptions,
   channelsControllerGetMentionableChannelsOptions,
+  directMessagesControllerFindDmGroupOptions,
 } from '../../api-client/@tanstack/react-query.gen';
-import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { useAllCommunityMembers } from '../../hooks/useAllCommunityMembers';
 import { useCommunityCustomEmojis } from '../../hooks/useCommunityCustomEmojis';
 import { useComposerAvailability, type ComposerAvailability } from '../../hooks/useComposerAvailability';
@@ -34,10 +38,12 @@ import { formatRoleList } from '../../utils/formatRoleList';
 import { insertMention, parseMessageWithMentions, type UserMention, type ChannelMention } from '../../utils/mentionParser';
 import { logger } from '../../utils/logger';
 import { useCommunityChannels } from '../channels';
-import { useComposerKeys, type SimpleMentionState } from './useComposerKeys';
+import { useComposerKeys } from './useComposerKeys';
 import { useMentionableUserIds } from './useMentionableUserIds';
 import { useFileAttachments } from './useFileAttachments';
 import { useMentionHandling } from './useMentionHandling';
+import { useDmMentionList } from './useDmMentionList';
+import { chatTargetContext, chatTargetId, chatTargetIds, resolveChatTarget, type ChatTargetArgs } from './chatTarget';
 
 /** "12 min", "2 h 5 min", "42 s": rounded up so it never reads "0" (as the old composer). */
 export function formatTimeLeft(ms: number): string {
@@ -96,6 +102,9 @@ export interface QueuedFileView {
   preview?: string;
 }
 
+/** A listed mention; a DM's also carries the username (it shows the display name). */
+type ListedOption = ListedMention & { username?: string };
+
 export interface MentionListView {
   suggestions: readonly ListedMention[];
   activeIndex: number;
@@ -103,9 +112,10 @@ export interface MentionListView {
   pick: (index: number) => void;
 }
 
-export interface UseChannelComposerOptions {
-  communityId: string;
-  channelId: string;
+/** A `target` (a channel or a DM group), or the channel's `communityId` + `channelId`. */
+export type UseChannelComposerOptions = ChatTargetArgs & ComposerOptions;
+
+interface ComposerOptions {
   /**
    * A reply in this message's thread instead of a channel message: its own draft, the thread's posting permission,
    * no typing line (threads have none), and the words and files stay until the server has the reply (`send`
@@ -132,11 +142,7 @@ export interface UseChannelComposerOptions {
   onEditLastMessage?: () => boolean;
 }
 
-const NO_DM_MENTIONS: SimpleMentionState = { isOpen: false, suggestions: [], selectedIndex: 0, query: '', type: null, isLoading: false };
-
 export function useChannelComposer({
-  communityId,
-  channelId,
   thread,
   inputRef,
   send,
@@ -144,18 +150,25 @@ export function useChannelComposer({
   touch,
   onCancelReply,
   onEditLastMessage,
+  ...targetArgs
 }: UseChannelComposerOptions) {
-  const [text, setText, clearDraft] = useComposerDraft(thread ? `thread:${thread.parentMessageId}` : `channel:${channelId}`);
+  const target = resolveChatTarget(targetArgs as ChatTargetArgs);
+  const isChannel = target.kind === 'channel';
+  const id = chatTargetId(target);
+  // A DM has no community: every community query below stays off.
+  const communityId = target.kind === 'channel' ? target.communityId : '';
+  const [text, setText, clearDraft] = useComposerDraft(
+    thread ? `thread:${thread.parentMessageId}` : `${isChannel ? 'channel' : 'dm'}:${id}`,
+  );
   const [sending, setSending] = useState(false);
   const availability = useComposerAvailability({
-    contextType: VoiceSessionType.Channel,
-    contextId: channelId,
-    communityId,
+    ...chatTargetContext(target),
+    communityId: isChannel ? communityId : undefined,
     thread: thread !== undefined,
   });
   const canCompose = availability.state === 'ok';
   const canAttach = availability.canAttach ?? true;
-  const { handleKeyPress: emitTyping, sendTypingStop } = useTypingEmitter({ channelId: thread ? undefined : channelId });
+  const { handleKeyPress: emitTyping, sendTypingStop } = useTypingEmitter(thread ? {} : chatTargetIds(target));
   const keepUntilSent = thread !== undefined;
   const textRef = useRef(text);
   textRef.current = text;
@@ -186,8 +199,8 @@ export function useChannelComposer({
     setupCursorTracking(inputRef as RefObject<HTMLInputElement | null>);
   }, [setupCursorTracking, inputRef, canCompose]);
   // A private channel's list offers only its members (who can see it).
-  const channels = useCommunityChannels(communityId);
-  const listed = channels.all?.find((c) => c.id === channelId);
+  const channels = useCommunityChannels(communityId, { enabled: isChannel });
+  const listed = isChannel ? channels.all?.find((c) => c.id === id) : undefined;
   const mentionable = useMentionableUserIds(listed ? { id: listed.id, isPrivate: listed.isPrivate === true } : null);
   const mentionHook = useMentionAutocomplete({
     communityId,
@@ -206,13 +219,30 @@ export function useChannelComposer({
     enabled: !!communityId,
   });
   const { emojis: customEmojis } = useCommunityCustomEmojis(communityId);
+  // A DM's mentions are its members (the same group query as the old DM screen).
+  const { data: dmGroup } = useQuery({
+    ...directMessagesControllerFindDmGroupOptions({ path: { id: isChannel ? '' : id } }),
+    enabled: !isChannel,
+  });
   const userMentions: UserMention[] = useMemo(
     () =>
-      members
-        .filter((member) => member.user)
-        .map((member) => ({ id: member.user!.id, username: member.user!.username, displayName: member.user!.displayName || undefined })),
-    [members],
+      isChannel
+        ? members
+            .filter((member) => member.user)
+            .map((member) => ({ id: member.user!.id, username: member.user!.username, displayName: member.user!.displayName || undefined }))
+        : (dmGroup?.members ?? []).map((member) => ({
+            id: member.user.id,
+            username: member.user.username,
+            displayName: member.user.displayName || undefined,
+          })),
+    [isChannel, members, dmGroup?.members],
   );
+  const dmMentions = useDmMentionList({ enabled: !isChannel, text, cursorPosition, userMentions });
+  const { close: closeDmMentions } = dmMentions;
+  const closeMentionHook = mentionHook.close;
+  const closeMentions = isChannel ? closeMentionHook : closeDmMentions;
+  const mentionState = isChannel ? mentionHook.state : dmMentions.state;
+  const listedMentions: readonly ListedOption[] = mentionState.suggestions;
   const channelMentions: ChannelMention[] = useMemo(
     () => mentionableChannels.map((channel) => ({ id: channel.id, name: channel.name })),
     [mentionableChannels],
@@ -231,22 +261,24 @@ export function useChannelComposer({
     updateCursorPosition();
   }, [text, inputRef, updateCursorPosition]);
 
-  const handleMentionSelect = useCallback(
-    (index: number) => {
-      const chosen = mentionHook.state.suggestions[index];
+  const insertChosen = useCallback(
+    (chosen: ListedOption | undefined) => {
       if (!chosen) return;
       const result = insertMention(text, cursorPosition, {
         type: chosen.type,
-        username: chosen.type === 'user' ? chosen.displayName : undefined,
+        // A DM's list shows display names and carries the username, which the send's spans resolve; a channel's
+        // list shows usernames.
+        username: chosen.type === 'user' ? (chosen.username ?? chosen.displayName) : undefined,
         specialKind: chosen.type === 'special' ? chosen.displayName : undefined,
         aliasName: chosen.type === 'alias' ? chosen.displayName : undefined,
       });
       pendingCaret.current = result.newCursorPosition;
       setText(result.newText);
-      mentionHook.close();
+      closeMentions();
     },
-    [mentionHook, text, cursorPosition, setText],
+    [closeMentions, text, cursorPosition, setText],
   );
+  const handleMentionSelect = useCallback((index: number) => insertChosen(listedMentions[index]), [insertChosen, listedMentions]);
 
   // --- Send ---
   const sendingRef = useRef(false);
@@ -269,7 +301,7 @@ export function useChannelComposer({
         // A thread shows no pending row: the words and files stay until the server has the reply. Then only what
         // was sent goes: the sent words (what was typed after them stays, so it is never sent twice) and the sent
         // files (files added meanwhile stay queued).
-        mentionHook.close();
+        closeMentions();
         const done = await sent;
         if (done === true) {
           const now = textRef.current;
@@ -282,7 +314,7 @@ export function useChannelComposer({
       }
       clearDraft();
       files.clearFiles();
-      mentionHook.close();
+      closeMentions();
       // "Typing" ends with the send, not with the server's answer: a slow answer must not leave "is typing" up
       // for a message already in the list, nor cut off the indicator for the next message being typed.
       sendTypingStop();
@@ -294,7 +326,7 @@ export function useChannelComposer({
       sendingRef.current = false;
       setSending(false);
     }
-  }, [files, text, userMentions, channelMentions, aliasMentions, emojiMentions, send, sendTypingStop, clearDraft, setText, mentionHook, onError, keepUntilSent]);
+  }, [files, text, userMentions, channelMentions, aliasMentions, emojiMentions, send, sendTypingStop, clearDraft, setText, closeMentions, onError, keepUntilSent]);
 
   const { handleKeyPress } = useComposerKeys({
     inputRef: inputRef as RefObject<HTMLInputElement | null>,
@@ -302,12 +334,12 @@ export function useChannelComposer({
     setText,
     selectedFiles: files.selectedFiles,
     isTouchDevice: touch,
-    isChannel: true,
+    isChannel,
     mentionHook,
-    dmMentionState: NO_DM_MENTIONS,
-    setDmMentionState: () => undefined,
-    handleDmInsertMention: () => undefined,
-    closeDmMentions: () => undefined,
+    dmMentionState: dmMentions.state,
+    setDmMentionState: dmMentions.setState,
+    handleDmInsertMention: insertChosen,
+    closeDmMentions,
     handleMentionSelect,
     handleSend,
     onCancelReply,
@@ -372,11 +404,11 @@ export function useChannelComposer({
   );
 
   const mentions: MentionListView | null =
-    canCompose && mentionHook.state.isOpen
+    canCompose && mentionState.isOpen
       ? {
-          suggestions: mentionHook.state.suggestions,
-          activeIndex: mentionHook.state.selectedIndex,
-          loading: mentionHook.state.isLoading,
+          suggestions: listedMentions,
+          activeIndex: mentionState.selectedIndex,
+          loading: mentionState.isLoading,
           pick: handleMentionSelect,
         }
       : null;
