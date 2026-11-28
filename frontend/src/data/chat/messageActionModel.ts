@@ -9,9 +9,18 @@
  * in lock-step.
  */
 
+import { stripUnpairedBidi } from '../../utils/bidi';
 import type { Message } from '../../types/message.type';
 import { spansToText } from '../../utils/mentionParser';
 import { copyToClipboard } from '../../utils/clipboard';
+
+/** What Copy puts on the clipboard: the message's text, without unpaired bidi controls. */
+export function messageCopyText(
+  spans: Message['spans'],
+  channelName?: (channelId: string) => string | undefined,
+): string {
+  return stripUnpairedBidi(spansToText(spans, channelName));
+}
 
 /** Logical grouping used to lay out dividers between sections. */
 export type MessageActionGroup = 'reply' | 'reaction' | 'moderation' | 'copy';
@@ -135,7 +144,7 @@ export function getMessageActionModel(config: MessageActionConfig): MessageActio
     label: 'Copy Message Content',
     group: 'copy',
     run: async () => {
-      const text = spansToText(message.spans, config.channelName);
+      const text = messageCopyText(message.spans, config.channelName);
       try {
         await copyToClipboard(text);
       } catch {

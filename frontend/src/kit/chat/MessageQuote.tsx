@@ -1,3 +1,4 @@
+import { stripBidiOverrides } from './messageSegments';
 import type { JSX } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
@@ -78,7 +79,8 @@ const Hidden = styled('span')({ ...visuallyHidden });
  * `onOpen` it is a button that shows that message ("Reply to aiko: ok that run…"). A deleted original says so and
  * opens nothing.
  */
-export function MessageQuote({ author, line, deleted = false, onOpen }: MessageQuoteProps): JSX.Element {
+export function MessageQuote({ author, line: rawLine, deleted = false, onOpen }: MessageQuoteProps): JSX.Element {
+  const line = stripBidiOverrides(rawLine);
   const on = useSurface();
   const tabIndex = useRowTabIndex();
   const content = (

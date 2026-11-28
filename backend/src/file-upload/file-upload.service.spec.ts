@@ -1360,4 +1360,23 @@ describe('FileUploadService', () => {
       ).toHaveBeenCalledWith(mockUser.id, 'community-1', 'COMMUNITY', [action]);
     });
   });
+
+  describe('sanitizeFilename', () => {
+    const sanitize = (name: string): string =>
+      (service as any).sanitizeFilename(name);
+
+    it('removes bidi controls and marks from the stored name', () => {
+      expect(
+        sanitize('a\u202Eb\u202Cc\u2066d\u2069e\u200Ef\u200Fg\u061Ch.png'),
+      ).toBe('abcdefgh.png');
+    });
+
+    it('still replaces separators and drops control characters', () => {
+      expect(sanitize('a/b\\c\u0001d.txt')).toBe('a_b_cd.txt');
+    });
+
+    it('falls back to "file" when only bidi controls remain', () => {
+      expect(sanitize('\u202E\u2066')).toBe('file');
+    });
+  });
 });

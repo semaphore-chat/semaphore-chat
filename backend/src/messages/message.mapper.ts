@@ -1,3 +1,4 @@
+import { stripBidiControls } from '@/common/utils/bidi.utils';
 import { Prisma } from '@prisma/client';
 import { groupReactions } from '@/common/utils/reactions.utils';
 import {
@@ -91,7 +92,7 @@ export function toSpanDto(span: SpanColumns): SpanDto {
 export function toAttachmentDto(file: FileRow): AttachmentDto {
   return {
     id: file.id,
-    filename: file.filename,
+    filename: stripBidiControls(file.filename),
     mimeType: file.mimeType,
     fileType: file.fileType,
     size: file.size,

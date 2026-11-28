@@ -122,7 +122,7 @@ export { MessageRow } from './chat/MessageRow';
 export type { MessageRowFocus, MessageRowProps, MessageState, OpenActionsRequest, OpenActionsVia } from './chat/MessageRow';
 export { useRowTabIndex } from './chat/rowTabScope';
 export { MessageText } from './chat/MessageText';
-export { safeHref } from './chat/messageSegments';
+export { checkLink, safeHref, stripBidi, stripBidiOverrides, stripUnpairedBidi } from './chat/messageSegments';
 export type { MessageTextProps } from './chat/MessageText';
 export type {
   CodeBlockSegment,

@@ -3,6 +3,8 @@ name: Native packages
 # Builds the native desktop client's Linux packages (AppImage, .deb, .rpm), the Windows portable
 # zip and the Windows NSIS installer. Artifacts only: this workflow never creates a release,
 # pushes a tag, publishes an image or writes to a registry, and it does not run on tag pushes.
+# Outside a release it pulls the package image from GHCR (read only, no login; #887); a release
+# builds it from its own tree.
 # native-release.yml calls it (workflow_call) to build a release's packages, with the version
 # and the update feed URL to compile in; its own runs (pull requests, dispatch) leave the feed
 # empty, so those builds never check for updates.
@@ -67,6 +69,12 @@ jobs:
     name: Build and verify Linux packages
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    # The package image is pulled from GHCR by its content-hash tag (native/scripts/image-cache.sh,
+    # #887), with no login; a miss builds it locally. A release (inputs.release) never pulls: it
+    # builds the image from the tree it is releasing, so a shipped package never depends on what
+    # sits under a registry tag.
+    env:
+      NATIVE_IMAGE_REGISTRY: ${{ !inputs.release && 'ghcr.io/semaphore-chat' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

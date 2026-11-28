@@ -6,6 +6,7 @@
  *
  * Headless: no UI imports (see the `src/data` lint block in eslint.config.js).
  */
+import { stripBidiOverrides } from '../../utils/bidi';
 import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -29,7 +30,7 @@ export function pinnedJumpTarget(pin: Pick<PinnedMessageDto, 'id' | 'parentMessa
 export function pinnedText(pin: Pick<PinnedMessageDto, 'spans'>): string {
   return pin.spans
     .filter((span) => span.text)
-    .map((span) => span.text)
+    .map((span) => stripBidiOverrides(span.text ?? ''))
     .join(' ');
 }
 

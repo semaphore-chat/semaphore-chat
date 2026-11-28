@@ -599,4 +599,15 @@ describe('link-preview.utils', () => {
       fetchSpy.mockRestore();
     });
   });
+
+  describe('extractUrls and bidi controls', () => {
+    it('ends an address at a bidi control, as the clients do', () => {
+      expect(extractUrls('see https://example.com/a\u202Eb now')).toEqual([
+        'https://example.com/a',
+      ]);
+      expect(extractUrls('\u2067see https://example.com/x\u2069')).toEqual([
+        'https://example.com/x',
+      ]);
+    });
+  });
 });

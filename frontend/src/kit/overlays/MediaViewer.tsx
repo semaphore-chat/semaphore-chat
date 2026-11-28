@@ -1,3 +1,4 @@
+import { stripBidi } from '../../utils/bidi';
 import { useEffect, useId, useRef, useState, type JSX, type KeyboardEvent, type PointerEvent } from 'react';
 import { styled } from '@mui/material/styles';
 import { tokens } from '../../theme/generated/tokens';
@@ -140,6 +141,7 @@ export function MediaViewer({
   const count = items.length;
   const at = Math.min(Math.max(0, index), Math.max(0, count - 1));
   const item = items[at] as MediaViewerItem | undefined;
+  const name = stripBidi(item?.name ?? '');
   const [broken, setBroken] = useState<string | null>(null);
   const hasPrevious = at > 0;
   const hasNext = at < count - 1;
@@ -215,11 +217,11 @@ export function MediaViewer({
       <Keys onKeyDown={onKeyDown}>
         <Bar>
           <Heading id={titleId} dir="auto">
-            {item?.name ?? ''}
+            {name}
           </Heading>
           {count > 1 && <Count>{`${at + 1} of ${count}`}</Count>}
           {onDownload !== undefined && (
-            <IconButton icon="Download" label={`Download ${item?.name ?? ''}`} variant="ghost" loading={downloading} onClick={onDownload} />
+            <IconButton icon="Download" label={`Download ${name}`} variant="ghost" loading={downloading} onClick={onDownload} />
           )}
           <IconButton ref={close} icon="X" label="Close" variant="ghost" onClick={() => onClose('button')} />
         </Bar>
@@ -243,9 +245,9 @@ export function MediaViewer({
               <span>{"Couldn't load the picture"}</span>
             </Failed>
           ) : item.src !== undefined ? (
-            <Picture key={item.src} src={item.src} alt={item.alt ?? item.name} draggable={false} onError={() => setBroken(item.src ?? null)} />
+            <Picture key={item.src} src={item.src} alt={item.alt ?? name} draggable={false} onError={() => setBroken(item.src ?? null)} />
           ) : (
-            <Spinner size="lg" label={`Loading ${item.name}`} />
+            <Spinner size="lg" label={`Loading ${name}`} />
           )}
           {count > 1 && (
             <>

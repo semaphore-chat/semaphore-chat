@@ -26,6 +26,9 @@ import { MediaDimensionsService } from '@/file/media-dimensions.service';
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
         dest: configService.get<string>('FILE_UPLOAD_DEST') || './uploads',
+        // Browsers send a non-ASCII file name as plain UTF-8 in the multipart
+        // `filename` parameter; the default decodes it as Latin-1.
+        defParamCharset: 'utf8',
         limits: {
           fileSize: 1024 * 1024 * 1024, // 1GB hard limit (per-type limits enforced by validation strategies)
         },

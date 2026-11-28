@@ -99,9 +99,11 @@ if ! is_windows && [ "$IN_IMAGE" = 0 ]; then
   command -v docker >/dev/null 2>&1 || die "docker is required (or run with --in-image)"
   tag="$(sha256sum "$NATIVE_DIR/docker/Dockerfile.nsis" | cut -c1-12)"
   IMAGE="semaphore-native-nsis:$tag"
-  if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  # shellcheck source=image-cache.sh
+  . "$NATIVE_DIR/scripts/image-cache.sh"
+  if ! native_image_fetch "$IMAGE"; then
     echo "package-windows: building $IMAGE (first use of the NSIS image) ..." >&2
-    docker build -q -f "$NATIVE_DIR/docker/Dockerfile.nsis" -t "$IMAGE" "$NATIVE_DIR" >/dev/null
+    native_image_build "$IMAGE" -f "$NATIVE_DIR/docker/Dockerfile.nsis" "$NATIVE_DIR"
   fi
   exec docker run --rm --init \
     --network none \

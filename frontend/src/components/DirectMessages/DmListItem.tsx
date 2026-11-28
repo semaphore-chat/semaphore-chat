@@ -5,6 +5,7 @@
  * Used by both DirectMessageList (desktop) and MobileMessagesPanel (mobile).
  */
 
+import { stripBidiOverrides } from "../../utils/bidi";
 import React from "react";
 import {
   Badge,
@@ -58,7 +59,7 @@ const DmListItem: React.FC<DmListItemProps> = ({
   const isUnread = badgeCount > 0 && !isSelected;
   const { names, extra, full: fullName } = getCompactDmName(group, currentUserId);
   const preview = group.lastMessage
-    ? group.lastMessage.spans.find((s) => s.type === "PLAINTEXT")?.text || "Message"
+    ? stripBidiOverrides(group.lastMessage.spans.find((s) => s.type === "PLAINTEXT")?.text ?? "") || "Message"
     : "No messages yet";
 
   return (

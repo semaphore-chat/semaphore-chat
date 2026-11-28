@@ -1,3 +1,4 @@
+import { stripBidi } from "../../utils/bidi";
 import React from "react";
 import { Box, Card, Typography, IconButton, CircularProgress, Alert } from "@mui/material";
 import { styled } from "@mui/material/styles";
@@ -100,7 +101,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ metadata }) => {
               whiteSpace: "nowrap",
             }}
           >
-            {metadata.filename}
+            {stripBidi(metadata.filename)}
           </Typography>
           <Typography variant="caption" color="text.secondary">
             {formatFileSize(metadata.size)}

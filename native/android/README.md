@@ -55,6 +55,10 @@ copy (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). Remove the volumes to start from sc
 docker volume rm semaphore-android-gradle semaphore-android-home
 ```
 
+`NATIVE_CARGO_CACHE` and `NATIVE_GRADLE_CACHE` replace the first and third with another volume or
+a host path. CI points them at directories it restores with `actions/cache`, and pulls the images
+from GHCR by their content-hash tag (`native/scripts/image-cache.sh`, #887) before building any.
+
 ## TLS
 
 `semaphore-net` builds its TLS client with rustls-platform-verifier, which on Android reads the
