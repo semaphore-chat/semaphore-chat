@@ -69,6 +69,25 @@ describe('useCommunityChannels', () => {
     await waitFor(() => expect(result.current.text.map((c) => c.id)).toEqual(['rules', 'general']));
   });
 
+  it('fetches nothing when disabled (a DM composer has no community)', async () => {
+    const requests: string[] = [];
+    const onRequestStart = ({ request }: { request: Request }) => requests.push(request.url);
+    server.events.on('request:start', onRequestStart);
+    try {
+      const queryClient = createTestQueryClient();
+      const { result } = renderHook(() => useCommunityChannels('c-1', { enabled: false }), {
+        wrapper: createTestWrapper({ queryClient }),
+      });
+      // Disabled: the query never starts, so no request is in flight (fetchStatus stays idle).
+      expect(result.current.query.fetchStatus).toBe('idle');
+      expect(requests).toEqual([]);
+      expect(result.current.status).toBe('pending');
+      expect(result.current.all).toBeUndefined();
+    } finally {
+      server.events.removeListener('request:start', onRequestStart);
+    }
+  });
+
   it('reports an error and retries', async () => {
     let fail = true;
     server.use(

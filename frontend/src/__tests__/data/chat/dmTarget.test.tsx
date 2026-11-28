@@ -7,7 +7,7 @@
 import { createRef, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import { ClientEvents, ServerEvents } from '@semaphore-chat/shared';
@@ -25,6 +25,7 @@ import { useConversation } from '../../../data/chat/useConversation';
 import { useChannelComposer } from '../../../data/chat/useChannelComposer';
 import { useMessageActions } from '../../../data/chat/useMessageActions';
 import type { ChatTarget } from '../../../data/chat/chatTarget';
+import type { NotificationDto } from '../../../api-client/types.gen';
 
 vi.mock('../../../api-client/client.gen', async (importOriginal) => {
   const { createClient, createConfig } = await import('../../../api-client/client');
@@ -65,37 +66,34 @@ function servePages(newest: Message[], older: Message[] = []) {
   return requests;
 }
 
-/** Any community query: a DM has no community, so none may be sent. */
-function watchCommunityQueries() {
-  const hits: string[] = [];
-  server.use(
-    http.get(`${BASE}/api/channels/community/:communityId`, ({ request }) => {
-      hits.push(request.url);
-      return HttpResponse.json([]);
-    }),
-    http.get(`${BASE}/api/membership/community/:communityId`, ({ request }) => {
-      hits.push(request.url);
-      return HttpResponse.json([]);
-    }),
-  );
-  return hits;
-}
+/**
+ * Every request the app sends, by path. A DM has no community, so none may contain `/community/`. Recorded from
+ * `server.events` rather than from handlers: a leaked request goes to `/api/channels/community/` (no id), which a
+ * `:communityId` handler never matches, so a handler-based watch could never see it.
+ */
+let requestPaths: string[];
+let onRequestStart: ((event: { request: Request }) => void) | undefined;
 
 let queryClient: QueryClient;
 let socket: MockSocket;
 let bus: EventBus;
 
-function wrapper({ children }: { children: ReactNode }) {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <SocketContext.Provider value={{ socket: socket as never, isConnected: true }}>
-        <SocketHubContext.Provider value={bus}>
-          <MemoryRouter initialEntries={[`/direct-messages/${DM}`]}>{children}</MemoryRouter>
-        </SocketHubContext.Provider>
-      </SocketContext.Provider>
-    </QueryClientProvider>
-  );
+/** The providers around a hook, at `entry`, as the app mounts them. */
+function providerWrapper(entry: string) {
+  return function ProviderWrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <SocketContext.Provider value={{ socket: socket as never, isConnected: true }}>
+          <SocketHubContext.Provider value={bus}>
+            <MemoryRouter initialEntries={[entry]}>{children}</MemoryRouter>
+          </SocketHubContext.Provider>
+        </SocketContext.Provider>
+      </QueryClientProvider>
+    );
+  };
 }
+
+let wrapper: ({ children }: { children: ReactNode }) => ReactNode;
 
 beforeEach(() => {
   queryClient = createTestQueryClient();
@@ -103,9 +101,21 @@ beforeEach(() => {
   bus = createEventBus();
   clearComposerDrafts();
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  wrapper = providerWrapper(`/direct-messages/${DM}`);
+
+  requestPaths = [];
+  onRequestStart = ({ request }) => {
+    requestPaths.push(new URL(request.url).pathname);
+  };
+  server.events.on('request:start', onRequestStart);
+
+  // The conversation reads notifications (and marks the DM's unread ones read): none by default.
+  server.use(http.get(`${BASE}/api/notifications`, () => HttpResponse.json({ notifications: [], total: 0, unreadCount: 0 })));
 });
 
 afterEach(() => {
+  if (onRequestStart) server.events.removeListener('request:start', onRequestStart);
+  onRequestStart = undefined;
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -193,12 +203,58 @@ describe('useConversation on a DM target', () => {
     await waitFor(() => expect(conv.current.orderedMessages.map((m) => m.id)).toEqual(['m-1']));
   });
 
+  it("marks the group's unread notifications read while the conversation is shown", async () => {
+    servePages([dmMessage('m-1', 1)]);
+    const marked: string[] = [];
+    const notification: NotificationDto = {
+      id: 'notif-1',
+      userId: 'current-user-1',
+      type: 'DIRECT_MESSAGE',
+      messageId: 'm-1',
+      channelId: null,
+      directMessageGroupId: DM,
+      communityId: null,
+      authorId: 'other-user-1',
+      parentMessageId: null,
+      read: false,
+      dismissed: false,
+      createdAt: new Date(Date.UTC(2026, 10, 20, 9, 1)).toISOString(),
+    };
+    server.use(
+      http.get(`${BASE}/api/notifications`, () => HttpResponse.json({ notifications: [notification], total: 1, unreadCount: 1 })),
+      http.post(`${BASE}/api/notifications/:id/read`, ({ params }) => {
+        marked.push(String(params.id));
+        return HttpResponse.json({ ...notification, read: true });
+      }),
+    );
+    const { result } = renderHook(() => useConversation({ target: TARGET }), { wrapper });
+    await waitFor(() => expect(result.current.orderedMessages).toHaveLength(1));
+    // The notification names this group, so the DM context marks it read (a channel context would not).
+    await waitFor(() => expect(marked).toEqual(['notif-1']));
+  });
+
+  it('clears ?highlight= back to the DM screen path once the jump has settled', async () => {
+    servePages([dmMessage('m-1', 1)]);
+    const { result } = renderHook(
+      () => {
+        const location = useLocation();
+        return {
+          conversation: useConversation({ target: TARGET }),
+          url: `${location.pathname}${location.search}`,
+        };
+      },
+      { wrapper: providerWrapper(`/direct-messages/${DM}?highlight=m-1`) },
+    );
+
+    await waitFor(() => expect(result.current.conversation.orderedMessages).toHaveLength(1));
+    await waitFor(() => expect(result.current.url).toBe(`/direct-messages/${DM}`));
+  });
+
   it('sends no community query', async () => {
-    const hits = watchCommunityQueries();
     servePages([dmMessage('m-1', 1)]);
     const { result } = renderHook(() => useConversation({ target: TARGET }), { wrapper });
     await waitFor(() => expect(result.current.orderedMessages).toHaveLength(1));
-    expect(hits).toEqual([]);
+    expect(requestPaths.filter((path) => path.includes('/community/'))).toEqual([]);
   });
 });
 
@@ -250,7 +306,6 @@ describe('useChannelComposer on a DM target', () => {
   });
 
   it("offers the group's members to mention and sends the mention as a span", async () => {
-    const hits = watchCommunityQueries();
     const { result, type, send } = renderComposer();
     // The group (MSW: Test User and Other User) arrives with the first query.
     type('hi @oth');
@@ -271,7 +326,7 @@ describe('useChannelComposer on a DM target', () => {
     // Sent: the draft is gone and "typing" ended.
     expect(result.current.text).toBe('');
     expect(socket.emit).toHaveBeenCalledWith(ClientEvents.TYPING_STOP, { directMessageGroupId: DM });
-    expect(hits).toEqual([]);
+    expect(requestPaths.filter((path) => path.includes('/community/'))).toEqual([]);
   });
 
   it('picks a mention with Enter from the keyboard', async () => {
