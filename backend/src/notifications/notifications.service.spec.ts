@@ -2,7 +2,7 @@ import { PermissionsService } from '@/roles/permissions.service';
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { ConfigService } from '@nestjs/config';
-import { NotificationsService } from './notifications.service';
+import { NotificationsService, pushUrgency } from './notifications.service';
 
 import { DatabaseService } from '@/database/database.service';
 import { PushNotificationsService } from '@/push-notifications/push-notifications.service';
@@ -1833,7 +1833,30 @@ describe('NotificationsService', () => {
       expect(pushNotificationsService.sendToUser).toHaveBeenCalledWith(
         targetUserId,
         expect.objectContaining({ title: expect.any(String) }),
+        expect.anything(),
       );
+    });
+
+    it('sends the message and thread ids, with high urgency for a mention', async () => {
+      presenceService.isActive.mockResolvedValue(false);
+      const message = setupForPushTest();
+
+      await service.processMessageForNotifications(message as any);
+
+      const [, payload, options] =
+        pushNotificationsService.sendToUser.mock.calls[0];
+      const row = (await mockDatabase.notification.create.mock.results[0]
+        .value) as { messageId: string; parentMessageId: string | null };
+      expect(payload.data).toEqual(
+        expect.objectContaining({
+          messageId: row.messageId,
+          parentMessageId: row.parentMessageId,
+          channelId,
+          communityId: 'community-1',
+          type: NotificationType.USER_MENTION,
+        }),
+      );
+      expect(options).toEqual({ urgency: 'high' });
     });
 
     it('should always create notification record and emit WebSocket event regardless of active state', async () => {
@@ -1964,6 +1987,7 @@ describe('NotificationsService', () => {
             markReadToken: 'signed-token-value',
           }),
         }),
+        expect.anything(),
       );
     });
 
@@ -2071,6 +2095,7 @@ describe('NotificationsService', () => {
         expect.objectContaining({
           body: 'John Doe: Hello world',
         }),
+        expect.anything(),
       );
     });
 
@@ -2106,6 +2131,7 @@ describe('NotificationsService', () => {
         expect.objectContaining({
           body: 'John Doe mentioned you',
         }),
+        expect.anything(),
       );
     });
 
@@ -2160,6 +2186,7 @@ describe('NotificationsService', () => {
         expect.objectContaining({
           body: 'Hey there!',
         }),
+        expect.anything(),
       );
     });
 
@@ -2204,6 +2231,7 @@ describe('NotificationsService', () => {
         expect.objectContaining({
           body: 'New message',
         }),
+        expect.anything(),
       );
     });
 
@@ -2273,6 +2301,7 @@ describe('NotificationsService', () => {
         expect.objectContaining({
           body: 'John Doe: I agree!',
         }),
+        expect.anything(),
       );
     });
 
@@ -2345,6 +2374,7 @@ describe('NotificationsService', () => {
       expect(pushNotificationsService.sendToUser).toHaveBeenCalledWith(
         'subscriber-1',
         expect.anything(),
+        expect.anything(),
       );
       expect(pushNotificationsService.sendToUser).not.toHaveBeenCalledWith(
         'lost-access',
@@ -2400,6 +2430,7 @@ describe('NotificationsService', () => {
         expect.objectContaining({
           body: `John Doe: ${'A'.repeat(100)}...`,
         }),
+        expect.anything(),
       );
     });
 
@@ -2445,6 +2476,7 @@ describe('NotificationsService', () => {
         expect.objectContaining({
           body: 'John Doe: Hello World! Testing CaSe',
         }),
+        expect.anything(),
       );
     });
 
@@ -2498,6 +2530,7 @@ describe('NotificationsService', () => {
         expect.objectContaining({
           body: 'John Doe: Hello World',
         }),
+        expect.anything(),
       );
     });
   });
@@ -2710,5 +2743,17 @@ describe('NotificationsService', () => {
         }),
       ).toBe('Message from John');
     });
+  });
+});
+
+describe('pushUrgency', () => {
+  it.each([
+    [NotificationType.DIRECT_MESSAGE, 'high'],
+    [NotificationType.USER_MENTION, 'high'],
+    [NotificationType.SPECIAL_MENTION, 'high'],
+    [NotificationType.THREAD_REPLY, 'high'],
+    [NotificationType.CHANNEL_MESSAGE, 'normal'],
+  ])('%s is %s', (type, urgency) => {
+    expect(pushUrgency(type)).toBe(urgency);
   });
 });

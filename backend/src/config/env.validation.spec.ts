@@ -388,4 +388,26 @@ describe('validateEnv', () => {
       ).not.toThrow();
     });
   });
+
+  describe('PUSH_PRIVATE_HOSTS', () => {
+    it('accepts host names with optional ports', () => {
+      expect(() =>
+        validateEnv({
+          ...BASE_CONFIG,
+          PUSH_PRIVATE_HOSTS: 'ntfy.lan,ntfy.tailnet:8443',
+        }),
+      ).not.toThrow();
+    });
+
+    it('refuses an IP address, a wildcard and a bad port, naming each', () => {
+      expect(() =>
+        validateEnv({
+          ...BASE_CONFIG,
+          PUSH_PRIVATE_HOSTS: '192.168.1.5,*.lan,ntfy.lan:99999',
+        }),
+      ).toThrow(
+        /"192\.168\.1\.5": IP addresses[\s\S]*"\*\.lan": wildcards[\s\S]*"ntfy\.lan:99999": the port/,
+      );
+    });
+  });
 });

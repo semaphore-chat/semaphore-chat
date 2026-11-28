@@ -21,6 +21,7 @@ import {
   ValidateIf,
   validateSync,
 } from 'class-validator';
+import { parsePushPrivateHosts } from '@/push-notifications/push-private-hosts';
 
 export enum Environment {
   Development = 'development',
@@ -81,6 +82,12 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   VAPID_PRIVATE_KEY?: string;
+
+  // Push service hosts allowed on private networks (UnifiedPush on a LAN or
+  // tailnet). Parsed and checked in validateEnv.
+  @IsOptional()
+  @IsString()
+  PUSH_PRIVATE_HOSTS?: string;
 
   // Thumbnail backfill (issue #409) ---------------------------------------
 
@@ -278,6 +285,11 @@ export function validateEnv(
     errors.push(
       'VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set together (or both omitted).',
     );
+  }
+
+  // PUSH_PRIVATE_HOSTS: exact host names with an optional port
+  if (typeof config.PUSH_PRIVATE_HOSTS === 'string') {
+    errors.push(...parsePushPrivateHosts(config.PUSH_PRIVATE_HOSTS).errors);
   }
 
   // SMTP_USER / SMTP_PASS pair check — both or neither.

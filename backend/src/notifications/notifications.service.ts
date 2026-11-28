@@ -25,7 +25,10 @@ import { UpdateNotificationSettingsDto } from './dto/update-notification-setting
 import { UpdateChannelOverrideDto } from './dto/update-channel-override.dto';
 import { NotificationQueryDto } from './dto/notification-query.dto';
 import { NotificationsGateway } from './notifications.gateway';
-import { PushNotificationsService } from '@/push-notifications/push-notifications.service';
+import {
+  PushNotificationsService,
+  type PushUrgency,
+} from '@/push-notifications/push-notifications.service';
 import { PresenceService } from '@/presence/presence.service';
 import { flattenSpansToDisplayText } from '@/common/utils/text.utils';
 import { isDndActive } from './dnd.util';
@@ -63,6 +66,15 @@ type ThreadReplyTarget = Pick<
   Message,
   'id' | 'channelId' | 'directMessageGroupId' | 'authorId'
 >;
+
+/**
+ * RFC 8030 urgency for a notification's push: what is addressed to the user
+ * (a DM, a mention, a reply to their thread) is `high`, so a push service or
+ * a phone in Doze delivers it at once; a channel message is `normal`.
+ */
+export function pushUrgency(type: NotificationType): PushUrgency {
+  return type === NotificationType.CHANNEL_MESSAGE ? 'normal' : 'high';
+}
 
 @Injectable()
 export class NotificationsService {
@@ -688,19 +700,26 @@ export class NotificationsService {
         notification.id,
       );
 
-      await this.pushNotificationsService.sendToUser(userId, {
-        title,
-        body,
-        tag: notification.id, // Prevents duplicate notifications
-        data: {
-          notificationId: notification.id,
-          channelId: notification.channelId,
-          communityId: notification.channel?.communityId,
-          directMessageGroupId: notification.directMessageGroupId,
-          type: notification.type,
-          ...(markReadToken ? { markReadToken } : {}),
+      await this.pushNotificationsService.sendToUser(
+        userId,
+        {
+          title,
+          body,
+          tag: notification.id, // Prevents duplicate notifications
+          data: {
+            notificationId: notification.id,
+            channelId: notification.channelId,
+            communityId: notification.channel?.communityId,
+            directMessageGroupId: notification.directMessageGroupId,
+            // What a tap opens: the message, and its thread for a reply
+            messageId: notification.messageId,
+            parentMessageId: notification.parentMessageId,
+            type: notification.type,
+            ...(markReadToken ? { markReadToken } : {}),
+          },
         },
-      });
+        { urgency: pushUrgency(notification.type) },
+      );
 
       this.logger.debug(`Push notification sent to user ${userId}`);
     } catch (error) {

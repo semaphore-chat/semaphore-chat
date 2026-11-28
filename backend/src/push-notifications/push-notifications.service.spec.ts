@@ -3,10 +3,18 @@ import type { Mocked } from '@suites/doubles.jest';
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'node:crypto';
+import * as dns from 'node:dns';
+import type { Agent } from 'node:https';
 import { PushNotificationsService } from './push-notifications.service';
 import { DatabaseService } from '@/database/database.service';
 import { createMockDatabase } from '@/test-utils';
 import * as webpush from 'web-push';
+import * as publicAddress from '@/common/utils/public-address.util';
+import {
+  PUSH_PRIVATE_HOSTS,
+  PushPrivateHosts,
+  parsePushPrivateHosts,
+} from './push-private-hosts';
 
 // Mock web-push module
 jest.mock('web-push', () => ({
@@ -19,7 +27,8 @@ jest.mock('web-push', () => ({
 // public-address and e2e (test/security-users.e2e-spec.ts)
 jest.mock('@/common/utils/public-address.util', () => ({
   ...jest.requireActual('@/common/utils/public-address.util'),
-  isPublicUrl: () => Promise.resolve(true),
+  isPublicUrl: jest.fn(() => Promise.resolve(true)),
+  resolvesToPublicOrPrivateNetwork: jest.fn(() => Promise.resolve(true)),
 }));
 
 describe('PushNotificationsService', () => {
@@ -36,6 +45,8 @@ describe('PushNotificationsService', () => {
     const { unit, unitRef } = await TestBed.solitary(PushNotificationsService)
       .mock(DatabaseService)
       .final(mockDatabase)
+      .mock<PushPrivateHosts>(PUSH_PRIVATE_HOSTS)
+      .final(new PushPrivateHosts())
       .compile();
 
     service = unit;
@@ -401,6 +412,106 @@ describe('PushNotificationsService', () => {
     });
   });
 
+  describe('subscribe: endpoint rules and PUSH_PRIVATE_HOSTS', () => {
+    const keys = { p256dh: 'p', auth: 'a' };
+    const isPublicUrl = publicAddress.isPublicUrl as jest.Mock;
+    const resolvesPrivate =
+      publicAddress.resolvesToPublicOrPrivateNetwork as jest.Mock;
+
+    const withHosts = (raw: string) =>
+      new PushNotificationsService(
+        configService as unknown as ConfigService,
+        mockDatabase as unknown as DatabaseService,
+        parsePushPrivateHosts(raw).hosts,
+      );
+
+    beforeEach(() => {
+      mockDatabase.pushSubscription.count.mockResolvedValue(0);
+      mockDatabase.pushSubscription.upsert.mockResolvedValue({});
+    });
+
+    it('checks an unlisted host with the public-only rule', async () => {
+      await withHosts('ntfy.lan').subscribe('u', {
+        endpoint: 'https://ntfy.sh/upAbc?up=1',
+        keys,
+      });
+
+      expect(isPublicUrl).toHaveBeenCalledWith('ntfy.sh');
+      expect(resolvesPrivate).not.toHaveBeenCalled();
+    });
+
+    it('lets a listed host resolve to a private network', async () => {
+      await withHosts('ntfy.lan').subscribe('u', {
+        endpoint: 'https://NTFY.lan/upAbc?up=1',
+        keys,
+      });
+
+      expect(resolvesPrivate).toHaveBeenCalledWith('ntfy.lan');
+      expect(isPublicUrl).not.toHaveBeenCalled();
+    });
+
+    it('refuses a listed host whose addresses are not allowed', async () => {
+      resolvesPrivate.mockResolvedValueOnce(false);
+
+      await expect(
+        withHosts('ntfy.lan').subscribe('u', {
+          endpoint: 'https://ntfy.lan/up',
+          keys,
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockDatabase.pushSubscription.upsert).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a port no entry names', 'ntfy.lan:8443', 'https://ntfy.lan:9000/up'],
+      [
+        'a listed port on another host',
+        'ntfy.lan:8443',
+        'https://other.lan:8443/up',
+      ],
+      ['any non-default port without an entry', '', 'https://ntfy.sh:8443/up'],
+    ])('refuses %s', async (_what, raw, endpoint) => {
+      await expect(
+        withHosts(raw).subscribe('u', { endpoint, keys }),
+      ).rejects.toThrow(BadRequestException);
+      expect(isPublicUrl).not.toHaveBeenCalled();
+      expect(resolvesPrivate).not.toHaveBeenCalled();
+    });
+
+    it('accepts the port an entry names', async () => {
+      await withHosts('ntfy.lan:8443').subscribe('u', {
+        endpoint: 'https://ntfy.lan:8443/up',
+        keys,
+      });
+
+      expect(resolvesPrivate).toHaveBeenCalledWith('ntfy.lan');
+      expect(mockDatabase.pushSubscription.upsert).toHaveBeenCalled();
+    });
+
+    it('treats an explicit :443 as the default port', async () => {
+      await withHosts('').subscribe('u', {
+        endpoint: 'https://ntfy.sh:443/up',
+        keys,
+      });
+
+      expect(isPublicUrl).toHaveBeenCalledWith('ntfy.sh');
+    });
+
+    it.each([
+      [
+        'a percent-encoded dot in the host',
+        'https://127.0.0.1%2Eexample.com/up',
+      ],
+      ['a host containing braces', 'https://n{tfy}.lan/up'],
+    ])('refuses %s', async (_what, endpoint) => {
+      await expect(
+        withHosts('').subscribe('u', { endpoint, keys }),
+      ).rejects.toThrow(BadRequestException);
+      expect(isPublicUrl).not.toHaveBeenCalled();
+      expect(resolvesPrivate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('unsubscribe', () => {
     it('should delete subscription from database', async () => {
       const userId = 'user-123';
@@ -458,6 +569,7 @@ describe('PushNotificationsService', () => {
       const unconfiguredService = new PushNotificationsService(
         configService as unknown as ConfigService,
         mockDatabase as unknown as DatabaseService,
+        new PushPrivateHosts(),
       );
       // Don't call onModuleInit — service stays unconfigured
 
@@ -500,6 +612,74 @@ describe('PushNotificationsService', () => {
 
       expect(result).toEqual({ sent: 2, failed: 0 });
       expect(webpush.sendNotification).toHaveBeenCalledTimes(2);
+    });
+
+    it('sends aes128gcm with normal urgency by default', async () => {
+      mockDatabase.pushSubscription.findMany.mockResolvedValue([
+        {
+          id: 'sub-1',
+          userId,
+          endpoint: 'https://push1.example.com/x',
+          keys: { p256dh: 'key1', auth: 'auth1' },
+        },
+      ]);
+      (webpush.sendNotification as jest.Mock).mockResolvedValue({});
+
+      await service.sendToUser(userId, payload);
+
+      expect(webpush.sendNotification).toHaveBeenCalledWith(
+        {
+          endpoint: 'https://push1.example.com/x',
+          keys: { p256dh: 'key1', auth: 'auth1' },
+        },
+        JSON.stringify(payload),
+        expect.objectContaining({
+          contentEncoding: 'aes128gcm',
+          urgency: 'normal',
+          TTL: 86400,
+          agent: expect.anything(),
+        }),
+      );
+    });
+
+    it('passes the urgency it is given', async () => {
+      mockDatabase.pushSubscription.findMany.mockResolvedValue([
+        {
+          id: 'sub-1',
+          userId,
+          endpoint: 'https://push1.example.com/x',
+          keys: { p256dh: 'key1', auth: 'auth1' },
+        },
+      ]);
+      (webpush.sendNotification as jest.Mock).mockResolvedValue({});
+
+      await service.sendToUser(userId, payload, { urgency: 'high' });
+
+      expect(webpush.sendNotification).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ urgency: 'high' }),
+      );
+    });
+
+    it('drops a stored subscription on a port that is no longer listed', async () => {
+      mockDatabase.pushSubscription.findMany.mockResolvedValue([
+        {
+          id: 'sub-old',
+          userId,
+          endpoint: 'https://ntfy.lan:8443/up',
+          keys: { p256dh: 'key1', auth: 'auth1' },
+        },
+      ]);
+      mockDatabase.pushSubscription.delete.mockResolvedValue({});
+
+      const result = await service.sendToUser(userId, payload);
+
+      expect(result).toEqual({ sent: 0, failed: 1 });
+      expect(webpush.sendNotification).not.toHaveBeenCalled();
+      expect(mockDatabase.pushSubscription.delete).toHaveBeenCalledWith({
+        where: { id: 'sub-old' },
+      });
     });
 
     it('should send in chunks of at most five at a time', async () => {
@@ -576,6 +756,113 @@ describe('PushNotificationsService', () => {
       expect(mockDatabase.pushSubscription.delete).toHaveBeenCalledWith({
         where: { id: 'sub-1' },
       });
+    });
+  });
+
+  describe('the agent a send uses', () => {
+    const userId = 'user-123';
+    const payload = { title: 'Test Notification', body: 'Test body' };
+
+    /** Makes every name resolve through `table` (unknown names fail). */
+    function fakeDns(table: Record<string, string>): void {
+      jest.spyOn(dns, 'lookup').mockImplementation(((
+        host: string,
+        _options: unknown,
+        callback: (
+          error: NodeJS.ErrnoException | null,
+          address: string,
+          family: number,
+        ) => void,
+      ) => {
+        const address = table[host];
+        if (!address) {
+          callback(
+            Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }),
+            '',
+            0,
+          );
+          return;
+        }
+        callback(null, address, address.includes(':') ? 6 : 4);
+      }) as never);
+    }
+
+    /** The agent handle web-push is given when it sends to `endpoint`. */
+    async function agentFor(
+      rawHosts: string,
+      endpoint: string,
+    ): Promise<Agent> {
+      const pushService = new PushNotificationsService(
+        configService as unknown as ConfigService,
+        mockDatabase as unknown as DatabaseService,
+        parsePushPrivateHosts(rawHosts).hosts,
+      );
+      configService.get.mockImplementation((key: string) => {
+        if (key === 'VAPID_PUBLIC_KEY') return mockVapidPublicKey;
+        if (key === 'VAPID_PRIVATE_KEY') return mockVapidPrivateKey;
+        return undefined;
+      });
+      await pushService.onModuleInit();
+      mockDatabase.pushSubscription.findMany.mockResolvedValue([
+        {
+          id: 'sub-1',
+          userId,
+          endpoint,
+          keys: { p256dh: 'key1', auth: 'auth1' },
+        },
+      ]);
+      (webpush.sendNotification as jest.Mock).mockResolvedValue({});
+
+      await pushService.sendToUser(userId, payload);
+
+      const calls = (webpush.sendNotification as jest.Mock).mock.calls;
+      return calls[calls.length - 1][2].agent as Agent;
+    }
+
+    function lookupWith(
+      agent: Agent,
+      host: string,
+    ): Promise<NodeJS.ErrnoException | null> {
+      const lookup = agent.options.lookup;
+      if (!lookup) throw new Error('the agent has no lookup');
+      return new Promise((resolve) => {
+        lookup(host, {}, (error) => resolve(error));
+      });
+    }
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('allows a listed host that resolves to a LAN address', async () => {
+      fakeDns({ 'ntfy.lan': '192.168.1.5' });
+      const agent = await agentFor('ntfy.lan', 'https://ntfy.lan/up');
+
+      await expect(lookupWith(agent, 'ntfy.lan')).resolves.toBeNull();
+    });
+
+    it('refuses an unlisted host that resolves to a LAN address', async () => {
+      fakeDns({ 'other.lan': '192.168.1.5' });
+      const agent = await agentFor('ntfy.lan', 'https://other.lan/up');
+
+      expect((await lookupWith(agent, 'other.lan'))?.code).toBe('ENOTFOUND');
+    });
+
+    it.each([
+      ['loopback', '127.0.0.1'],
+      ['the metadata service', '169.254.169.254'],
+      ['an IPv4-mapped LAN address', '::ffff:192.168.1.5'],
+    ])('refuses a listed host resolving to %s', async (_what, address) => {
+      fakeDns({ 'ntfy.lan': address });
+      const agent = await agentFor('ntfy.lan', 'https://ntfy.lan/up');
+
+      expect((await lookupWith(agent, 'ntfy.lan'))?.code).toBe('ENOTFOUND');
+    });
+
+    it('refuses an IP literal at connection time, without a lookup', async () => {
+      const agent = await agentFor('', 'https://ntfy.sh/up');
+
+      expect(() =>
+        agent.createConnection({ host: '127.0.0.1', port: 443 }),
+      ).toThrow(/non-public/);
     });
   });
 

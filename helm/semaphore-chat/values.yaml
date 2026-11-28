@@ -113,6 +113,9 @@ backend:
   #           key: GIPHY_API_KEY
   #     - name: JOB_WORKER_CONCURRENCY
   #       value: "4"
+  #     # Push services on a private network (UnifiedPush, self-hosted ntfy)
+  #     - name: PUSH_PRIVATE_HOSTS
+  #       value: "ntfy.home.arpa"
   extraEnv: []
 
   # Pod annotations

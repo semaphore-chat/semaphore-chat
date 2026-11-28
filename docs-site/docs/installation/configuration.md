@@ -153,6 +153,7 @@ Web Push notifications require VAPID keys. Each instance needs its own unique ke
 | `VAPID_PUBLIC_KEY` | VAPID public key | *(generate with command below)* |
 | `VAPID_PRIVATE_KEY` | VAPID private key | *(generate with command below)* |
 | `VAPID_SUBJECT` | Contact email for VAPID | `mailto:admin@your-instance.com` |
+| `PUSH_PRIVATE_HOSTS` | Push service hosts allowed on a private network (a self-hosted ntfy for UnifiedPush). Comma-separated exact host names with an optional `:port`. See [Push notifications](push-notifications.md#self-hosted-ntfy-on-a-private-network) | *(empty: public push services only)* |
 
 Generate VAPID keys:
 

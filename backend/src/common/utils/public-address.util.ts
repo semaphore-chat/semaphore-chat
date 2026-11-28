@@ -100,30 +100,140 @@ export async function isPublicUrl(hostname: string): Promise<boolean> {
 }
 
 /**
+ * The non-public ranges an operator may let push endpoints reach (the
+ * `PUSH_PRIVATE_HOSTS` allowlist): private networks a self-hosted push
+ * service lives on. Everything else outside the public internet (loopback,
+ * link-local and the cloud metadata service, multicast, reserved, the
+ * IPv4-embedding IPv6 forms) stays refused for every host.
+ */
+const PRIVATE_NETWORK_IPV4: ReadonlyArray<readonly [string, number]> = [
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10], // CGNAT: Tailscale and similar overlays
+  ['172.16.0.0', 12],
+  ['192.168.0.0', 16],
+];
+
+const PRIVATE_NETWORK_IPV6: ReadonlyArray<readonly [string, number]> = [
+  ['fc00::', 7], // unique local
+];
+
+const privateNetworkIpv4 = new BlockList();
+for (const [network, prefix] of PRIVATE_NETWORK_IPV4) {
+  privateNetworkIpv4.addSubnet(network, prefix, 'ipv4');
+}
+const privateNetworkIpv6 = new BlockList();
+for (const [network, prefix] of PRIVATE_NETWORK_IPV6) {
+  privateNetworkIpv6.addSubnet(network, prefix, 'ipv6');
+}
+
+/**
+ * Addresses that no push endpoint may reach even when an operator lists its
+ * host: cloud instance metadata and credential services. Some sit inside a
+ * range an operator may otherwise allow (link-local or IPv4 CGNAT), hence the
+ * separate list, checked first.
+ */
+const ALWAYS_FORBIDDEN_ADDRESSES: Readonly<Record<string, true>> = {
+  '100.100.100.200': true,
+  '100.100.100.100': true,
+  'fd00:ec2::254': true,
+  'fd20:ce::254': true,
+};
+
+/**
+ * Where an address points: the public internet, a private network an
+ * operator may allow (see `PRIVATE_NETWORK_IPV4`), or somewhere no outbound
+ * request may ever reach. Anything that isn't a valid address is forbidden.
+ */
+export type AddressClass = 'public' | 'private-network' | 'forbidden';
+
+export function classifyAddress(address: string): AddressClass {
+  const normalized = normalizeAddress(address);
+  const family = isIP(normalized);
+  if (family === 0) return 'forbidden';
+  if (ALWAYS_FORBIDDEN_ADDRESSES[normalized.toLowerCase()]) {
+    return 'forbidden';
+  }
+  if (!isPrivateIp(normalized)) return 'public';
+  const privateNetwork =
+    family === 4
+      ? privateNetworkIpv4.check(normalized, 'ipv4')
+      : privateNetworkIpv6.check(normalized, 'ipv6');
+  return privateNetwork ? 'private-network' : 'forbidden';
+}
+
+/**
+ * Whether every address may be reached: all public, or, when
+ * `allowPrivateNetwork`, each public or on a private network. An empty list
+ * is refused.
+ */
+function addressesAllowed(
+  addresses: string[],
+  allowPrivateNetwork: boolean,
+): boolean {
+  if (addresses.length === 0) return false;
+  return addresses.every((address) => {
+    const kind = classifyAddress(address);
+    return (
+      kind === 'public' || (allowPrivateNetwork && kind === 'private-network')
+    );
+  });
+}
+
+/**
+ * `isPublicUrl` for a host an operator has allowed onto private networks:
+ * every address it resolves to must be public or private-network, never
+ * loopback, link-local or another forbidden range. IP literals are refused
+ * outright (an allowlist names hosts). Fails closed when the name doesn't
+ * resolve.
+ */
+export async function resolvesToPublicOrPrivateNetwork(
+  hostname: string,
+): Promise<boolean> {
+  if (isIP(normalizeAddress(hostname)) !== 0) return false;
+  try {
+    const results = await dns.lookup(hostname, { all: true });
+    return addressesAllowed(
+      results.map((r) => r.address),
+      true,
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A `lookup` for HTTP agents that refuses, at connection time, every address
+ * `addressesAllowed` refuses, so a name can't pass a check and then resolve
+ * somewhere internal. `allowPrivateNetwork(hostname)` names the hosts that
+ * may reach private networks (never loopback or link-local).
+ */
+export function guardedLookup(
+  allowPrivateNetwork: (hostname: string) => boolean,
+): LookupFunction {
+  return (hostname, options, callback) => {
+    dnsLookup(hostname, options, (error, address, family) => {
+      if (error) {
+        callback(error, address, family);
+        return;
+      }
+      const addresses: string[] = Array.isArray(address)
+        ? address.map((entry: { address: string }) => entry.address)
+        : [address];
+      if (!addressesAllowed(addresses, allowPrivateNetwork(hostname))) {
+        const refused: NodeJS.ErrnoException = new Error(
+          `Refusing to connect to a non-public address for ${hostname}`,
+        );
+        refused.code = 'ENOTFOUND';
+        callback(refused, address, family);
+        return;
+      }
+      callback(null, address, family);
+    });
+  };
+}
+
+/**
  * A `lookup` for HTTP agents that refuses non-public addresses at connection
  * time, so a name can't pass a check and then resolve somewhere internal.
  */
-export const publicOnlyLookup: LookupFunction = (
-  hostname,
-  options,
-  callback,
-) => {
-  dnsLookup(hostname, options, (error, address, family) => {
-    if (error) {
-      callback(error, address, family);
-      return;
-    }
-    const addresses: string[] = Array.isArray(address)
-      ? address.map((entry: { address: string }) => entry.address)
-      : [address];
-    if (addresses.some((candidate) => isPrivateIp(candidate))) {
-      const refused: NodeJS.ErrnoException = new Error(
-        `Refusing to connect to a non-public address for ${hostname}`,
-      );
-      refused.code = 'ENOTFOUND';
-      callback(refused, address, family);
-      return;
-    }
-    callback(null, address, family);
-  });
-};
+export const publicOnlyLookup: LookupFunction = guardedLookup(() => false);
