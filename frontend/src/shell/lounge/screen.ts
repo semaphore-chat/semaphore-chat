@@ -7,7 +7,7 @@
  * keeps the dock, the left island (its scroll and focus), the members island and the call bar mounted.
  * A descriptor is plain data a native shell can mirror.
  */
-import { createContext, useContext, type ComponentType } from 'react';
+import { createContext, useContext, type ComponentType, type ReactNode } from 'react';
 import type { LoungeLinks } from './links';
 
 /** Params of the matched pattern, as react-router's matchPath returns them. */
@@ -52,7 +52,74 @@ export interface BareScreen {
   readonly useTitle: UseScreenTitle;
 }
 
-export type LoungeScreen = ThreeIslandsScreen | BareScreen;
+/**
+ * The settings template (kit `SettingsLayout`): a screen's sections in the nav island and the chosen section in the
+ * content island, with the shell's dock above the nav and the call bar under it (the guide's "Settings with side
+ * navigation"; the call bar keeps the call's controls on screen, so nobody is deafened without a way back).
+ */
+export interface SettingsScreen {
+  readonly template: 'settings';
+  /**
+   * Which dock item is current: a community's settings name their community (`:communityId`), a user's settings
+   * none.
+   */
+  readonly place: 'community' | 'none';
+  /** Which pane a phone shows: the list of sections, or one section. */
+  readonly phonePane: 'nav' | 'content';
+  /** The sections, usually ListRows, with the way out of settings first ("Back to Couch Co-op"). */
+  readonly Nav: ComponentType<LoungeScreenProps>;
+  /** Names the nav landmark. Defaults to "Settings sections". */
+  readonly navLabel?: string;
+  /** The section. It can pin a bar to the bottom of its island (unsaved changes) with `useSettingsChrome`. */
+  readonly Content: ComponentType<LoungeScreenProps>;
+  /** Where a phone's content pane goes Back to: the list of sections. */
+  readonly phoneBackTo: (params: LoungeParams) => string;
+  readonly useTitle: UseScreenTitle;
+  /** Test fixtures only, as `ThreeIslandsScreen.links`. */
+  readonly links?: LoungeLinks;
+}
+
+/**
+ * The stage template (a voice or video room, a call's video). At compact and wide the room is the centre of the three
+ * islands, with the dock, the place's left island (the community's channels and rooms, as the Voice mock-up) and the
+ * call bar beside it, and no right island; it keeps the same frame as the chat, so moving between a channel and a
+ * room keeps those pieces mounted. On a phone it is the full stage: the room fills the frame with no dock bar, and the
+ * call bar only while the room shown is not the call you are in (`useShowsCall`): its own controls are then the
+ * call's. The screen renders a kit `StageLayout` with `inIsland` (the template's island is the main at every width):
+ * header, stage, strip and controls.
+ */
+export interface StageScreen {
+  readonly template: 'stage';
+  /** Which of the shell's left islands shows beside the room at compact and wide. */
+  readonly place: 'community' | 'inbox';
+  /** The room: a kit `StageLayout` with `inIsland`. */
+  readonly Stage: ComponentType<LoungeScreenProps>;
+  /**
+   * Whether the room shown is the call you are in, so its controls (mute, deafen, leave) are on screen: a phone then
+   * leaves the call bar out. A room you are not in (before joining, or another room) keeps the bar.
+   */
+  readonly useShowsCall: (params: LoungeParams) => boolean;
+  readonly useTitle: UseScreenTitle;
+  /** Test fixtures only, as `ThreeIslandsScreen.links`. */
+  readonly links?: LoungeLinks;
+}
+
+export type LoungeScreen = ThreeIslandsScreen | StageScreen | SettingsScreen | BareScreen;
+
+/** Screen-to-frame state of the settings template. */
+export interface SettingsChrome {
+  /** Pins a bar to the bottom of the content island ("2 unsaved changes", Reset, Save), or clears it (null). */
+  setFooter(footer: ReactNode): void;
+}
+
+export const NO_SETTINGS_CHROME: SettingsChrome = { setFooter: () => undefined };
+
+export const SettingsChromeContext = createContext<SettingsChrome>(NO_SETTINGS_CHROME);
+
+/** For a settings section: the frame's footer slot. A section clears its own footer when it goes (an effect's cleanup). */
+export function useSettingsChrome(): SettingsChrome {
+  return useContext(SettingsChromeContext);
+}
 
 /**
  * A screen's own panel in the right region (design §3 PR 10e, B9): a thread or the pinned messages, shown in place

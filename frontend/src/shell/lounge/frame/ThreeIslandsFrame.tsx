@@ -9,10 +9,14 @@
  * `hidden` and `inert`, so its scroll and data survive and nothing in it can be reached; the screen portals the
  * panel's content into the frame's slot (`panelTarget`). At compact and wide it hosts the desktop shortcuts
  * (`LoungeShortcuts`).
+ *
+ * It also renders the `stage` template (a room): the same component, so moving between a channel and a room keeps the
+ * dock, the left island and the call bar mounted at compact and wide. A stage has no right island; on a phone it is
+ * the full stage (no dock bar, and no call bar while the room is the call you are in).
  */
 import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react';
 import { ESCAPE_PRIORITY, ThreeIslands, useScreenEscape, useWidthRange } from '../../../kit';
-import type { LoungeParams, RightPanel, ScreenChrome, ThreeIslandsScreen } from '../screen';
+import type { LoungeParams, RightPanel, ScreenChrome, StageScreen, ThreeIslandsScreen } from '../screen';
 import { ScreenChromeContext } from '../screen';
 import { APP_LINKS, LoungeLinksContext } from '../links';
 import { SignOutConfirmHost } from '../pieces/signOutConfirm';
@@ -30,8 +34,14 @@ import { ScreenBoundary } from './ScreenBoundary';
 import { ScreenError } from './ScreenError';
 
 export interface ThreeIslandsFrameProps {
-  screen: ThreeIslandsScreen;
+  /**
+   * A three-islands screen, or a stage (a room): at compact and wide the room is the centre, with no right island;
+   * on a phone it is the full stage, with no dock bar, and no call bar while `showsCall`.
+   */
+  screen: ThreeIslandsScreen | StageScreen;
   params: LoungeParams;
+  /** A stage showing the call you are in (`StageScreen.useShowsCall`): its own controls are the call's. */
+  showsCall?: boolean;
   /** The path: a crashed centre is cleared on the next path (another channel too). */
   resetKey: string;
   title: string | null;
@@ -70,7 +80,7 @@ function RightRegion({
   );
 }
 
-function dockCurrent(screen: ThreeIslandsScreen, params: LoungeParams): DockCurrent {
+function dockCurrent(screen: ThreeIslandsScreen | StageScreen, params: LoungeParams): DockCurrent {
   if (screen.place === 'inbox') return { kind: 'inbox' };
   return params.communityId ? { kind: 'community', id: params.communityId } : null;
 }
@@ -89,6 +99,7 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
   params,
   resetKey,
   title,
+  showsCall = false,
   callShown,
 }: ThreeIslandsFrameProps & { callShown: boolean }): JSX.Element {
   const range = useWidthRange();
@@ -152,8 +163,13 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
     [rightChoice, range, showRight, panel, panelTarget],
   );
 
-  const { Centre, right } = screen;
+  const stage = screen.template === 'stage';
+  const Centre = stage ? screen.Stage : screen.Centre;
+  const right = stage ? null : screen.right;
   const communityId = params.communityId ?? null;
+  const phone = range === 'phone';
+  // The full stage on a phone: the room alone, its controls the call's while it shows the call you are in.
+  const fullStage = stage && phone;
   const defaultRight =
     right === 'members' ? (
       communityId === null ? undefined : <MembersIslandConnected communityId={communityId} />
@@ -167,7 +183,7 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
     shownPanel === null && defaultRight === undefined ? undefined : (
       <RightRegion under={defaultRight} panel={shownPanel} onTarget={setPanelTarget} />
     );
-  const defaultLabel = screen.rightLabel ?? (right === 'members' ? 'Members' : undefined);
+  const defaultLabel = (stage ? undefined : screen.rightLabel) ?? (right === 'members' ? 'Members' : undefined);
 
   return (
     <ScreenChromeContext value={chrome}>
@@ -176,7 +192,11 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
         <SignOutConfirmHost>
           <div ref={rootRef} style={{ display: 'contents' }}>
           <ThreeIslands
-            dock={<ShellDockConnected current={dockCurrent(screen, params)} onOpenAll={() => setAllOpen(true)} allOpen={allOpen} />}
+            dock={
+              fullStage ? undefined : (
+                <ShellDockConnected current={dockCurrent(screen, params)} onOpenAll={() => setAllOpen(true)} allOpen={allOpen} />
+              )
+            }
             left={
               screen.place === 'community' ? (
                 communityId === null ? null : (
@@ -204,8 +224,8 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
             onRightClose={panel !== null ? closePanel : () => setRightChoice(false)}
             onRightExited={() => setClosing(null)}
             rightFill={shownPanel?.fill === true}
-            callBar={callShown ? <ShellCall /> : undefined}
-            phonePane={screen.phonePane}
+            callBar={callShown && !(fullStage && showsCall) ? <ShellCall /> : undefined}
+            phonePane={stage ? 'centre' : screen.phonePane}
           />
           </div>
           {/* The desktop shortcuts: compact and wide (a phone has no keyboard shortcuts). */}

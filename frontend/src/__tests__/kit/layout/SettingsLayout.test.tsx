@@ -181,3 +181,46 @@ describe('SettingsLayout: a footer that is not there', () => {
     expect(document.querySelector('[data-slot="footer"]')).toBeNull();
   });
 });
+
+describe("SettingsLayout: the shell's pieces (dock, nav footer, call bar)", () => {
+  const pieces = {
+    dock: <div data-testid="dock">dock</div>,
+    navFooter: <p>your card</p>,
+    callBar: <button type="button">Deafen</button>,
+  };
+
+  it.each([
+    ['wide', WIDTH.wide],
+    ['compact', WIDTH.compact],
+  ])('at %s: the dock, the nav (its footer inside), the call bar, then the content, in that order', (_name, width) => {
+    mockViewport(width);
+    renderSettings(pieces);
+    const dock = screen.getByTestId('dock');
+    const nav = screen.getByRole('navigation', { name: 'Settings sections' });
+    const bar = screen.getByRole('button', { name: 'Deafen' });
+    const main = screen.getByRole('main');
+    expect(within(nav).getByText('your card')).toBeInTheDocument();
+    const order = [dock, nav, bar, main];
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(bar.closest('[data-slot="call-bar"]')).not.toBeNull();
+  });
+
+  it('on a phone: the shown pane, then the call bar, then the dock bar', () => {
+    mockViewport(WIDTH.phone);
+    renderSettings({ ...pieces, phonePane: 'content' });
+    const main = screen.getByRole('main');
+    const bar = screen.getByRole('button', { name: 'Deafen' });
+    const dock = screen.getByTestId('dock');
+    expect(main.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bar.compareDocumentPosition(dock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('without them nothing is added', () => {
+    mockViewport(WIDTH.wide);
+    renderSettings();
+    expect(document.querySelector('[data-slot="call-bar"]')).toBeNull();
+    expect(screen.queryByTestId('dock')).toBeNull();
+  });
+});

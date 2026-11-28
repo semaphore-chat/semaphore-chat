@@ -11,6 +11,8 @@ import { atMedia, media, useWidthRange } from './breakpoints';
 import { Pane } from './Pane';
 import { isPresent } from './present';
 import { useFollowFocus } from './useFollowFocus';
+import { useKeyboardInset } from './useKeyboardInset';
+import { CallSlot, DockSlot, leftColumnGrid, phoneColumnGrid } from './leftColumnGrid';
 
 export interface SettingsLayoutProps {
   /** The page's heading: shown on the nav island (and on the content pane's header on a phone), and names the main. */
@@ -27,22 +29,35 @@ export interface SettingsLayoutProps {
   onBack: () => void;
   /** A bar pinned to the bottom of the content island, such as "unsaved changes". */
   footer?: ReactNode;
+  /** A kit Dock. Above the nav island at compact and wide, the bar at the bottom of a phone (left out while the keyboard is up). */
+  dock?: ReactNode;
+  /** Stays at the foot of the nav island while the rest of it scrolls (the user's own card). */
+  navFooter?: ReactNode;
+  /**
+   * The persistent in-call strip, as in ThreeIslands: at compact and wide under the nav island, at the bottom of the
+   * left column; on a phone between the shown pane and the dock bar, whichever pane shows.
+   */
+  callBar?: ReactNode;
 }
 
-const Grid = styled('div')({
+interface GridProps {
+  $dock: boolean;
+  $call: boolean;
+  $keyboard: boolean;
+}
+
+/** Written from the compact range up, as ThreeIslands' grid. */
+const Grid = styled('div', { shouldForwardProp: transientProps })<GridProps>(({ $dock, $call, $keyboard }) => ({
   flex: '1 1 0',
   minWidth: 0,
   minHeight: 0,
   display: 'grid',
   gap: `${tokens.layout.gutter}px`,
-  gridTemplateRows: 'minmax(0, 1fr)',
-  gridTemplateColumns: `${tokens.layout.leftColumn}px minmax(0, 1fr)`,
-  gridTemplateAreas: '"nav content"',
-  [atMedia(media.phone)]: {
-    gridTemplateColumns: 'minmax(0, 1fr)',
-    gridTemplateAreas: '"pane"',
-  },
-});
+  // A size container: the call slot's video is capped against the height this grid really has, in `cqh`.
+  containerType: 'size',
+  ...leftColumnGrid({ dock: $dock, call: $call, column: 'nav', rest: ['content'], restColumns: ['minmax(0, 1fr)'] }),
+  [atMedia(media.phone)]: phoneColumnGrid({ dock: $dock, call: $call, keyboard: $keyboard }),
+}));
 
 const PhonePane = styled(Pane)({ [atMedia(media.phone)]: { gridArea: 'pane' } });
 
@@ -95,7 +110,12 @@ const Footer = styled('div')(({ theme }) => ({
  *   mounted but `hidden` and `inert`, so what was typed in it survives and nothing in it can be reached.
  *   While the nav pane is the one shown it sits in a `main`, so the page still has exactly one.
  * When the pane that holds focus stops being shown, focus moves to the pane now shown. A `footer` that is
- * `undefined`, `null`, `false` or `''` leaves no bar. Render inside an `AppFrame`.
+ * `undefined`, `null`, `false` or `''` leaves no bar.
+ * - The shell's pieces, as in ThreeIslands (same rows, same order): `dock` above the nav island and `callBar` under
+ *   it at compact and wide; on a phone the shown pane, then the call bar, then the dock bar (left out while the
+ *   on-screen keyboard is up). `navFooter` stays at the nav island's foot. The dock and the call bar are rebuilt when
+ *   the width changes (they move); the nav and the content are not.
+ * Render inside an `AppFrame`.
  */
 export function SettingsLayout({
   title,
@@ -105,8 +125,14 @@ export function SettingsLayout({
   phonePane = 'nav',
   onBack,
   footer,
+  dock,
+  navFooter,
+  callBar,
 }: SettingsLayoutProps): JSX.Element {
   const phone = useWidthRange() === 'phone';
+  const keyboard = useKeyboardInset() > 0;
+  const hasCall = isPresent(callBar);
+  const hasDock = isPresent(dock) && !(phone && keyboard);
   const showNav = !phone || phonePane === 'nav';
   const showContent = !phone || phonePane === 'content';
   const navRef = useRef<HTMLDivElement>(null);
@@ -119,7 +145,8 @@ export function SettingsLayout({
     phone && phonePane === 'nav' ? 'nav' : 'content',
   );
   return (
-    <Grid>
+    <Grid $dock={hasDock} $call={hasCall} $keyboard={keyboard}>
+      {!phone && hasDock && <DockSlot data-slot="dock">{dock}</DockSlot>}
       <PhonePane
         ref={navRef}
         tabIndex={-1}
@@ -129,13 +156,14 @@ export function SettingsLayout({
         role={phone && showNav ? 'main' : undefined}
         data-kit-toast-anchor={phone && showNav ? '' : undefined}
       >
-        <Island as="nav" label={navLabel} padding="md" scroll>
+        <Island as="nav" label={navLabel} padding="md" scroll footer={isPresent(navFooter) ? navFooter : null}>
           <Text variant="title" as="h1">
             {title}
           </Text>
           <NavBody>{nav}</NavBody>
         </Island>
       </PhonePane>
+      {!phone && hasCall && <CallSlot data-slot="call-bar">{callBar}</CallSlot>}
       <PhonePane
         ref={contentRef}
         tabIndex={-1}
@@ -163,6 +191,8 @@ export function SettingsLayout({
           </Column>
         </Island>
       </PhonePane>
+      {phone && hasCall && <CallSlot data-slot="call-bar">{callBar}</CallSlot>}
+      {phone && hasDock && <DockSlot data-slot="dock">{dock}</DockSlot>}
     </Grid>
   );
 }

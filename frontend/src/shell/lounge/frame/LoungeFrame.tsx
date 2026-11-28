@@ -1,6 +1,6 @@
 /**
- * The Lounge frame (design §4, PA-1): resolves the route's screen descriptor and renders its template
- * with the shell's pieces, the banner row, the shell's page effects and route focus. Everything here
+ * The Lounge frame (design §4, PA-1): resolves the route's screen descriptor and renders its template (`bare`,
+ * `threeIslands` and `stage` in ThreeIslandsFrame, `settings` in SettingsFrame) with the shell's pieces, the banner row, the shell's page effects and route focus. Everything here
  * runs inside the KitProvider that LoungeRoot mounts.
  *
  * The descriptor is read through a per-route cache that suspends until it has loaded. Navigation is a transition (the
@@ -12,7 +12,7 @@ import { useLocation } from 'react-router-dom';
 import { AppFrame, useWidthRange } from '../../../kit';
 import type { LoungeChoice } from '../../chooseShell';
 import type { LoungeRoute } from '../../loungeRoutes';
-import type { LoungeParams, LoungeScreen, UseScreenTitle } from '../screen';
+import type { LoungeParams, LoungeScreen, StageScreen, UseScreenTitle } from '../screen';
 import { ShellBanners } from '../pieces/ShellBanners';
 import { useShellBannersModel, visibleBanners } from '../pieces/shellBannersModel';
 import { ScreenBoundary } from './ScreenBoundary';
@@ -20,6 +20,7 @@ import { ScreenError } from './ScreenError';
 import { ShellEffects } from './ShellEffects';
 import { RouteFocus } from './RouteFocus';
 import { ThreeIslandsFrame } from './ThreeIslandsFrame';
+import { SettingsFrame } from './SettingsFrame';
 import { notePathname } from '../../routeMemory';
 
 type ScreenLoad =
@@ -79,6 +80,21 @@ function TitleProbe({
   return null;
 }
 
+/** Runs a stage's `useShowsCall`, in a component of its own per route, as the title probe. */
+function ShowsCallProbe({
+  useShowsCall,
+  params,
+  onValue,
+}: {
+  useShowsCall: StageScreen['useShowsCall'];
+  params: LoungeParams;
+  onValue: (value: boolean) => void;
+}): null {
+  const value = useShowsCall(params);
+  useLayoutEffect(() => onValue(value), [onValue, value]);
+  return null;
+}
+
 function ScreenFrame({ choice, rootRef }: { choice: LoungeChoice; rootRef: RefObject<HTMLElement | null> }): JSX.Element {
   const screen = readScreen(choice.route);
   const { pathname } = useLocation();
@@ -89,14 +105,24 @@ function ScreenFrame({ choice, rootRef }: { choice: LoungeChoice; rootRef: RefOb
   const onTitle = useCallback((next: string | null) => setTitled({ choice, title: next }), [choice]);
   const routeKey = choice.route.path;
   useLayoutEffect(() => notePathname(pathname), [pathname]);
+  // A stage's "shows the call you are in", for the choice it was reported for (as the title).
+  const [shows, setShows] = useState<{ choice: LoungeChoice; value: boolean } | null>(null);
+  const showsCall = shows !== null && shows.choice === choice && shows.value;
+  const onShowsCall = useCallback((value: boolean) => setShows({ choice, value }), [choice]);
 
   return (
     <>
       <TitleProbe key={routeKey} useTitle={screen.useTitle} params={choice.params} onTitle={onTitle} />
+      {screen.template === 'stage' && (
+        <ShowsCallProbe key={routeKey} useShowsCall={screen.useShowsCall} params={choice.params} onValue={onShowsCall} />
+      )}
       {screen.template === 'bare' ? (
         <screen.Body params={choice.params} />
+      ) : screen.template === 'settings' ? (
+        <SettingsFrame screen={screen} params={choice.params} resetKey={pathname} title={title} />
       ) : (
-        <ThreeIslandsFrame screen={screen} params={choice.params} resetKey={pathname} title={title} />
+        // Three islands and a stage share one frame: between a channel and a room its pieces stay mounted.
+        <ThreeIslandsFrame screen={screen} params={choice.params} resetKey={pathname} title={title} showsCall={showsCall} />
       )}
       <RouteFocus rootRef={rootRef} pathname={pathname} title={title} />
     </>
