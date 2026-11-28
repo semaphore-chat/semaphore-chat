@@ -164,12 +164,10 @@ export interface MessageListCoreProps {
  *   reply bar or the on-screen keyboard opening, a hidden pane shown again:
  *   the browser and virtua keep the scroll offset, i.e. the top edge, so a
  *   shorter viewport would leave the newest rows below it; #921). Unpinned,
- *   that top edge is the reader's place and is left alone — including when
- *   the growth clamped the offset to the bottom and the resulting scroll
- *   event looked like a pin: that pin is the browser's, so the next shrink
- *   restores the reader's offset instead of following the bottom. (That
- *   scroll event can arrive before or after the observer's own notification;
- *   both orders restore the place.) A list
+ *   that top edge is the reader's place and is left alone. A growth larger
+ *   than the reader's distance from the bottom clamps them to the bottom;
+ *   that counts as pinned, so the next shrink keeps them at the newest (a
+ *   reader that close to the end is treated like one at it). A list
  *   opened at the start with a newer page still to load is exempt from all
  *   three (see the stick-to-bottom effect below).
  *   Disabled in anchored mode (a newer page
@@ -266,19 +264,6 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
     const vlistRef = useRef<VListHandle>(null);
     const listContainerRef = useRef<HTMLDivElement>(null);
     const pinnedRef = useRef(true);
-    /** The last two scroll offsets seen: `current` is the latest scroll event's, `before` the one before it (the
-     * reader's place when a growth's clamp moved them and its scroll event arrived before the viewport
-     * observer's notification). */
-    const scrollOffsetsRef = useRef<{ current: number | null; before: number | null }>({
-      current: null,
-      before: null,
-    });
-    /** The reader's scroll offset as of a viewport growth that may clamp it, waiting for that clamp's scroll
-     * event (which can arrive after the viewport observer's notification). */
-    const clampOffsetRef = useRef<number | null>(null);
-    /** The place a growth moved the reader away from by itself (the browser clamped their offset to the bottom,
-     * or virtua shifted it there as it re-measured rows above them): restored on the next shrink. */
-    const clampPinRef = useRef<{ offset: number } | null>(null);
     const initialPositionedRef = useRef(false);
 
     // Prepend detection: compare against the previous render's first/length.
@@ -663,54 +648,7 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
         ) {
           return;
         }
-        const handle = vlistRef.current;
-        if (pinnedRef.current) {
-          const clampPin = clampPinRef.current;
-          if (clampPin !== null && next < previous) {
-            // The pin arrived on the scroll event the browser fired when it clamped the offset as this
-            // viewport last grew past the reader's place: it was never the reader's. Put them back where they
-            // were instead of following the bottom.
-            pinnedRef.current = false;
-            clampPinRef.current = null;
-            clampOffsetRef.current = null;
-            if (handle) handle.scrollTo(clampPin.offset);
-            return;
-          }
-          scrollToBottomRef.current();
-          return;
-        }
-        if (clampPinRef.current !== null && next < previous && handle) {
-          // A growth moved the reader's offset to the bottom by itself (see below) and the scroll event that
-          // unpinned them ran before this notification: this shrink puts them back where they were.
-          const place = clampPinRef.current.offset;
-          clampPinRef.current = null;
-          clampOffsetRef.current = null;
-          handle.scrollTo(place);
-          return;
-        }
-        if (next > previous && previous > 0 && handle) {
-          // A viewport that grows by more than the reader's distance from the bottom lowers the end of the
-          // scroll range under their offset: the browser clamps it to the bottom and fires a scroll event
-          // there. That event can arrive before or after this notification. When it already ran, the offset is
-          // at the new bottom and the event before it holds the reader's place -- record it now, since this
-          // notification is the growth's. Otherwise remember the offset (virtua has not seen that scroll yet)
-          // so the event can be told apart from a real pin. Either way a later shrink restores the place.
-          const { current, before } = scrollOffsetsRef.current;
-          const offset = handle.scrollOffset;
-          const atNewBottom = handle.scrollSize - offset - handle.viewportSize < BOTTOM_PIN_THRESHOLD_PX;
-          const clampedBeforeThisNotification =
-            current === offset && before !== null && before > offset && atNewBottom;
-          if (clampedBeforeThisNotification) {
-            clampOffsetRef.current = null;
-            clampPinRef.current = { offset: before };
-          } else {
-            clampOffsetRef.current = offset;
-            clampPinRef.current = null;
-          }
-        } else {
-          clampOffsetRef.current = null;
-          clampPinRef.current = null;
-        }
+        if (pinnedRef.current) scrollToBottomRef.current();
       });
       observer.observe(container);
       return () => observer.disconnect();
@@ -752,9 +690,6 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
       cancelPositioningRafs();
       initialPositionedRef.current = false;
       pinnedRef.current = true;
-      scrollOffsetsRef.current = { current: null, before: null };
-      clampOffsetRef.current = null;
-      clampPinRef.current = null;
       loadOlderInFlightRef.current = false;
       loadNewerInFlightRef.current = false;
       prevOldestIdRef.current = undefined;
@@ -946,26 +881,9 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
         const handle = vlistRef.current;
         if (!handle) return;
 
-        const offsets = scrollOffsetsRef.current;
-        offsets.before = offsets.current;
-        offsets.current = offset;
-
         const { scrollSize, viewportSize } = handle;
         const distanceFromBottom = scrollSize - offset - viewportSize;
         const atBottom = distanceFromBottom < BOTTOM_PIN_THRESHOLD_PX;
-        if (clampOffsetRef.current !== null) {
-          // The first scroll event after a viewport growth: the browser fires it when it clamped our offset to
-          // the shrunken range, i.e. when the offset went *down* and landed at the bottom (see the viewport
-          // observer). A pin that lands here is the clamp's, not the reader's, and must not re-pin on a later
-          // shrink; any other first event (the offset rising back to the bottom after scroll anchoring moved it
-          // away) is an ordinary pin.
-          const pending = clampOffsetRef.current;
-          clampOffsetRef.current = null;
-          clampPinRef.current = atBottom && offset < pending ? { offset: pending } : null;
-        } else if (clampPinRef.current !== null) {
-          // Any other scroll event is the reader's: their place is theirs again.
-          clampPinRef.current = null;
-        }
         pinnedRef.current = atBottom;
         onAtBottomChange?.(atBottom);
 

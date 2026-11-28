@@ -428,8 +428,14 @@ test.describe('The Lounge chat (390 px)', () => {
       const older = numbered(page, 10);
       const box = await messages(page).boundingBox();
       await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-      for (let i = 0; i < 30 && !(await older.isVisible().catch(() => false)); i += 1) await page.mouse.wheel(0, -200);
-      await older.scrollIntoViewIfNeeded();
+      // Scroll to the very top first, so virtua has measured every row (the older page's rows are estimated
+      // until they render, and their real heights would otherwise shift the reader while the test resizes).
+      for (let i = 0; i < 40 && !(await numbered(page, 1).isVisible().catch(() => false)); i += 1) {
+        await page.mouse.wheel(0, -400);
+      }
+      for (let i = 0; i < 40; i += 1) await page.mouse.wheel(0, -400);
+      // Then put the older message in the middle of the view, with room on both sides.
+      await older.evaluate((el) => el.scrollIntoView({ block: 'center' }));
       await expect(older).toBeInViewport();
       await expect(numbered(page, 40)).not.toBeInViewport();
       for (const viewport of [TABLET, PHONE]) {

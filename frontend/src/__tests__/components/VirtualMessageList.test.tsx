@@ -1408,52 +1408,6 @@ describe('VirtualMessageList', () => {
       expect(bottomScrolls()).toHaveLength(0);
     });
 
-    it('restores the place of a reader whose pin came from the clamp when the viewport grew', () => {
-      renderMeasured();
-      // 2000 px of content in the 1028 px viewport, the reader 150 px above the bottom.
-      fakeHandle.scrollSize = 2000;
-      fakeHandle.viewportSize = 1028;
-      fakeHandle.scrollOffset = 822;
-      act(() => capturedProps.onScroll?.(822));
-      fakeHandle.scrollToIndex.mockClear();
-
-      // Growing past their distance from the bottom lowers the end of the range under their offset, so the
-      // browser clamps it: the scroll event that follows is not the reader's pin.
-      resizeViewport(1180);
-      fakeHandle.viewportSize = 1180;
-      fakeHandle.scrollOffset = 820;
-      act(() => capturedProps.onScroll?.(820));
-
-      fakeHandle.viewportSize = 616;
-      resizeViewport(616);
-
-      expect(bottomScrolls()).toHaveLength(0);
-      expect(fakeHandle.scrollTo).toHaveBeenCalledWith(822);
-    });
-
-    it('also restores it when the clamp scroll event runs before the observer sees the growth', () => {
-      renderMeasured();
-      fakeHandle.scrollSize = 2000;
-      fakeHandle.viewportSize = 1028;
-      fakeHandle.scrollOffset = 822;
-      act(() => capturedProps.onScroll?.(822));
-      fakeHandle.scrollToIndex.mockClear();
-
-      // The browser clamps the offset to the new end before the observer's notification: the scroll event
-      // reports it while virtua still holds the old viewport size, so it pins nothing.
-      fakeHandle.scrollOffset = 820;
-      act(() => capturedProps.onScroll?.(820));
-
-      fakeHandle.viewportSize = 1180;
-      resizeViewport(1180);
-
-      fakeHandle.viewportSize = 616;
-      resizeViewport(616);
-
-      expect(bottomScrolls()).toHaveLength(0);
-      expect(fakeHandle.scrollTo).toHaveBeenCalledWith(822);
-    });
-
     it('does nothing while hidden (0 px) and returns to the bottom when shown again', () => {
       renderMeasured();
       act(() => capturedProps.onScroll?.(600));
