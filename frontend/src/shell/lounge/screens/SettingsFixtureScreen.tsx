@@ -5,12 +5,12 @@
  *
  * The list path shows the list on a phone and the first section beside it at compact and wide; a section's path shows
  * that section (Back on a phone returns to the list). "Notifications" has a switch whose change pins the
- * unsaved-changes bar (`useSettingsChrome().setFooter`), so the footer slot is exercised.
+ * unsaved-changes bar (`useSettingsFooter`), so the footer slot is exercised.
  */
-import { useEffect, useState, type JSX } from 'react';
+import { useState, type JSX } from 'react';
 import { Button, ListRow, Stack, Switch, Text, useWidthRange } from '../../../kit';
 import type { LoungeParams, LoungeScreenProps, SettingsScreen } from '../screen';
-import { useSettingsChrome } from '../screen';
+import { useSettingsFooter } from '../screen';
 import { LOUNGE_SETTINGS_FIXTURE_PATH, loungeSettingsFixturePath } from '../../loungeRoutes';
 import { FIXTURE_LINKS } from './fixtureLinks';
 
@@ -48,26 +48,27 @@ function FixtureNav({ params }: LoungeScreenProps): JSX.Element {
 
 /** A change pins the unsaved-changes bar; Reset and Save take it away. */
 function NotificationsSection(): JSX.Element {
-  const { setFooter } = useSettingsChrome();
   const [saved, setSaved] = useState(false);
   const [draft, setDraft] = useState(false);
   const dirty = draft !== saved;
-  useEffect(() => {
-    setFooter(
-      dirty ? (
-        <>
-          <Text tone="secondary">1 unsaved change</Text>
-          <Button variant="ghost" onClick={() => setDraft(saved)}>
-            Reset
-          </Button>
-          <Button onClick={() => setSaved(draft)}>Save changes</Button>
-        </>
-      ) : null,
-    );
-  }, [dirty, draft, saved, setFooter]);
   // Gone (another section, or out of settings): the bar goes with it.
-  useEffect(() => () => setFooter(null), [setFooter]);
-  return <Switch checked={draft} onChange={setDraft} label="Mention sounds" description="Play a sound when someone mentions you." />;
+  const footer = useSettingsFooter(
+    dirty ? (
+      <>
+        <Text tone="secondary">1 unsaved change</Text>
+        <Button variant="ghost" onClick={() => setDraft(saved)}>
+          Reset
+        </Button>
+        <Button onClick={() => setSaved(draft)}>Save changes</Button>
+      </>
+    ) : null,
+  );
+  return (
+    <>
+      <Switch checked={draft} onChange={setDraft} label="Mention sounds" description="Play a sound when someone mentions you." />
+      {footer}
+    </>
+  );
 }
 
 function FixtureContent({ params }: LoungeScreenProps): JSX.Element {

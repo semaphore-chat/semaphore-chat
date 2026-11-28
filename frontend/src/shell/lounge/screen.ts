@@ -7,7 +7,8 @@
  * keeps the dock, the left island (its scroll and focus), the members island and the call bar mounted.
  * A descriptor is plain data a native shell can mirror.
  */
-import { createContext, useContext, type ComponentType, type ReactNode } from 'react';
+import { createContext, useContext, useLayoutEffect, type ComponentType, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { LoungeLinks } from './links';
 
 /** Params of the matched pattern, as react-router's matchPath returns them. */
@@ -70,7 +71,7 @@ export interface SettingsScreen {
   readonly Nav: ComponentType<LoungeScreenProps>;
   /** Names the nav landmark. Defaults to "Settings sections". */
   readonly navLabel?: string;
-  /** The section. It can pin a bar to the bottom of its island (unsaved changes) with `useSettingsChrome`. */
+  /** The section. It can pin a bar to the bottom of its island (unsaved changes) with `useSettingsFooter`. */
   readonly Content: ComponentType<LoungeScreenProps>;
   /** Where a phone's content pane goes Back to: the list of sections. */
   readonly phoneBackTo: (params: LoungeParams) => string;
@@ -83,9 +84,9 @@ export interface SettingsScreen {
  * The stage template (a voice or video room, a call's video). At compact and wide the room is the centre of the three
  * islands, with the dock, the place's left island (the community's channels and rooms, as the Voice mock-up) and the
  * call bar beside it, and no right island; it keeps the same frame as the chat, so moving between a channel and a
- * room keeps those pieces mounted. On a phone it is the full stage: the room fills the frame with no dock bar, and the
- * call bar only while the room shown is not the call you are in (`useShowsCall`): its own controls are then the
- * call's. The screen renders a kit `StageLayout` with `inIsland` (the template's island is the main at every width):
+ * room keeps those pieces mounted. On a phone it is the full stage: the room fills the frame with no dock bar. At every
+ * width the frame leaves out its call bar on the room of the call you are in (`useShowsCall`), but only while the
+ * stage's own call controls are mounted (`useStageCallControls`): a crashed or loading stage keeps the bar. The screen renders a kit `StageLayout` with `inIsland` (the template's island is the main at every width):
  * header, stage, strip and controls.
  */
 export interface StageScreen {
@@ -95,8 +96,9 @@ export interface StageScreen {
   /** The room: a kit `StageLayout` with `inIsland`. */
   readonly Stage: ComponentType<LoungeScreenProps>;
   /**
-   * Whether the room shown is the call you are in, so its controls (mute, deafen, leave) are on screen: a phone then
-   * leaves the call bar out. A room you are not in (before joining, or another room) keeps the bar.
+   * Whether the room shown is the call you are in: with its controls (mute, deafen, Leave) mounted
+   * (`useStageCallControls`), the frame then leaves its call bar out. A room you are not in (before joining, or another
+   * room) keeps the bar.
    */
   readonly useShowsCall: (params: LoungeParams) => boolean;
   readonly useTitle: UseScreenTitle;
@@ -106,19 +108,63 @@ export interface StageScreen {
 
 export type LoungeScreen = ThreeIslandsScreen | StageScreen | SettingsScreen | BareScreen;
 
-/** Screen-to-frame state of the settings template. */
+/**
+ * Screen-to-frame state of the settings template. The frame owns the footer's lifetime: a section asks for it while it
+ * renders one (`useSettingsFooter`), and the frame shows the slot only for the path it was asked for, so a footer
+ * never outlives its section or reaches the next one.
+ */
 export interface SettingsChrome {
-  /** Pins a bar to the bottom of the content island ("2 unsaved changes", Reset, Save), or clears it (null). */
-  setFooter(footer: ReactNode): void;
+  /**
+   * Asks for the footer slot on the current path and returns the call that gives it back. The slot shows only while
+   * the path it was asked for is the current one.
+   */
+  showFooter(): () => void;
+  /** Where the section portals its footer's content; null while the slot is not shown. */
+  readonly footerTarget: HTMLElement | null;
 }
 
-export const NO_SETTINGS_CHROME: SettingsChrome = { setFooter: () => undefined };
+export const NO_SETTINGS_CHROME: SettingsChrome = { showFooter: () => () => undefined, footerTarget: null };
 
 export const SettingsChromeContext = createContext<SettingsChrome>(NO_SETTINGS_CHROME);
 
-/** For a settings section: the frame's footer slot. A section clears its own footer when it goes (an effect's cleanup). */
 export function useSettingsChrome(): SettingsChrome {
   return useContext(SettingsChromeContext);
+}
+
+/**
+ * For a settings section: pins `footer` (unsaved changes: "1 unsaved change", Reset, Save) to the bottom of the content
+ * island while it is not null, or nothing. Render what it returns: the footer is portalled into the frame's slot from
+ * the section's own tree, so it reads the section's context, and it goes when the section goes.
+ */
+export function useSettingsFooter(footer: ReactNode): ReactNode {
+  const { showFooter, footerTarget } = useSettingsChrome();
+  const wanted = footer !== null && footer !== undefined && footer !== false;
+  // A layout effect: the slot comes before the first paint, and goes when the section is hidden by a Suspense fallback.
+  useLayoutEffect(() => (wanted ? showFooter() : undefined), [wanted, showFooter]);
+  return wanted && footerTarget !== null ? createPortal(footer, footerTarget) : null;
+}
+
+/** Stage-to-frame state of the stage template. */
+export interface StageChrome {
+  /**
+   * The stage says its own call controls (mute, deafen, Leave) are mounted, and returns the call that takes it back.
+   * Only on that evidence does the frame leave out its call bar for the call you are in.
+   */
+  registerCallControls(): () => void;
+}
+
+export const NO_STAGE_CHROME: StageChrome = { registerCallControls: () => () => undefined };
+
+export const StageChromeContext = createContext<StageChrome>(NO_STAGE_CHROME);
+
+/**
+ * For the component of a stage that renders the call's controls: while it is mounted and shown, the frame leaves out
+ * its own call bar on the room of the call you are in. A crash, a Suspense fallback (which hides the stage and runs
+ * its layout effects' cleanups) or an unmount takes the evidence back, and the bar shows again.
+ */
+export function useStageCallControls(): void {
+  const { registerCallControls } = useContext(StageChromeContext);
+  useLayoutEffect(() => registerCallControls(), [registerCallControls]);
 }
 
 /**

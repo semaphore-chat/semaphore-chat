@@ -657,7 +657,9 @@ describe('the call across a change of shell', () => {
       expectCallUntouched(`${width}px`);
     }
 
-    // The settings and stage templates (their hidden fixtures), at a phone and at wide: the same call.
+    // The settings and stage templates (their hidden fixtures), at a phone and at wide: the same Room and <audio>
+    // element. The Lounge here is a stand-in; that a call control stays on screen across the templates is
+    // LoungeFrame.test.tsx's walk, on the real LoungeRoot.
     for (const width of [390, 1440]) {
       act(() => viewport.setWidth(width));
       for (const path of ['/__lounge/settings', '/__lounge/settings/notifications', '/__lounge/community/c-1/room/vc-1', '/__lounge']) {

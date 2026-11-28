@@ -112,9 +112,9 @@ function ScreenFrame({ choice, rootRef }: { choice: LoungeChoice; rootRef: RefOb
 
   return (
     <>
-      <TitleProbe key={routeKey} useTitle={screen.useTitle} params={choice.params} onTitle={onTitle} />
+      <TitleProbe key={`title:${routeKey}`} useTitle={screen.useTitle} params={choice.params} onTitle={onTitle} />
       {screen.template === 'stage' && (
-        <ShowsCallProbe key={routeKey} useShowsCall={screen.useShowsCall} params={choice.params} onValue={onShowsCall} />
+        <ShowsCallProbe key={`shows:${routeKey}`} useShowsCall={screen.useShowsCall} params={choice.params} onValue={onShowsCall} />
       )}
       {screen.template === 'bare' ? (
         <screen.Body params={choice.params} />

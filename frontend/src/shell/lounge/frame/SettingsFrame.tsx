@@ -10,9 +10,14 @@
  * - the call bar (the frame's call slot, `ShellCall`) under the nav island at compact and wide, and between the pane
  *   and the bottom on a phone, so the call's controls stay on screen and nobody is left deafened without a control.
  *
- * A section pins its own bar (unsaved changes) to the content island through `useSettingsChrome().setFooter`.
+ * A section pins its own bar (unsaved changes) to the content island with `useSettingsFooter`: the frame shows the slot
+ * only for the path it was asked on, and the section portals the bar's content into it, so the bar reads the section's
+ * context and never outlives it.
+ *
+ * A phone's Back on a section goes to `phoneBackTo(params)`: a step back in the history when the list was the screen
+ * before (as the chat's Back to its home), else a replace, so the system Back never returns to the section.
  */
-import { memo, Suspense, useMemo, useState, type JSX, type ReactNode } from 'react';
+import { memo, Suspense, useCallback, useMemo, useState, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SettingsLayout, useWidthRange } from '../../../kit';
 import { useCallSlotShown } from '../../../data/callSlot';
@@ -27,6 +32,7 @@ import { CentreSkeleton } from '../pieces/CentreSkeleton';
 import { ShellCall } from '../pieces/call/ShellCall';
 import { ScreenBoundary } from './ScreenBoundary';
 import { ScreenError } from './ScreenError';
+import { previousPathname } from '../../routeMemory';
 
 export interface SettingsFrameProps {
   screen: SettingsScreen;
@@ -51,8 +57,23 @@ const SettingsBody = memo(function SettingsBody({
 }: SettingsFrameProps & { callShown: boolean }): JSX.Element {
   const range = useWidthRange();
   const navigate = useNavigate();
-  const [footer, setFooter] = useState<ReactNode>(null);
-  const chrome = useMemo<SettingsChrome>(() => ({ setFooter }), []);
+  // The path the footer slot was asked for: it shows only while that is the current path.
+  const [footerFor, setFooterFor] = useState<string | null>(null);
+  const [footerTarget, setFooterTarget] = useState<HTMLElement | null>(null);
+  const footerShown = footerFor === resetKey;
+  const showFooter = useCallback(() => {
+    setFooterFor(resetKey);
+    return () => setFooterFor((current) => (current === resetKey ? null : current));
+  }, [resetKey]);
+  const chrome = useMemo<SettingsChrome>(
+    () => ({ showFooter, footerTarget: footerShown ? footerTarget : null }),
+    [showFooter, footerShown, footerTarget],
+  );
+  const backTo = screen.phoneBackTo(params);
+  const onBack = useCallback(() => {
+    if (previousPathname() === backTo) void navigate(-1);
+    else void navigate(backTo, { replace: true });
+  }, [backTo, navigate]);
   const [allOpen, setAllOpen] = useState(false);
   const communityId = screen.place === 'community' ? (params.communityId ?? null) : null;
   const { Nav, Content } = screen;
@@ -68,8 +89,8 @@ const SettingsBody = memo(function SettingsBody({
             nav={<Nav params={params} />}
             navLabel={screen.navLabel ?? 'Settings sections'}
             phonePane={screen.phonePane}
-            onBack={() => void navigate(screen.phoneBackTo(params))}
-            footer={footer}
+            onBack={onBack}
+            footer={footerShown ? <div ref={setFooterTarget} style={{ display: 'contents' }} /> : undefined}
             dock={
               phone ? undefined : (
                 <ShellDockConnected

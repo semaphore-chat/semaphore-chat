@@ -12,12 +12,14 @@
  *
  * It also renders the `stage` template (a room): the same component, so moving between a channel and a room keeps the
  * dock, the left island and the call bar mounted at compact and wide. A stage has no right island; on a phone it is
- * the full stage (no dock bar, and no call bar while the room is the call you are in).
+ * the full stage (no dock bar). On the room of the call you are in, the stage's own controls replace the call bar at
+ * every width (the Voice mock-up), but only on evidence: the stage's controls register while mounted
+ * (`useStageCallControls`), so a crashed or loading stage leaves the call bar on screen.
  */
 import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react';
 import { ESCAPE_PRIORITY, ThreeIslands, useScreenEscape, useWidthRange } from '../../../kit';
-import type { LoungeParams, RightPanel, ScreenChrome, StageScreen, ThreeIslandsScreen } from '../screen';
-import { ScreenChromeContext } from '../screen';
+import type { LoungeParams, RightPanel, ScreenChrome, StageChrome, StageScreen, ThreeIslandsScreen } from '../screen';
+import { ScreenChromeContext, StageChromeContext } from '../screen';
 import { APP_LINKS, LoungeLinksContext } from '../links';
 import { SignOutConfirmHost } from '../pieces/signOutConfirm';
 import { ShellDockConnected, type DockCurrent } from '../pieces/ShellDock';
@@ -36,11 +38,12 @@ import { ScreenError } from './ScreenError';
 export interface ThreeIslandsFrameProps {
   /**
    * A three-islands screen, or a stage (a room): at compact and wide the room is the centre, with no right island;
-   * on a phone it is the full stage, with no dock bar, and no call bar while `showsCall`.
+   * on a phone it is the full stage, with no dock bar. No call bar while `showsCall` and the stage's controls are
+   * mounted.
    */
   screen: ThreeIslandsScreen | StageScreen;
   params: LoungeParams;
-  /** A stage showing the call you are in (`StageScreen.useShowsCall`): its own controls are the call's. */
+  /** A stage showing the call you are in (`StageScreen.useShowsCall`): its own controls, once mounted, are the call's. */
   showsCall?: boolean;
   /** The path: a crashed centre is cleared on the next path (another channel too). */
   resetKey: string;
@@ -163,13 +166,28 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
     [rightChoice, range, showRight, panel, panelTarget],
   );
 
+  // How many of the stage's call controls are mounted and shown (`useStageCallControls`): the only evidence that lets
+  // the frame leave out its call bar.
+  const [stageControls, setStageControls] = useState(0);
+  const stageChrome = useMemo<StageChrome>(
+    () => ({
+      registerCallControls: () => {
+        setStageControls((n) => n + 1);
+        return () => setStageControls((n) => n - 1);
+      },
+    }),
+    [],
+  );
+
   const stage = screen.template === 'stage';
   const Centre = stage ? screen.Stage : screen.Centre;
   const right = stage ? null : screen.right;
   const communityId = params.communityId ?? null;
   const phone = range === 'phone';
-  // The full stage on a phone: the room alone, its controls the call's while it shows the call you are in.
+  // The full stage on a phone: the room alone.
   const fullStage = stage && phone;
+  // The room of the call you are in, with its own controls on screen: they replace the call bar, at every width.
+  const stageHasCall = stage && showsCall && stageControls > 0;
   const defaultRight =
     right === 'members' ? (
       communityId === null ? undefined : <MembersIslandConnected communityId={communityId} />
@@ -213,10 +231,12 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
             leftLabel={screen.place === 'community' ? 'Community' : 'Inbox'}
             centre={
               <ScreenBoundary resetKey={resetKey} fallback={(reset) => <ScreenError inIsland onRetry={reset} />}>
-                <Suspense fallback={<CentreSkeleton />}>{Centre === null ? null : <Centre params={params} />}</Suspense>
+                <Suspense fallback={<CentreSkeleton />}>
+                  <StageChromeContext value={stageChrome}>{Centre === null ? null : <Centre params={params} />}</StageChromeContext>
+                </Suspense>
               </ScreenBoundary>
             }
-            centreLabel={title ?? 'Conversation'}
+            centreLabel={title ?? (stage ? 'Room' : 'Conversation')}
             right={rightContent}
             rightLabel={shownPanel?.label ?? defaultLabel}
             // A panel shows while it is open, at every width; closing it brings back what the user had.
@@ -224,12 +244,13 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
             onRightClose={panel !== null ? closePanel : () => setRightChoice(false)}
             onRightExited={() => setClosing(null)}
             rightFill={shownPanel?.fill === true}
-            callBar={callShown && !(fullStage && showsCall) ? <ShellCall /> : undefined}
+            callBar={callShown && !stageHasCall ? <ShellCall /> : undefined}
             phonePane={stage ? 'centre' : screen.phonePane}
           />
           </div>
           {/* The desktop shortcuts: compact and wide (a phone has no keyboard shortcuts). */}
-          {range !== 'phone' && <LoungeShortcuts communityId={communityId} channelId={params.channelId ?? null} />}
+          {/* A room is no conversation: Escape there marks nothing read. */}
+          {range !== 'phone' && <LoungeShortcuts communityId={communityId} channelId={stage ? null : (params.channelId ?? null)} />}
           <AllCommunitiesSheetConnected open={allOpen} onClose={() => setAllOpen(false)} currentId={communityId} />
         </SignOutConfirmHost>
       </LoungeLinksContext>

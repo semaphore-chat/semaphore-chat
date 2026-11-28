@@ -5,15 +5,18 @@
  * without the call bar while the room is the call you are in). The pieces are stand-ins with mount counters (each
  * has its own tests).
  */
-import React, { useEffect, useState } from 'react';
+import React, { createContext, useContext, useLayoutEffect, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, screen } from '@testing-library/react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { KitProvider, StageLayout } from '../../../kit';
 import { ThreeIslandsFrame } from '../../../shell/lounge/frame/ThreeIslandsFrame';
 import { SettingsFrame } from '../../../shell/lounge/frame/SettingsFrame';
 import {
   useSettingsChrome,
+  useSettingsFooter,
+  useStageCallControls,
   type LoungeScreenProps,
   type SettingsScreen,
   type StageScreen,
@@ -74,7 +77,13 @@ vi.mock('../../../shell/lounge/pieces/AllCommunitiesSheet', () => ({ AllCommunit
 vi.mock('../../../shell/lounge/pieces/signOutConfirm', () => ({
   SignOutConfirmHost: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-vi.mock('../../../shell/lounge/frame/LoungeShortcuts', () => ({ LoungeShortcuts: () => null }));
+const shortcuts = vi.hoisted(() => ({ props: [] as { communityId: string | null; channelId: string | null }[] }));
+vi.mock('../../../shell/lounge/frame/LoungeShortcuts', () => ({
+  LoungeShortcuts: (props: { communityId: string | null; channelId: string | null }) => {
+    shortcuts.props.push(props);
+    return null;
+  },
+}));
 vi.mock('../../../data/callSlot', () => ({ useCallSlotShown: () => call.shown }));
 
 function Where(): React.JSX.Element {
@@ -94,20 +103,28 @@ beforeEach(() => {
   mounts.call = 0;
   mounts.members = 0;
   call.shown = true;
+  shortcuts.props.length = 0;
 });
 
 // --- settings -------------------------------------------------------------------
+
+function Portal({ target, children }: { target: HTMLElement; children: React.ReactNode }): React.ReactNode {
+  return createPortal(children, target);
+}
 
 /** Footer control from outside the section. */
 const footerControl = vi.hoisted(() => ({ set: null as null | ((dirty: boolean) => void) }));
 
 function Section({ params }: LoungeScreenProps): React.JSX.Element {
-  const { setFooter } = useSettingsChrome();
   const [dirty, setDirty] = useState(false);
   footerControl.set = setDirty;
-  useEffect(() => setFooter(dirty ? <span>1 unsaved change</span> : null), [dirty, setFooter]);
-  useEffect(() => () => setFooter(null), [setFooter]);
-  return <h2>{`Section ${params.section ?? 'none'}`}</h2>;
+  const footer = useSettingsFooter(dirty ? <span>1 unsaved change</span> : null);
+  return (
+    <>
+      <h2>{`Section ${params.section ?? 'none'}`}</h2>
+      {footer}
+    </>
+  );
 }
 
 const settingsScreen = (phonePane: 'nav' | 'content', place: 'none' | 'community' = 'none'): SettingsScreen => ({
@@ -120,11 +137,19 @@ const settingsScreen = (phonePane: 'nav' | 'content', place: 'none' | 'community
   useTitle: () => 'Settings',
 });
 
-function renderSettings(screenDescriptor: SettingsScreen, params = { section: 'roles' }) {
-  return renderWithProviders(
-    wrap(<SettingsFrame screen={screenDescriptor} params={params} resetKey="/fx/settings/roles" title="Settings" />),
-    { routerProps: { initialEntries: ['/fx/settings/roles'] } },
-  );
+const settingsFrame = (screenDescriptor: SettingsScreen, params: Record<string, string> = { section: 'roles' }) => (
+  <SettingsFrame
+    screen={screenDescriptor}
+    params={params}
+    resetKey={`/fx/settings/${params.section ?? ''}`}
+    title="Settings"
+  />
+);
+
+function renderSettings(screenDescriptor: SettingsScreen, params: Record<string, string> = { section: 'roles' }) {
+  return renderWithProviders(wrap(settingsFrame(screenDescriptor, params)), {
+    routerProps: { initialEntries: ['/fx/settings/roles'] },
+  });
 }
 
 describe('SettingsFrame', () => {
@@ -148,7 +173,7 @@ describe('SettingsFrame', () => {
 
   it("a community's settings name their community in the dock", () => {
     mockViewport(WIDTH.wide);
-    renderSettings(settingsScreen('content', 'community'), { section: 'roles', communityId: 'c-1' } as never);
+    renderSettings(settingsScreen('content', 'community'), { section: 'roles', communityId: 'c-1' });
     expect(screen.getByTestId('dock')).toHaveTextContent('dock, community c-1');
   });
 
@@ -189,11 +214,66 @@ describe('SettingsFrame', () => {
     act(() => footerControl.set!(false));
     expect(document.querySelector('[data-slot="footer"]')).toBeNull();
   });
+
+  it("a section that never gives its footer back doesn't leak it to the next section or the next screen", () => {
+    mockViewport(WIDTH.wide);
+    // Asks for the slot and drops the call that gives it back; its content stays in its own tree.
+    function Careless({ params }: LoungeScreenProps): React.JSX.Element {
+      const { showFooter, footerTarget } = useSettingsChrome();
+      useLayoutEffect(() => {
+        showFooter();
+      }, [showFooter]);
+      return (
+        <>
+          <h2>{`Section ${params.section}`}</h2>
+          {params.section === 'a' && footerTarget !== null && <Portal target={footerTarget}>unsaved in a</Portal>}
+        </>
+      );
+    }
+    const careless: SettingsScreen = { ...settingsScreen('content'), Content: Careless };
+    const { rerender } = renderWithProviders(wrap(settingsFrame(careless, { section: 'a' })));
+    expect(document.querySelector('[data-slot="footer"]')).toHaveTextContent('unsaved in a');
+    // The next section of the same screen: the content stays mounted, its old ask is for the old path.
+    rerender(wrap(settingsFrame(careless, { section: 'b' })));
+    expect(screen.getByRole('heading', { name: 'Section b' })).toBeInTheDocument();
+    expect(screen.queryByText('unsaved in a')).toBeNull();
+    // Another settings screen (another Content): nothing of the careless section's.
+    rerender(wrap(settingsFrame(settingsScreen('content'), { section: 'roles' })));
+    expect(screen.getByRole('heading', { name: 'Section roles' })).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="footer"]')).toBeNull();
+  });
+
+  it("a footer reads a context the section provides (it is portalled from the section's tree)", () => {
+    mockViewport(WIDTH.wide);
+    const Draft = createContext('no draft');
+    function DraftCount(): React.JSX.Element {
+      return <span>{useContext(Draft)}</span>;
+    }
+    function WithContext(): React.JSX.Element {
+      const footer = useSettingsFooter(<DraftCount />);
+      return (
+        <Draft value="2 unsaved changes">
+          <h2>Roles</h2>
+          {footer}
+        </Draft>
+      );
+    }
+    renderSettings({ ...settingsScreen('content'), Content: WithContext });
+    const footer = document.querySelector('[data-slot="footer"]');
+    expect(footer).toHaveTextContent('2 unsaved changes');
+    expect(screen.getByRole('main')).toContainElement(footer as HTMLElement);
+  });
 });
 
 // --- stage ------------------------------------------------------------------------
 
 const shows = vi.hoisted(() => ({ value: true }));
+
+/** The room's call controls: registered with the frame while mounted. */
+function RoomControls(): React.JSX.Element {
+  useStageCallControls();
+  return <button type="button">Leave</button>;
+}
 
 function Room(): React.JSX.Element {
   return (
@@ -202,7 +282,7 @@ function Room(): React.JSX.Element {
       stageLabel="Squad Up"
       header={<h1>Squad Up</h1>}
       stage={<p>the shares</p>}
-      controls={<button type="button">Leave</button>}
+      controls={<RoomControls />}
     />
   );
 }
@@ -224,12 +304,17 @@ const chatScreen: ThreeIslandsScreen = {
   useTitle: () => 'general',
 };
 
-const frame = (screenDescriptor: ThreeIslandsScreen | StageScreen, showsCall: boolean, channelId = 'vc-1') => (
+const frame = (
+  screenDescriptor: ThreeIslandsScreen | StageScreen,
+  showsCall: boolean,
+  channelId = 'vc-1',
+  title: string | null = screenDescriptor.template === 'stage' ? 'Squad Up' : 'general',
+) => (
   <ThreeIslandsFrame
     screen={screenDescriptor}
     params={{ communityId: 'c-1', channelId }}
     resetKey={`/c/${channelId}`}
-    title={screenDescriptor.template === 'stage' ? 'Squad Up' : 'general'}
+    title={title}
     showsCall={showsCall}
   />
 );
@@ -244,25 +329,29 @@ describe('ThreeIslandsFrame: the stage template', () => {
     ['compact', WIDTH.compact],
   ])('at %s the room is the centre beside the community, with the dock and the call bar, and no members', (_name, width) => {
     mockViewport(width);
-    renderWithProviders(wrap(frame(stageScreen, true)));
+    // A room you are not in: the call bar stays beside it.
+    renderWithProviders(wrap(frame(stageScreen, false)));
     const main = screen.getByRole('main', { name: 'Squad Up' });
     expect(screen.getAllByRole('main')).toHaveLength(1);
     expect(main).toHaveTextContent('the shares');
     expect(main).toContainElement(screen.getByRole('button', { name: 'Leave' }));
     expect(screen.getByRole('navigation', { name: 'Community' })).toHaveTextContent('channels and rooms');
     expect(screen.getByTestId('dock')).toBeInTheDocument();
-    // Beside the room the call bar stays, also while the room is the call you are in.
     expect(screen.getByRole('button', { name: 'Deafen' })).toBeInTheDocument();
     expect(screen.queryByRole('complementary')).toBeNull();
     expect(screen.queryByText('the members')).toBeNull();
   });
 
-  it('at wide, a channel and a room share the frame: the dock, the left island and the call bar stay mounted', () => {
-    mockViewport(WIDTH.wide);
+  it.each([
+    ['wide', WIDTH.wide],
+    ['compact', WIDTH.compact],
+  ])('at %s, a channel and a room share the frame: the dock, the left island and the call bar stay mounted', (_name, width) => {
+    mockViewport(width);
     const { rerender } = renderWithProviders(wrap(frame(chatScreen, false, 'ch-1')));
     expect(screen.getByRole('heading', { name: 'general' })).toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: 'Community' });
-    rerender(wrap(frame(stageScreen, true)));
+    // Another room (not your call): the call bar stays.
+    rerender(wrap(frame(stageScreen, false)));
     expect(screen.getByRole('heading', { name: 'Squad Up' })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Community' })).toBe(nav);
     rerender(wrap(frame(chatScreen, false, 'ch-1')));
@@ -293,5 +382,101 @@ describe('ThreeIslandsFrame: the stage template', () => {
     renderWithProviders(wrap(frame(chatScreen, true, 'ch-1')));
     expect(screen.getByTestId('dock')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Deafen' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['wide', WIDTH.wide],
+    ['compact', WIDTH.compact],
+    ['phone', WIDTH.phone],
+  ])("at %s, your call's room with its controls mounted: they replace the call bar", (_name, width) => {
+    mockViewport(width);
+    renderWithProviders(wrap(frame(stageScreen, true)));
+    expect(screen.getByRole('button', { name: 'Leave' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Deafen' })).toBeNull();
+    expect(document.querySelector('[data-slot="call-bar"]')).toBeNull();
+  });
+
+  /** Your call's room, at a phone and at wide: the bar must stay whenever the stage's controls are not on screen. */
+  describe.each([
+    ['phone', WIDTH.phone],
+    ['wide', WIDTH.wide],
+  ])('at %s, your call\'s room without its controls on screen keeps the call bar', (_name, width) => {
+    beforeEach(() => mockViewport(width));
+
+    it('a stage that mounts no controls', () => {
+      renderWithProviders(wrap(frame({ ...stageScreen, Stage: () => <h1>Squad Up</h1> }, true)));
+      expect(screen.getByRole('button', { name: 'Deafen' })).toBeInTheDocument();
+    });
+
+    it('the stage throws: the error in the centre, and the call bar', () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const Crashing = () => {
+        throw new Error('stage crashed');
+      };
+      renderWithProviders(wrap(frame({ ...stageScreen, Stage: Crashing }, true)));
+      expect(screen.getByRole('heading', { name: "Couldn't show this screen" })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Deafen' })).toBeInTheDocument();
+      consoleError.mockRestore();
+    });
+
+    it('the stage suspends on entry: the skeleton, and the call bar', () => {
+      const never = new Promise<never>(() => undefined);
+      const Loading = () => {
+        throw never;
+      };
+      renderWithProviders(wrap(frame({ ...stageScreen, Stage: Loading }, true)));
+      expect(screen.queryByRole('button', { name: 'Leave' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Deafen' })).toBeInTheDocument();
+    });
+
+    it('the stage suspends again after its controls showed: the call bar comes back, and goes once they show again', async () => {
+      const gate = { promise: null as Promise<void> | null, release: () => undefined as void };
+      function Suspending(): React.JSX.Element {
+        if (gate.promise !== null) throw gate.promise;
+        return <Room />;
+      }
+      const suspending: StageScreen = { ...stageScreen, Stage: Suspending };
+      const { rerender } = renderWithProviders(wrap(frame(suspending, true)));
+      expect(screen.getByRole('button', { name: 'Leave' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Deafen' })).toBeNull();
+
+      gate.promise = new Promise<void>((resolve) => {
+        gate.release = () => {
+          gate.promise = null;
+          resolve();
+        };
+      });
+      rerender(wrap(frame(suspending, true, 'vc-1', 'Squad Up ')));
+      expect(screen.getByRole('button', { name: 'Deafen' })).toBeInTheDocument();
+
+      await act(async () => gate.release());
+      expect(screen.getByRole('button', { name: 'Leave' })).toBeVisible();
+      expect(screen.queryByRole('button', { name: 'Deafen' })).toBeNull();
+    });
+  });
+
+  it('back from your room to a chat: the call bar again, and the controls are no longer counted', () => {
+    mockViewport(WIDTH.wide);
+    const { rerender } = renderWithProviders(wrap(frame(stageScreen, true)));
+    expect(screen.queryByRole('button', { name: 'Deafen' })).toBeNull();
+    rerender(wrap(frame(chatScreen, true, 'ch-1')));
+    expect(screen.getByRole('button', { name: 'Deafen' })).toBeInTheDocument();
+    // And into the room again: replaced again (the count went back to zero, not below).
+    rerender(wrap(frame(stageScreen, true)));
+    expect(screen.queryByRole('button', { name: 'Deafen' })).toBeNull();
+  });
+
+  it('a room names its main "Room" while its title loads', () => {
+    mockViewport(WIDTH.wide);
+    renderWithProviders(wrap(frame(stageScreen, false, 'vc-1', null)));
+    expect(screen.getByRole('main', { name: 'Room' })).toBeInTheDocument();
+  });
+
+  it("Escape's mark-as-read gets no channel on a room, and the open channel on a chat", () => {
+    mockViewport(WIDTH.wide);
+    const { rerender } = renderWithProviders(wrap(frame(chatScreen, false, 'ch-1')));
+    expect(shortcuts.props[shortcuts.props.length - 1]).toEqual({ communityId: 'c-1', channelId: 'ch-1' });
+    rerender(wrap(frame(stageScreen, false)));
+    expect(shortcuts.props[shortcuts.props.length - 1]).toEqual({ communityId: 'c-1', channelId: null });
   });
 });

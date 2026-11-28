@@ -192,8 +192,8 @@ export const StageNotInCall = templateStory('dark', stageRoute, { communityId: L
 export const StageNotInCallLight = templateStory('light', stageRoute, { communityId: LOUNGE_COMMUNITY_ID, channelId: 'vc-squad' }, false);
 
 /**
- * `stage`, in this room's call: compact and wide keep the frame's call slot beside the room; a phone leaves it out and
- * the room's controls are the call's (the fixture shows the call bar there in their place).
+ * `stage`, in this room's call: at every width the room's controls are the call's and the frame leaves its call slot
+ * out (the Voice mock-up). The fixture shows the call bar in the room's controls in their place.
  */
 export const StageInCall = templateStory('dark', stageRoute, { communityId: LOUNGE_COMMUNITY_ID, channelId: 'vc-squad' }, true);
 

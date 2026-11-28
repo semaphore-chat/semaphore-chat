@@ -410,8 +410,12 @@ In the Lounge (the frame's `settings` template, `shell/lounge/frame/SettingsFram
 the dock and the user's card are there at compact and wide, and the call bar at
 every width while you are in a call, so the call's controls stay on screen. A
 phone has no dock bar in settings: they are a screen pushed over the app, left by
-their own Back, as in Discord's app. A section pins its unsaved-changes bar with
-`useSettingsChrome().setFooter(...)` and clears it when it goes.
+their own Back, as in Discord's app: a step back in the history when the list
+of sections was the screen before, else a replace, so the system Back never
+returns to the section. A section pins its unsaved-changes bar with
+`useSettingsFooter(node)` and renders what it returns: the frame shows the slot
+only for the path it was asked on, and the section portals the bar's content
+into it, so the bar reads the section's context and goes when the section goes.
 
 **What goes where**
 
@@ -470,11 +474,18 @@ app, as the Voice mock-up and Discord do: at compact and wide the stage is the
 centre of the three islands, with the dock, the community's channels and rooms
 and the call bar beside it, and no right island. It is the same frame as the
 chat, so moving between a channel and a room keeps those pieces mounted. On a
-phone the room is the full stage: no dock bar, and no call bar while the room is
-the call you are in, because its controls (mute, deafen, Leave) are the call's.
-A room you are not in keeps the call bar, so your call's controls are always on
-screen. The screen renders `StageLayout` with `inIsland` (the template's island
-is the main) and says whether the room is your call with `useShowsCall`.
+phone the room is the full stage, with no dock bar.
+
+On the room of the call you are in, the room's own controls (mute, deafen,
+Leave) replace the call bar at every width, as in the Voice mock-up. The frame
+leaves the bar out only on evidence: the screen says the room is your call
+(`useShowsCall`), and the component that renders the controls registers them
+while it is mounted and shown (`useStageCallControls`, a layout effect). A
+crashed stage (the centre's error), a loading one (its Suspense fallback, which
+also hides a stage that suspends again) or a stage without its controls keeps
+the call bar, so nobody is left in a call with no control on screen. A room you
+are not in keeps the call bar too: your call is elsewhere. The screen renders
+`StageLayout` with `inIsland` (the template's island is the main).
 
 **What goes where**
 
