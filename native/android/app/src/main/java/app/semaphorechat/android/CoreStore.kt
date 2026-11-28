@@ -95,6 +95,12 @@ class CoreStore(
             size > KEPT_CONVERSATIONS
     }
 
+    /**
+     * Each channel's composer, with its unsent draft: kept while the session lasts (not bounded
+     * like the lists, so no draft is lost by visiting other channels). Guarded by itself.
+     */
+    private val composers = HashMap<Conversation, ComposerStore>()
+
     val session: StateFlow<SessionState> = sessionState
     val connection: StateFlow<ConnectionState> = connectionState
     val appearance: StateFlow<Appearance> = appearanceState
@@ -153,6 +159,14 @@ class CoreStore(
         conversations.getOrPut(conversation) { ConversationStore(conversation, core, scope, onCollector = ::onCollector) }
     }
 
+    /** A channel's composer, with the draft left in it. */
+    fun composer(communityId: String, channelId: String): ComposerStore {
+        val conversation = Conversation.Channel(channelId)
+        return synchronized(composers) {
+            composers.getOrPut(conversation) { ComposerStore(conversation, communityId, channelId, core, scope) }
+        }
+    }
+
     /** How many lists are kept now (for the tests). */
     val keptConversations: Int get() = synchronized(conversations) { conversations.size }
 
@@ -195,12 +209,20 @@ class CoreStore(
         }
         val session = core.session()
         // A new session starts with no lists: the old one's rows are another account's.
-        if (session !is SessionState.SignedIn) synchronized(conversations) { conversations.clear() }
+        if (session !is SessionState.SignedIn) {
+            synchronized(conversations) { conversations.clear() }
+            synchronized(composers) { composers.values.toList().also { composers.clear() } }.forEach { it.close() }
+        }
         sessionState.value = session
         val connection = core.connection()
         connectionState.value = connection
         // The edges, the typing line and the connection line, which change without a list change.
         synchronized(conversations) { conversations.values.toList() }.forEach { it.refresh(connection) }
+        // Who may post (channel permissions, a timeout), and the mention candidates that changed.
+        val composers = synchronized(composers) { composers.values.toList() }
+        composers.forEach { it.refresh() }
+        val mentionables = events.mapNotNull { ((it as? CoreEvent.ViewChanged)?.view as? ViewKey.Mentionables)?.communityId }.toSet()
+        composers.filter { it.community in mentionables }.forEach { it.mentionablesChanged() }
         appearanceState.value = core.appearance().appearance
         communityState.value = readCommunities()
         // Only some communities' channels changed: re-read those; anything else, all of them.

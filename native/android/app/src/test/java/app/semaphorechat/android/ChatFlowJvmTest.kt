@@ -7,7 +7,16 @@
 
 package app.semaphorechat.android
 
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import app.semaphorechat.android.kit.chat.MentionTarget
+import app.semaphorechat.android.kit.chat.PieceKind
 import app.semaphorechat.android.screens.ChatConnection
+import app.semaphorechat.android.screens.BlockedKind
+import app.semaphorechat.android.screens.ChatMessage
+import app.semaphorechat.android.screens.ComposerAccess
+import app.semaphorechat.android.screens.MessageState
+import app.semaphorechat.android.screens.SuggestionKind
 import app.semaphorechat.android.screens.ChatFace
 import java.net.HttpURLConnection
 import java.net.URI
@@ -100,6 +109,231 @@ class ChatFlowJvmTest {
             .filter { "\"$channelId\"" in it }
             .mapNotNull { Regex("\"lastReadMessageId\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) }
             .toList()
+    }
+
+    /** The socket events of [name] the fake server has seen from clients for the channel. */
+    private fun clientEvents(name: String): Int {
+        val connection = URI("$server/__control/requests").toURL().openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.outputStream.use { it.write("{}".toByteArray()) }
+        val body = connection.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
+        connection.disconnect()
+        return Regex("\\{[^{}]*\"event\":\"$name\"[^{}]*\"payload\":\\{([^{}]*)\\}")
+            .findAll(body)
+            .count { "\"$channelId\"" in it.groupValues[1] }
+    }
+
+    private fun startCore(pipe: EventPipe) = runBlocking {
+        start(
+            MobileConfig(
+                dataDir = Files.createTempDirectory("semaphore-chat").toFile().path,
+                userAgent = "Semaphore-Android/0.0.0 (JVM test)",
+                deviceName = "JVM chat test",
+                appVersion = "0.0.0",
+            ),
+            MemorySecrets(),
+            Clock,
+            pipe,
+        )
+    }
+
+    private fun words(message: ChatMessage) = message.pieces.joinToString("") { it.text }
+
+    /** Everything clients sent the fake server, as one string (`/__control/requests`). */
+    private fun requestLog(): String {
+        val connection = URI("$server/__control/requests").toURL().openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.outputStream.use { it.write("{}".toByteArray()) }
+        val body = connection.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
+        connection.disconnect()
+        return body
+    }
+
+    /** How many sends with this client nonce the server has seen. */
+    private fun sendsOf(nonce: String): Int = Regex(Regex.escape("\"clientNonce\":\"$nonce\"")).findAll(requestLog()).count()
+
+    @Test
+    fun sendsRetriesDeletesSignalsTypingMentionsAndKeepsDraftsPerChannel() {
+        assumeTrue("android.sh passes the fake server", server != null && channelId != null && authorId != null)
+        val pipe = EventPipe()
+        val host = startCore(pipe)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val core = host.core()
+            val store = CoreStore(core, scope, pipe.events)
+            runBlocking { core.signIn(server!!, "me", "pw") }
+            until("sign-in and the socket") {
+                core.session() is SessionState.SignedIn && core.connection() == ConnectionState.CONNECTED
+            }
+            until("the channel listed") { core.communities().any { c -> core.channels(c.id).any { it.id == channelId } } }
+            val communityId = core.communities().first { c -> core.channels(c.id).any { it.id == channelId } }.id
+            val meId = (core.session() as SessionState.SignedIn).me.id
+            val chat = store.conversation(Conversation.Channel(channelId!!))
+            val composer = store.composer(communityId, channelId)
+            fun last() = chat.state.value.messages.lastOrNull()
+
+            // Sent before the first page is there: core refuses it (no row could carry the text), so
+            // the text comes back and nothing reaches the server.
+            control("delay_route", """{"operationId":"MessagesController_findAllForChannel","ms":3000}""")
+            control("fail_next_send", """{"code":"RATE_LIMITED"}""")
+            chat.open()
+            composer.onDraftChange(TextFieldValue("early words", TextRange(11)))
+            composer.send()
+            until("the text back") { composer.draft.text == "early words" }
+            assertEquals("still loading", ChatFace.Loading, chat.state.value.face)
+            assertFalse("nothing sent", "early words" in requestLog())
+            control("delay_route", """{"operationId":"MessagesController_findAllForChannel","ms":0}""")
+            until("the first page") { chat.state.value.face == ChatFace.Ready }
+            assertEquals(ComposerAccess.Open, composer.state.value.access)
+
+            // Now it goes, and fails (the fault armed above): the failed row keeps the text. Retry
+            // sends it again with the same nonce, once, however often it is pressed.
+            composer.send()
+            assertEquals("the field clears at once", "", composer.draft.text)
+            until("the failed row") { last()?.let { words(it) == "early words" && it.state is MessageState.Failed } == true }
+            val failed = last()!!
+            val nonce = failed.clientNonce!!
+            assertTrue((failed.state as MessageState.Failed).reason.isNotBlank())
+            assertEquals(1, sendsOf(nonce))
+            chat.retrySend(nonce)
+            chat.retrySend(nonce)
+            until("the retried row confirmed") { last()?.let { words(it) == "early words" && it.state == MessageState.Sent } == true }
+            assertEquals("the same nonce", nonce, last()!!.clientNonce)
+            assertEquals("sent twice in all: the failed try and one retry", 2, sendsOf(nonce))
+            assertEquals("one row for the message", 1, chat.state.value.messages.count { words(it) == "early words" })
+
+            // Typing out: "started" once while keys arrive within the interval, "stopped" on send.
+            val startedBefore = clientEvents("typingStart")
+            val stoppedBefore = clientEvents("typingStop")
+            composer.onDraftChange(TextFieldValue("h", TextRange(1)))
+            composer.onDraftChange(TextFieldValue("hello from the composer", TextRange(23)))
+            until("the typing signal") { clientEvents("typingStart") == startedBefore + 1 }
+            composer.send()
+            until("the sent row") { last()?.let(::words) == "hello from the composer" }
+            until("the stop signal") { clientEvents("typingStop") == stoppedBefore + 1 }
+            until("confirmed") { last()!!.state == MessageState.Sent }
+            assertEquals("only one start", startedBefore + 1, clientEvents("typingStart"))
+            // Cleared by hand: "stopped" too.
+            composer.onDraftChange(TextFieldValue("x", TextRange(1)))
+            composer.onDraftChange(TextFieldValue(""))
+            until("the stop on clearing") { clientEvents("typingStop") == stoppedBefore + 2 }
+
+            // The interval, on the composer's own clock: a second "started" only 3 s on.
+            var now = 1_000_000L
+            val timed = ComposerStore(Conversation.Channel(channelId), communityId, channelId, core, scope) { now }
+            val base = clientEvents("typingStart")
+            timed.onDraftChange(TextFieldValue("a", TextRange(1)))
+            until("the first start") { clientEvents("typingStart") == base + 1 }
+            now += TYPING_EVERY_MS - 1
+            timed.onDraftChange(TextFieldValue("ab", TextRange(2)))
+            now += 1
+            timed.onDraftChange(TextFieldValue("abc", TextRange(3)))
+            until("the start 3 s on") { clientEvents("typingStart") == base + 2 }
+            timed.onDraftChange(TextFieldValue(""))
+            timed.close()
+            assertEquals("none inside the interval", base + 2, clientEvents("typingStart"))
+
+            // A blank draft sends nothing; padding is trimmed, as the web and desktop do.
+            composer.onDraftChange(TextFieldValue("   \n  "))
+            composer.send()
+            assertEquals("   \n  ", composer.draft.text)
+            composer.onDraftChange(TextFieldValue("\n  padded words  \n\n"))
+            composer.send()
+            until("the trimmed row") { last()?.let { words(it) == "padded words" && it.state == MessageState.Sent } == true }
+
+            // A lone surrogate (half an emoji) is sent as U+FFFD, through the real FFI, not a crash.
+            composer.onDraftChange(TextFieldValue("lone \uD83D half"))
+            composer.send()
+            until("the lone surrogate row") { last()?.let { words(it) == "lone � half" && it.state == MessageState.Sent } == true }
+
+            // Delete throws a failed one away.
+            control("fail_next_send", """{"code":"RATE_LIMITED"}""")
+            composer.onDraftChange(TextFieldValue("throw me away", TextRange(13)))
+            composer.send()
+            until("the second failed row") { last()?.let { words(it) == "throw me away" && it.state is MessageState.Failed } == true }
+            chat.discardSend(last()!!.clientNonce!!)
+            until("the row gone") { chat.state.value.messages.none { words(it) == "throw me away" } }
+
+            // Mentions: "@" lists members; picking one after an emoji sends a user mention whose
+            // byte range core reads back as that member's name.
+            composer.onDraftChange(TextFieldValue("👩‍👩‍👧 hi @", TextRange("👩‍👩‍👧 hi @".length)))
+            until("member suggestions") { composer.state.value.suggestions.any { it.kind == SuggestionKind.User && it.id != meId } }
+            val member = composer.state.value.suggestions.first { it.kind == SuggestionKind.User && it.id != meId }
+            composer.pick(member)
+            assertEquals("👩‍👩‍👧 hi ${member.insertText} ", composer.draft.text)
+            assertEquals(composer.draft.text.length, composer.draft.selection.end)
+            assertTrue("picking closes the list", composer.state.value.suggestions.isEmpty())
+            composer.onDraftChange(composer.draft.copy(text = composer.draft.text + "😀 look"))
+            composer.send()
+            until("the mention confirmed") { last()?.let { it.state == MessageState.Sent && words(it).startsWith("👩‍👩‍👧 hi") } == true }
+            val mention = last()!!.pieces.single { it.kind is PieceKind.Mention }
+            assertEquals(MentionTarget.User(member.id), (mention.kind as PieceKind.Mention).target)
+            assertTrue("the mention's text is the member: ${mention.text}", mention.text == member.insertText || mention.text == "@${member.label}")
+
+            // Typed out in full and sent at once, while core's search for that exact name is still
+            // on its way: the name listed while typing makes it a mention anyway. A typed #channel too.
+            val channelName = core.channels(communityId).first { it.id == channelId }.name
+            fun channelMentionsSent() = Regex("\\{[^{}]*\"CHANNEL_MENTION\"[^{}]*\\}").findAll(requestLog()).count { "\"$channelId\"" in it.value }
+            val channelMentionsBefore = channelMentionsSent()
+            control("delay_route", """{"operationId":"MembershipController_searchCommunityMembers","ms":5000}""")
+            var typed = "ping "
+            for (c in member.insertText + " in #" + channelName) {
+                typed += c
+                composer.onDraftChange(TextFieldValue(typed, TextRange(typed.length)))
+            }
+            composer.send()
+            until("the typed mentions confirmed") { last()?.let { it.state == MessageState.Sent && words(it).startsWith("ping") } == true }
+            control("delay_route", """{"operationId":"MembershipController_searchCommunityMembers","ms":0}""")
+            val targets = last()!!.pieces.mapNotNull { (it.kind as? PieceKind.Mention)?.target }
+            assertEquals(listOf(MentionTarget.User(member.id)), targets)
+            // The #channel went as a channel mention (core draws a name-less channel mention as
+            // nothing yet: a reader-side gap, filed separately), so check what the server got.
+            assertEquals(channelMentionsBefore + 1, channelMentionsSent())
+            // "#" lists channels.
+            composer.onDraftChange(TextFieldValue("#", TextRange(1)))
+            until("channel suggestions") { composer.state.value.suggestions.any { it.kind == SuggestionKind.Channel } }
+            composer.onDraftChange(TextFieldValue(""))
+            assertTrue(composer.state.value.suggestions.isEmpty())
+
+            // A timeout replaces the composer and counts down on the composer's clock, while shown.
+            control("time_out", """{"communityId":"$communityId","userId":"$meId","seconds":600}""")
+            fun timedOutUntil() = core.channels(communityId).first { it.id == channelId }.permissions?.timedOutUntilMs
+            until("the timeout in core") { timedOutUntil() != null }
+            val untilMs = timedOutUntil()!!
+            var clock = untilMs - 90_000
+            val counted = ComposerStore(Conversation.Channel(channelId), communityId, channelId, core, scope) { clock }
+            counted.setShown(true)
+            assertEquals(ComposerAccess.Blocked("Timed out, 2 min left", BlockedKind.TimedOut), counted.state.value.access)
+            clock = untilMs - 30_000
+            until("the countdown in seconds") { counted.state.value.access == ComposerAccess.Blocked("Timed out, 30 s left", BlockedKind.TimedOut) }
+            counted.setShown(false)
+            clock = untilMs
+            assertFalse("no countdown runs while not shown", counted.countingDown)
+            assertEquals("no countdown while not shown", ComposerAccess.Blocked("Timed out, 30 s left", BlockedKind.TimedOut), counted.state.value.access)
+            counted.setShown(true)
+            assertEquals("over: the composer is back", ComposerAccess.Open, counted.state.value.access)
+            counted.close()
+            control("time_out", """{"communityId":"$communityId","userId":"$meId","seconds":0}""")
+
+            // Drafts are per channel and stay while the app runs.
+            composer.onDraftChange(TextFieldValue("half a thought", TextRange(14)))
+            val other = store.composer(communityId, "another-channel")
+            assertEquals("", other.draft.text)
+            other.onDraftChange(TextFieldValue("elsewhere", TextRange(9)))
+            assertTrue(store.composer(communityId, channelId) === composer)
+            assertEquals("half a thought", store.composer(communityId, channelId).draft.text)
+            assertEquals("elsewhere", store.composer(communityId, "another-channel").draft.text)
+
+            // Signing out drops the drafts with the lists.
+            runBlocking { core.signOut() }
+            until("the drafts dropped") { store.composer(communityId, channelId) !== composer }
+        } finally {
+            pipe.close()
+            scope.cancel()
+            host.shutdown()
+        }
     }
 
     @Test

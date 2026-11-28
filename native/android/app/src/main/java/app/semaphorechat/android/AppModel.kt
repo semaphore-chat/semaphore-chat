@@ -330,6 +330,9 @@ class AppModel(
     /** A text channel's chat: its list, kept for as long as the session. */
     fun chat(channelId: String): ConversationStore = store.conversation(Conversation.Channel(channelId))
 
+    /** A text channel's composer, with its unsent draft. */
+    fun composer(communityId: String, channelId: String): ComposerStore = store.composer(communityId, channelId)
+
     /** A tapped #channel mention: opens it when it is a text channel of the community shown. */
     fun openMentionedChannel(channelId: String) {
         val community = navigator.community ?: return

@@ -1084,6 +1084,34 @@ async fn two_sends_reach_the_transport_in_order() {
 }
 
 #[tokio::test]
+async fn a_send_that_needs_its_row_is_refused_until_the_window_is_loaded() {
+    let mut rig = Rig::new().signed_in().await;
+    // Not opened: no window to show the row in, so nothing is sent and the caller keeps its text.
+    let refused = rig
+        .core
+        .send_message_with_row(channel(), draft("too early"))
+        .await;
+    assert!(matches!(refused, Err(CoreError::Failed { .. })));
+    rig.settle().await;
+    assert!(rig.realtime.sent_nonces().is_empty());
+
+    let mut rig = rig.open_channel(history("m", 1)).await;
+    rig.realtime.ack_ok("r1");
+    let nonce = rig
+        .core
+        .send_message_with_row(channel(), draft("now"))
+        .await
+        .unwrap();
+    rig.sync();
+    assert_eq!(
+        rig.rows.last().unwrap().client_nonce.as_deref(),
+        Some(nonce.as_str())
+    );
+    rig.settle().await;
+    assert_eq!(rig.realtime.sent_nonces(), vec![nonce]);
+}
+
+#[tokio::test]
 async fn a_send_waits_for_the_socket_then_goes() {
     let mut rig = Rig::new()
         .signed_in()

@@ -7,6 +7,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.text.input.TextFieldValue
+import app.semaphorechat.android.design.Icons
+import app.semaphorechat.android.kit.chat.ComposerField
+import app.semaphorechat.android.kit.chat.ComposerNotice
+import app.semaphorechat.android.kit.chat.ComposerText
+import app.semaphorechat.android.kit.chat.SuggestionItem
+import app.semaphorechat.android.kit.chat.SuggestionList
+import app.semaphorechat.android.kit.chat.SuggestionLook
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.ui.Modifier
 import app.semaphorechat.android.design.Tokens
@@ -89,6 +97,8 @@ val CHAT_KIT_STORIES: List<Story> = listOf(
             MessageRow("You", "u-me", "8:30 PM", words("On its way"), state = RowState.Pending)
             MessageRow("You", "u-me", "8:30 PM", words("This one didn't make it"), state = RowState.Failed(null))
             MessageRow("You", "u-me", "8:31 PM", words("Slow down"), state = RowState.Failed("You are sending messages too quickly."))
+            MessageRow("You", "u-me", "8:32 PM", words("Retry me"), state = RowState.Failed(null), onRetry = {}, onDelete = {})
+            MessageRow("You", "u-me", "8:32 PM", words("Retrying"), state = RowState.Failed(null, retrying = true), onRetry = {}, onDelete = {}, continued = true)
             MessageRow(
                 "A display name long enough that it cannot possibly fit on one phone line",
                 "u-long",
@@ -113,6 +123,35 @@ val CHAT_KIT_STORIES: List<Story> = listOf(
             TypingLine("Priya and Sam are typing…")
             TypingLine("Priya and 4 others are typing…")
             TypingLine("")
+        }
+    },
+    Story("kit-composer") {
+        ChatPage {
+            Column(Modifier.padding(horizontal = Tokens.Space.Md), verticalArrangement = Arrangement.spacedBy(Tokens.Space.Sm)) {
+                ComposerField(TextFieldValue(), {}, ComposerText.placeholder("design"), maxLines = 4, canSend = false, onSend = {})
+                ComposerField(TextFieldValue("On it"), {}, ComposerText.placeholder("design"), maxLines = 4, canSend = true, onSend = {})
+                ComposerField(
+                    TextFieldValue("Line one\nLine two\nLine three\nLine four\nLine five, past the cap"),
+                    {},
+                    ComposerText.placeholder("design"),
+                    maxLines = 4,
+                    canSend = true,
+                    onSend = {},
+                )
+                ComposerNotice("You can't send messages in #announcements", Icons.Lock)
+                ComposerNotice("Timed out, 12 min left", Icons.Info, reason = "Spamming links")
+                SuggestionList(
+                    "Suggestions",
+                    listOf(
+                        SuggestionItem("Priya Raman", "@priya", SuggestionLook.Person("u-priya")),
+                        SuggestionItem("Sam", "@sam", SuggestionLook.Person("u-sam")),
+                        SuggestionItem("here", null, SuggestionLook.Group),
+                        SuggestionItem("design", null, SuggestionLook.Channel),
+                    ),
+                    shown = 6,
+                    onPick = {},
+                )
+            }
         }
     },
 )

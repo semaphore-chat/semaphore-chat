@@ -8,6 +8,7 @@
 package app.semaphorechat.android
 
 import androidx.compose.foundation.lazy.LazyListState
+import app.semaphorechat.android.kit.chat.ChatKitText
 import app.semaphorechat.android.kit.chat.ChatPiece
 import app.semaphorechat.android.kit.chat.MentionTarget
 import app.semaphorechat.android.kit.chat.PieceKind
@@ -19,6 +20,7 @@ import app.semaphorechat.android.screens.ChatModel
 import app.semaphorechat.android.screens.JumpLabel
 import app.semaphorechat.android.screens.MessageState
 import app.semaphorechat.android.screens.QuoteItem
+import app.semaphorechat.android.screens.SERVER_ERROR_FALLBACK
 import app.semaphorechat.android.screens.errorText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -142,12 +144,16 @@ fun chatMessage(row: MessageRow, meId: String?, rules: ChatRules): ChatMessage {
         state = when (val state = row.sendState) {
             SendState.Sent -> MessageState.Sent
             SendState.Pending -> MessageState.Pending
-            is SendState.Failed -> MessageState.Failed(errorText(state.error.code, state.error.message))
+            // The server's reason when it gave one; a generic failure reads "Not sent".
+            is SendState.Failed -> MessageState.Failed(
+                errorText(state.error.code, state.error.message).takeUnless { it == SERVER_ERROR_FALLBACK } ?: ChatKitText.NOT_SENT,
+            )
         },
         mentionsMe = mentionsMe,
         replyTo = row.replyTo?.let { QuoteItem(nameOf(it.author), it.text, it.deleted) },
         replyCount = row.replyCount.toInt(),
         extras = row.attachments.map { "Attachment: ${it.filename}, ${sizeText(it.sizeBytes.toLong())}" },
+        clientNonce = row.clientNonce,
     )
 }
 
@@ -226,6 +232,8 @@ class ConversationStore(
     /** The edge as last published: rows landing at the end count as new only from the live edge. */
     private var wasAtLiveEdge = true
     private var typingCheck: Job? = null
+    /** Failed sends whose Retry is running: drawn busy. */
+    private val retrying = HashSet<String>()
     private val meId: String? by lazy { (core.session() as? SessionState.SignedIn)?.me?.id }
 
     private val stateFlow = MutableStateFlow(ChatModel())
@@ -364,6 +372,28 @@ class ConversationStore(
         }
     }
 
+    /** Retry of a failed send: busy until core has taken it (its row turns pending again). */
+    fun retrySend(clientNonce: String) {
+        synchronized(lock) {
+            if (!retrying.add(clientNonce)) return
+            publish()
+        }
+        scope.launch {
+            runCatching { core.retrySend(clientNonce) }
+            onCollector {
+                synchronized(lock) {
+                    retrying.remove(clientNonce)
+                    publish()
+                }
+            }
+        }
+    }
+
+    /** Delete of a failed send: its row goes (a list change from core) and it can't be retried. */
+    fun discardSend(clientNonce: String) {
+        scope.launch { runCatching { core.discardFailedSend(clientNonce) } }
+    }
+
     /** Builds the state from what is held and what core says now. Under [lock]. */
     private fun publish() {
         val atLiveEdge = core.atLiveEdge(conversation)
@@ -371,7 +401,14 @@ class ConversationStore(
         val typingNames = core.typingUsers(conversation).map(::nameOf)
         stateFlow.value = ChatModel(
             face = face,
-            messages = mapped,
+            messages = if (retrying.isEmpty()) {
+                mapped
+            } else {
+                mapped.map { message ->
+                    val state = message.state
+                    if (state is MessageState.Failed && message.clientNonce in retrying) message.copy(state = state.copy(retrying = true)) else message
+                }
+            },
             atLiveEdge = atLiveEdge,
             atStart = core.atHistoryStart(conversation),
             loadingOlder = loadingOlder,

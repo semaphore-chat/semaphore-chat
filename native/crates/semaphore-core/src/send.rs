@@ -351,6 +351,7 @@ impl Core {
         &self,
         conversation: Conversation,
         mut draft: MessageDraft,
+        needs_row: bool,
     ) -> Result<String, CoreError> {
         self.services().ok_or_else(|| unavailable("sending"))?;
         // The bytes go to the upload job; the send itself only needs how many.
@@ -364,6 +365,17 @@ impl Core {
             payload["pendingAttachments"] = json!(file_count);
         }
         self.write(|state, now| {
+            // A pending row is only added to a loaded window at the live edge. A caller that
+            // shows the message only through that row asks for nothing to be sent without one.
+            if needs_row
+                && !state.windows.get(&conversation).is_some_and(|window| {
+                    window.is_loaded() && !window.is_detached_from_live_edge()
+                })
+            {
+                return Err(CoreError::Failed {
+                    message: "The conversation isn't loaded at its newest messages yet".into(),
+                });
+            }
             let me = state.me_id().to_owned();
             let mut dto =
                 optimistic_dto(&conversation, &client_id, &nonce, &me, &draft, &spans, now)?;

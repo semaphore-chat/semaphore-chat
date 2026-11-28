@@ -129,9 +129,42 @@ pub fn jump_text(new_count: u32) -> JumpText {
     }
 }
 
+/// The composer's shared numbers (`semaphore_design::chat`): how many lines its field grows to
+/// before it scrolls, on a phone and with the on-screen keyboard up, and how many suggestion rows
+/// show before the list scrolls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct ComposerCaps {
+    pub phone_rows: u32,
+    pub keyboard_rows: u32,
+    pub suggestions_shown: u32,
+}
+
+#[uniffi::export]
+pub fn composer_caps() -> ComposerCaps {
+    use semaphore_design::chat::{ComposerCap, SUGGESTIONS_SHOWN, cap_rows};
+    let rows = |cap| u32::try_from(cap_rows(cap)).unwrap_or(u32::MAX);
+    ComposerCaps {
+        phone_rows: rows(ComposerCap::Phone),
+        keyboard_rows: rows(ComposerCap::Keyboard),
+        suggestions_shown: u32::try_from(SUGGESTIONS_SHOWN).unwrap_or(u32::MAX),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn composer_caps_are_the_design_crates() {
+        assert_eq!(
+            composer_caps(),
+            ComposerCaps {
+                phone_rows: 4,
+                keyboard_rows: 2,
+                suggestions_shown: 6,
+            }
+        );
+    }
 
     fn seg(end: usize, kind: SegKind) -> TextSeg {
         TextSeg {
