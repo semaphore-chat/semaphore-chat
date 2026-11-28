@@ -158,7 +158,13 @@ export interface MessageListCoreProps {
  *   pinned (a reaction added to the newest message, an image or GIF finishing
  *   loading, a link preview expanding: virtua keeps the scroll offset when a
  *   row in view resizes, so the bottom would move below the fold; the same
- *   row ResizeObserver as the visible-range report below detects it).
+ *   row ResizeObserver as the visible-range report below detects it), and
+ *   so does the list's own viewport changing height while pinned (a window
+ *   resize or a phone rotating, the composer growing with a longer draft, a
+ *   reply bar or the on-screen keyboard opening, a hidden pane shown again:
+ *   the browser and virtua keep the scroll offset, i.e. the top edge, so a
+ *   shorter viewport would leave the newest rows below it; #921). Unpinned,
+ *   that top edge is the reader's place and is left alone.
  *   Disabled in anchored mode (a newer page
  *   landing below the viewport must not yank the reader off their spot — see
  *   the stick-to-bottom effect below for the full rationale) and, for normal
@@ -584,6 +590,33 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
       return () => {
         rowObserverRef.current?.unobserve(row);
       };
+    }, []);
+
+    // Stay pinned when the list's viewport changes height (see the module
+    // doc). The container's height is the VList's (the page-load bars are
+    // absolutely positioned). Created in a layout effect after virtua's own
+    // viewport observer (its child layout effects run first), so within a
+    // delivery virtua already has the new viewport size when this scrolls,
+    // and before the scroll event of any offset change virtua made in the
+    // same delivery, so `pinnedRef` still says where the reader was.
+    useLayoutEffect(() => {
+      const container = listContainerRef.current;
+      if (!container || typeof ResizeObserver === "undefined") return;
+      let height: number | null = null;
+      const observer = new ResizeObserver((entries) => {
+        const entry = entries[entries.length - 1];
+        const next = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+        const previous = height;
+        height = next;
+        // The first notification is the initial measurement (initial
+        // positioning owns that); a hidden list (0) has nothing to show.
+        if (previous === null || next === 0 || Math.abs(next - previous) <= ROW_GROWTH_EPSILON_PX) return;
+        if (modeRef.current === 'normal' && initialPositionedRef.current && pinnedRef.current) {
+          scrollToBottomRef.current();
+        }
+      });
+      observer.observe(container);
+      return () => observer.disconnect();
     }, []);
 
     // A new consumer callback (markAsRead is re-created when the socket
