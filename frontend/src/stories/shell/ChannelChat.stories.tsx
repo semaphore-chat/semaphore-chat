@@ -967,3 +967,6 @@ export const WideNotificationLevelsLight = story({
   handlers: notificationHandlers,
   steps: [headerMore, press('Notifications: All messages')],
 });
+
+/** Phone: the header's More has the channel's notification level too (the menu is at every width). */
+export const PhoneNotificationsInMore = story({ handlers: notificationHandlers, steps: [headerMore] });

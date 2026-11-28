@@ -6,16 +6,21 @@
  *   ("No unread channels" when there is none). Where it went is announced. Not from a field other than the channel's
  *   composer, not while a layer is open.
  * - Mod+/: the shortcut sheet (a kit Dialog); again closes it. It opens from a field too, never over another layer.
+ * - Push-to-talk owns its key (`KeyboardEvent.code`, while connected to voice in push-to-talk mode), whatever
+ *   modifiers are held: it is never a shortcut and never marks the channel read (the old layout's guard).
  * - Escape: the last step of the screen's Escape chain (`ESCAPE_PRIORITY.conversation`): marks the open channel read
  *   ("Marked as read"). Anything that used the key first (a layer, the right panel, an edit, the mention list) keeps it.
  *
  * One `window` keydown listener in the bubble phase, so every more specific handler runs first and anything it
  * handled (`defaultPrevented`) is left alone.
  */
-import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Dialog, ESCAPE_PRIORITY, KeyCap, Stack, Text, useAnnounce, useScreenEscape } from '../../../kit';
+import { Button, Dialog, ESCAPE_PRIORITY, KeyCap, Stack, Text, useAnnounce, useScreenEscape, useWidthRange } from '../../../kit';
+import { VoiceStateContext } from '../../../contexts/VoiceContext';
+import { useVoiceSettings } from '../../../hooks/useVoiceSettings';
+import { useTouchFirst } from '../../../data/touchFirst';
 import { useCommunityChannels } from '../../../data/channels';
 import { useUnreadSummary } from '../../../data/unread';
 import {
@@ -91,10 +96,25 @@ export function LoungeShortcuts({ communityId, channelId }: LoungeShortcutsProps
   sheetOpenRef.current = sheetOpen;
   const announceRef = useRef(announce);
   announceRef.current = announce;
+  // The push-to-talk key's code while it applies, and the code of the key being pressed (for the Escape step, which
+  // is not handed the event).
+  const voiceConnected = useContext(VoiceStateContext)?.isConnected ?? false;
+  const { isPushToTalk, pushToTalkKey } = useVoiceSettings();
+  const pttKeyRef = useRef<string | null>(null);
+  pttKeyRef.current = voiceConnected && isPushToTalk ? pushToTalkKey : null;
+  const pressedCode = useRef<string | null>(null);
+  useEffect(() => {
+    const note = (event: KeyboardEvent) => {
+      pressedCode.current = event.code;
+    };
+    window.addEventListener('keydown', note, true);
+    return () => window.removeEventListener('keydown', note, true);
+  }, []);
 
   // The last step of the Escape chain: mark the open channel read.
   useScreenEscape(() => {
     if (channelId === null) return false;
+    if (pttKeyRef.current !== null && pressedCode.current === pttKeyRef.current) return false;
     markConversationRead(queryClient, 'channel', channelId)
       .then((marked) => {
         if (marked) announceRef.current('Marked as read');
@@ -136,6 +156,8 @@ export function LoungeShortcuts({ communityId, channelId }: LoungeShortcutsProps
         setSheetOpen((open) => !open);
         return;
       }
+      // Push-to-talk owns its key, whatever modifiers are held.
+      if (pttKeyRef.current !== null && event.code === pttKeyRef.current) return;
       if (layerOpen()) return;
       const fromComposer = isComposerTarget(event.target);
       if (isEditableTarget(event.target) && !fromComposer) return;
@@ -169,10 +191,14 @@ export interface ShortcutSheetProps {
   onClose: () => void;
   /** The key names to show (tests and stories); the platform's by default. */
   mac?: boolean;
+  /** Touch-first (tests and stories): "Edit your last message" is off there, so it is not listed. */
+  touch?: boolean;
 }
 
 /** The shortcut sheet: every shortcut by group, its keys as key caps (read as "Alt plus Down arrow"). */
-export function ShortcutSheet({ open, onClose, mac = isMacPlatform() }: ShortcutSheetProps): JSX.Element {
+export function ShortcutSheet({ open, onClose, mac = isMacPlatform(), touch }: ShortcutSheetProps): JSX.Element {
+  const touchFirst = useTouchFirst(useWidthRange());
+  const hideEditLast = touch ?? touchFirst;
   return (
     <Dialog
       open={open}
@@ -191,7 +217,7 @@ export function ShortcutSheet({ open, onClose, mac = isMacPlatform() }: Shortcut
             <Text variant="section" tone="secondary" as="h3">
               {group}
             </Text>
-            {SHORTCUTS.filter((shortcut) => shortcut.group === group).map((shortcut) => (
+            {SHORTCUTS.filter((shortcut) => shortcut.group === group && !(hideEditLast && shortcut.id === 'editLast')).map((shortcut) => (
               <Stack key={shortcut.id} direction="row" gap="md">
                 <Stack gap="xs" fill>
                   <Text>{shortcut.description}</Text>

@@ -374,12 +374,13 @@ export function whoReactedText(people: readonly ReactionPerson[], more: number, 
   if (more > 0) names.push(more === 1 ? '1 other' : `${more} others`);
   if (names.length === 0) return `Reacted with ${what}`;
   const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-  return `${list[0].toUpperCase()}${list.slice(1)} reacted with ${what}`;
+  // Only the literal "you" starts a sentence; a first name keeps its own case.
+  return `${names[0] === 'you' ? 'Y' : list[0]}${list.slice(1)} reacted with ${what}`;
 }
 
 /**
  * Who reacted, as the chip's tooltip (wide, with a mouse: a hover or keyboard focus). The names are asked for only
- * once the pointer or focus has come to the chip, as the old tooltip (not per chip of every row).
+ * once the tooltip has opened (not on a pointer that merely passes, nor per chip of every row).
  */
 function WhoReacted({
   userIds,
@@ -394,11 +395,10 @@ function WhoReacted({
 }): JSX.Element {
   const [asked, setAsked] = useState(false);
   const { people, more } = useReactionPeople(asked ? userIds : NO_IDS);
-  const ask = () => setAsked(true);
   return (
-    <span style={{ display: 'contents' }} onPointerEnter={ask} onFocus={ask}>
-      <Tooltip label={whoReactedText(people, more, what, me)}>{children}</Tooltip>
-    </span>
+    <Tooltip label={whoReactedText(people, more, what, me)} onOpen={() => setAsked(true)}>
+      {children}
+    </Tooltip>
   );
 }
 

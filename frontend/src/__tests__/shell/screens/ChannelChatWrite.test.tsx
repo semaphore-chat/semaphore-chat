@@ -712,9 +712,56 @@ describe('ChannelChat desktop input (PR 10e: wide, with a mouse)', () => {
     fireEvent.contextMenu(row, { clientX: 40, clientY: 60 });
     await screen.findByRole('menu');
     expect(screen.queryByRole('dialog')).toBeNull();
+    const paper = screen.getByRole('menu').closest<HTMLElement>('.MuiPaper-root')!;
+    expect(paper.style.top).toBe('60px');
+    expect(paper.style.left).toBe('40px');
     fireEvent.click(screen.getByRole('menuitem', { name: 'Reply' }));
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
     expect(await screen.findByText(/Replying to/)).toBeInTheDocument();
+  });
+
+  it('a right-click Menu closed with Escape returns focus to the row', async () => {
+    setup([theirs()]);
+    const row = rowOf('their words');
+    act(() => row.focus());
+    fireEvent.pointerDown(row, { pointerType: 'mouse', button: 2 });
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 });
+    await screen.findByRole('menu');
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    await waitFor(() => expect(row).toHaveFocus());
+  });
+
+  it('a second right-click away from the open cursor Menu closes it (the browser menu stays hidden)', async () => {
+    setup([theirs()]);
+    const row = rowOf('their words');
+    fireEvent.pointerDown(row, { pointerType: 'mouse', button: 2 });
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 });
+    await screen.findByRole('menu');
+    const backdrop = document.querySelector<HTMLElement>('.MuiBackdrop-root')!;
+    // fireEvent returns false when the default was prevented.
+    expect(fireEvent.contextMenu(backdrop, { clientX: 300, clientY: 300 })).toBe(false);
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+  });
+
+  it('Cancel on the Menu’s Delete confirm returns focus to the row, deleting nothing', async () => {
+    setup([mine()]);
+    const row = await openMenuWithEnter('my words');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete message' }));
+    const confirm = (await screen.findByText('Delete this message?')).closest<HTMLElement>('[role="dialog"], [role="alertdialog"]')!;
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByText('Delete this message?')).toBeNull());
+    expect(actions.del).not.toHaveBeenCalled();
+    await waitFor(() => expect(row).toHaveFocus());
+  });
+
+  it('a touch long press (a touch pointer, then the context menu) on a non-touch-first device gives the Sheet', async () => {
+    setup([theirs()]);
+    const row = rowOf('their words');
+    fireEvent.pointerDown(row, { pointerType: 'touch', button: 0, clientX: 40, clientY: 60 });
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 });
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName('Message from Aiko');
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   it('a touch device at wide keeps the Sheet', async () => {

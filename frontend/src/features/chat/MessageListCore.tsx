@@ -404,6 +404,8 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
 
     const handleRowKeyDown = useCallback(
       (event: KeyboardEvent<HTMLDivElement>, index: number) => {
+        // Alt, Ctrl and Meta chords belong to the screen's shortcuts (Alt+↑/↓ walks channels), not the list.
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
         switch (event.key) {
           case 'ArrowDown':
             event.preventDefault();

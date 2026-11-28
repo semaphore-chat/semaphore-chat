@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { useLocation } from 'react-router-dom';
 import { ESCAPE_PRIORITY, KitProvider, useScreenEscape } from '../../../kit';
+import { VoiceStateContext, type VoiceState } from '../../../contexts/VoiceContext';
+import { VOICE_SETTINGS_KEY } from '../../../hooks/useVoiceSettings';
 import { LoungeShortcuts, ShortcutSheet } from '../../../shell/lounge/frame/LoungeShortcuts';
 import {
   channelsControllerFindAllForCommunityQueryKey,
@@ -35,7 +37,7 @@ function TakesEscape() {
   return null;
 }
 
-function setup({ channelId = 'ch-b', extra }: { channelId?: string | null; extra?: React.ReactNode } = {}) {
+function setup({ channelId = 'ch-b', extra, voice }: { channelId?: string | null; extra?: React.ReactNode; voice?: boolean } = {}) {
   const queryClient = createTestQueryClient();
   queryClient.setQueryData(channelsControllerFindAllForCommunityQueryKey({ path: { communityId: 'c-1' } }), [
     createChannel({ id: 'ch-a', name: 'alpha', communityId: 'c-1', position: 0 }),
@@ -48,6 +50,7 @@ function setup({ channelId = 'ch-b', extra }: { channelId?: string | null; extra
     { channelId: 'ch-d', communityId: 'c-1', channelType: 'TEXT', unreadCount: 2, mentionCount: 0, lastReadMessageId: null },
   ]);
   return renderWithProviders(
+    <VoiceStateContext.Provider value={voice ? ({ isConnected: true } as VoiceState) : null}>
     <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
       <input aria-label="a search field" />
       <div data-shortcut-scope="composer">
@@ -56,7 +59,8 @@ function setup({ channelId = 'ch-b', extra }: { channelId?: string | null; extra
       {extra}
       <LoungeShortcuts communityId="c-1" channelId={channelId} />
       <Where />
-    </KitProvider>,
+    </KitProvider>
+    </VoiceStateContext.Provider>,
     { queryClient, routerProps: { initialEntries: [`/community/c-1/channel/${channelId ?? ''}`] } },
   );
 }
@@ -66,7 +70,12 @@ const where = () => screen.getByTestId('where').textContent;
 describe('LoungeShortcuts', () => {
   beforeEach(() => {
     marked.calls = [];
+    localStorage.clear();
   });
+
+  /** Push-to-talk on `code`, in the saved voice settings. */
+  const pushToTalkOn = (code: string) =>
+    localStorage.setItem(VOICE_SETTINGS_KEY, JSON.stringify({ inputMode: 'push_to_talk', pushToTalkKey: code, pushToTalkKeyDisplay: code }));
 
   it('Alt+↓ goes to the next text channel', async () => {
     setup();
@@ -159,5 +168,52 @@ describe('LoungeShortcuts', () => {
       </KitProvider>,
     );
     expect(screen.getByRole('img', { name: 'Command plus Slash' })).toHaveTextContent('⌘/');
+  });
+
+  it('the sheet lists "Edit your last message" with a keyboard, and not when touch-first', () => {
+    const sheet = (touch: boolean) => (
+      <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
+        <ShortcutSheet open onClose={() => undefined} mac={false} touch={touch} />
+      </KitProvider>
+    );
+    const { unmount } = renderWithProviders(sheet(false));
+    expect(screen.getByText(/Edit your last message/)).toBeInTheDocument();
+    unmount();
+    renderWithProviders(sheet(true));
+    expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument();
+    expect(screen.queryByText(/Edit your last message/)).toBeNull();
+    expect(screen.getByText('Next unread channel or conversation')).toBeInTheDocument();
+  });
+
+  describe('push-to-talk guard', () => {
+    it('a push-to-talk key is not a shortcut, whatever modifiers are held, while in voice', async () => {
+      pushToTalkOn('ArrowDown');
+      setup({ voice: true });
+      fireEvent.keyDown(document.body, { key: 'ArrowDown', code: 'ArrowDown', altKey: true });
+      await act(async () => undefined);
+      expect(where()).toBe('/community/c-1/channel/ch-b');
+    });
+
+    it('not connected to voice, the same key is still the shortcut', async () => {
+      pushToTalkOn('ArrowDown');
+      setup({ voice: false });
+      fireEvent.keyDown(document.body, { key: 'ArrowDown', code: 'ArrowDown', altKey: true });
+      await waitFor(() => expect(where()).toBe('/community/c-1/channel/ch-c'));
+    });
+
+    it('Escape as the push-to-talk key does not mark the channel read; another Escape does when it is not', async () => {
+      pushToTalkOn('Escape');
+      setup({ voice: true });
+      fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+      await act(async () => undefined);
+      expect(marked.calls).toEqual([]);
+    });
+
+    it('with another key as push-to-talk, Escape still marks read', async () => {
+      pushToTalkOn('Backquote');
+      setup({ voice: true });
+      fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+      await waitFor(() => expect(marked.calls).toEqual([['channel', 'ch-b']]));
+    });
   });
 });

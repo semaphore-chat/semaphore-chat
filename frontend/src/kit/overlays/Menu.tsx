@@ -1,4 +1,4 @@
-import { useRef, useState, type JSX } from 'react';
+import { useRef, useState, type JSX, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import MuiMenu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
@@ -142,7 +142,17 @@ export function Menu({ open, anchor, point, onClose, label, items, placement = '
       transitionDuration={tokens.motion.fast}
       {...fadeTransition}
       slotProps={{
-        root: { ref: setModalRoot },
+        root: {
+          ref: setModalRoot,
+          // A right-click away from a cursor menu closes it, as a press outside does, and the browser's menu stays hidden.
+          ...(point !== undefined && {
+            onContextMenu: (event: MouseEvent<HTMLElement>) => {
+              if (paper.current?.contains(event.target as Node)) return;
+              event.preventDefault();
+              onClose();
+            },
+          }),
+        },
         paper: { sx: [paperSx, { marginTop: `${point === undefined ? gap : 0}px` }], ref: paper },
         list: { 'aria-label': label, sx: listSx },
       }}
