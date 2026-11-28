@@ -26,6 +26,8 @@ export interface TooltipProps {
   /** One element. It keeps its own accessible name; the tooltip only describes it. */
   children: ReactElement;
   placement?: 'top' | 'bottom' | 'left' | 'right';
+  /** Called each time the tooltip actually opens (not on a hover that never lasts, or a touch). */
+  onOpen?: () => void;
 }
 
 /** Never rendered into layout: the wrapper only catches the child's events as they bubble. */
@@ -76,7 +78,7 @@ const FOCUSABLE =
  * close. A disabled control cannot take focus and may not show a hover tooltip;
  * put the hint in text beside it instead. The panel is not hoverable.
  */
-export function Tooltip({ label, children, placement = 'top' }: TooltipProps): JSX.Element {
+export function Tooltip({ label, children, placement = 'top', onOpen }: TooltipProps): JSX.Element {
   const id = useId();
   const container = useOverlayContainer();
   const [open, setOpen] = useState(false);
@@ -110,6 +112,7 @@ export function Tooltip({ label, children, placement = 'top' }: TooltipProps): J
     const first = wrapper.current?.firstElementChild;
     setAnchor(first instanceof HTMLElement ? first : null);
     setOpen(true);
+    onOpen?.();
   };
 
   const clearTimer = () => {

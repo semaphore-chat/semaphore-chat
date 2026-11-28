@@ -172,6 +172,8 @@ export function ChatComposer({
 
   return (
     <>
+      {/* The channel's composer is where the channel shortcuts still work (`utils/shortcuts`); a thread's is not. */}
+      <div data-shortcut-scope={thread === undefined ? 'composer' : undefined} style={{ display: 'contents' }}>
       <Composer
         ref={inputRef}
         label={label}
@@ -235,6 +237,7 @@ export function ChatComposer({
           )
         }
       />
+      </div>
       {/* The attach button opens the system's file picker through this input. */}
       <input
         ref={attach.inputRef}

@@ -32,6 +32,13 @@ vi.mock('../../../shell/lounge/pieces/community/UserCard', () => ({ UserCardConn
 vi.mock('../../../shell/lounge/pieces/call/ShellCall', () => ({ ShellCall: () => null }));
 vi.mock('../../../shell/lounge/pieces/signOutConfirm', () => ({ SignOutConfirmHost: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock('../../../data/callSlot', () => ({ useCallSlotShown: () => false }));
+const marked = vi.hoisted(() => ({ count: 0 }));
+vi.mock('../../../utils/markConversationRead', () => ({
+  markConversationRead: async () => {
+    marked.count += 1;
+    return true;
+  },
+}));
 
 const panelControl = vi.hoisted(() => ({ open: null as null | ((open: boolean) => void), closed: 0 }));
 /** Stands for `useComposerDraft`: the thread's field keeps its text outside the component, as the real one does. */
@@ -201,5 +208,37 @@ describe('ThreeIslandsFrame: the right panel', () => {
       const island = screen.getByRole('complementary', { name: 'Members' });
       expect(island.closest('[tabindex="-1"]')).toBe(document.activeElement);
     });
+  });
+
+  it('Escape at wide closes the panel first and marks nothing read; the next Escape marks the channel read', async () => {
+    marked.count = 0;
+    mockViewport(WIDTH.wide);
+    setup();
+    act(() => panelControl.open!(true));
+    (await screen.findByRole('textbox', { name: 'Reply in thread' })).blur();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(panelControl.closed).toBe(1));
+    expect(marked.count).toBe(0);
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Thread' })).toBeNull());
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(marked.count).toBe(1));
+  });
+
+  it.each(['compact', 'wide'] as const)('the desktop shortcuts are there at %s (Ctrl+/ opens the sheet)', async (range) => {
+    mockViewport(WIDTH[range]);
+    setup();
+    fireEvent.keyDown(document.body, { key: '/', ctrlKey: true });
+    expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+  });
+
+  it('a phone has no desktop shortcuts: no sheet, and Escape marks nothing read', async () => {
+    marked.count = 0;
+    mockViewport(WIDTH.phone);
+    setup();
+    fireEvent.keyDown(document.body, { key: '/', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await act(async () => undefined);
+    expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).toBeNull();
+    expect(marked.count).toBe(0);
   });
 });

@@ -116,7 +116,9 @@ vi.mock('../../../hooks/useMessageFileUpload', () => ({ useMessageFileUpload: ()
 vi.mock('../../../hooks/useComposerAvailability', () => ({ useComposerAvailability: () => ({ state: 'ok', channelName: 'lobby', canAttach: true }) }));
 vi.mock('../../../hooks/useTypingEmitter', () => ({ useTypingEmitter: () => ({ handleKeyPress: vi.fn(), sendTypingStop: vi.fn() }) }));
 vi.mock('../../../hooks/useAllCommunityMembers', () => ({ useAllCommunityMembers: () => ({ data: [], isLoading: false }) }));
-vi.mock('../../../data/touchFirst', () => ({ useTouchFirst: () => false }));
+// Not touch-first (Enter sends); the More reactions test is touch-first (the actions Sheet).
+const touch = vi.hoisted(() => ({ current: false }));
+vi.mock('../../../data/touchFirst', () => ({ useTouchFirst: () => touch.current }));
 
 // Renders of kit rows, by author: typing in the composer must draw none.
 const rowRenders = vi.hoisted(() => new Map<string, number>());
@@ -223,6 +225,7 @@ const field = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Me
 const GIF = { id: 'g1', title: 'cat typing', url: 'https://media.tenor.com/cat.gif', previewUrl: 'https://media.tenor.com/cat-s.gif', mediumUrl: 'https://media.tenor.com/cat-m.gif', width: 200, height: 150 };
 
 beforeEach(() => {
+  touch.current = false;
   resetFactoryCounter();
   clearComposerDrafts();
   rowRenders.clear();
@@ -267,6 +270,7 @@ describe('ChannelChat composer extras', () => {
   });
 
   it('More reactions opens the picker on the message and reacts with the pick; focus returns to the row', async () => {
+    touch.current = true;
     const { user } = setup([theirs()]);
     const row = rowOf('their words');
     act(() => row.focus());

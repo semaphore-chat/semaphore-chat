@@ -7,7 +7,8 @@
  * The right region shows the screen's default right content (the members) or, while the screen has one open, its own
  * panel (a thread, the pinned messages; `ScreenChrome.panel`). The default content stays mounted under the panel,
  * `hidden` and `inert`, so its scroll and data survive and nothing in it can be reached; the screen portals the
- * panel's content into the frame's slot (`panelTarget`).
+ * panel's content into the frame's slot (`panelTarget`). At compact and wide it hosts the desktop shortcuts
+ * (`LoungeShortcuts`).
  */
 import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react';
 import { ESCAPE_PRIORITY, ThreeIslands, useScreenEscape, useWidthRange } from '../../../kit';
@@ -22,6 +23,7 @@ import { UserCardConnected } from '../pieces/community/UserCard';
 import { InboxLeft } from '../pieces/InboxLeft';
 import { MembersIslandConnected } from '../pieces/MembersIsland';
 import { CentreSkeleton } from '../pieces/CentreSkeleton';
+import { LoungeShortcuts } from './LoungeShortcuts';
 import { ShellCall } from '../pieces/call/ShellCall';
 import { useCallSlotShown } from '../../../data/callSlot';
 import { ScreenBoundary } from './ScreenBoundary';
@@ -205,6 +207,8 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
             phonePane={screen.phonePane}
           />
           </div>
+          {/* The desktop shortcuts: compact and wide (a phone has no keyboard shortcuts). */}
+          {range !== 'phone' && <LoungeShortcuts communityId={communityId} channelId={params.channelId ?? null} />}
           <AllCommunitiesSheetConnected open={allOpen} onClose={() => setAllOpen(false)} currentId={communityId} />
         </SignOutConfirmHost>
       </LoungeLinksContext>

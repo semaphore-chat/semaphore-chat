@@ -5,6 +5,10 @@
  *
  * What the screen knows around every row (the reader, where links lead, the community's emoji, the visible
  * channels) comes from `ChatRowContext`, one value for the whole list.
+ *
+ * On a device that is not touch-first (PR 10e: wide, with a mouse) a row has the kit's hover and focus toolbar (Add
+ * reaction, Reply, Reply in thread, More actions) and a reaction's tooltip says who reacted. Touch-first keeps the
+ * long press and the Sheet.
  */
 import {
   createContext,
@@ -24,6 +28,7 @@ import {
   Button,
   Composer,
   Icon,
+  IconButton,
   LinkCard,
   ListSeparator,
   MessageQuote,
@@ -31,13 +36,15 @@ import {
   MessageText,
   ReactionChip,
   Stack,
+  Tooltip,
   personColour,
   safeHref,
   useAnnounce,
   type MentionSegment,
   type MessageRowFocus,
-  type OpenActionsVia,
+  type OpenActionsRequest,
 } from '../../../../kit';
+import { useReactionPeople, type ReactionPerson } from '../../../../data/chat/useReactionPeople';
 import { userControllerGetUserByIdOptions } from '../../../../api-client/@tanstack/react-query.gen';
 import { useAuthenticatedFile, useAuthenticatedImage } from '../../../../hooks/useAuthenticatedFile';
 import { useMessagePermissions } from '../../../../hooks/useMessagePermissions';
@@ -82,8 +89,17 @@ export interface ChatRowShared {
   openPath(path: string): void;
   openProfile?: (userId: string) => void;
   opener: AttachmentOpener;
-  /** The row asked for its actions (the row has focus by then). */
-  openActions(message: Message, via: OpenActionsVia): void;
+  /**
+   * The row asked for its actions (the row has focus by then). `anchor`: where a Menu opens when there is no point
+   * (the toolbar's More); else the row.
+   */
+  openActions(message: Message, request: OpenActionsRequest, anchor?: HTMLElement | null): void;
+  /** Not touch-first: rows have the hover toolbar and reactions say who reacted on hover. */
+  pointerFirst: boolean;
+  /** The toolbar's Reply (quote reply); undefined inside a thread. */
+  reply?: (message: Message) => void;
+  /** The toolbar's Add reaction: the emoji picker; focus returns to `returnTo`. */
+  pickReaction(message: Message, returnTo: HTMLElement | null): void;
   /** A picture of the message was pressed: the full-size viewer, at that picture. */
   openViewer(message: Message, fileId: string): void;
   /** Who reacted to the message (a reaction's chip asked: that reaction first); focus returns to `returnTo`. */
@@ -319,7 +335,8 @@ function Reactions({ message, row }: { message: Message; row: { current: HTMLDiv
   if (reactions.length === 0) return null;
   return (
     <>
-      {reactions.map((reaction) => (
+      {reactions.map((reaction) => {
+        const chip = (
         <ReactionChip
           key={reaction.key}
           emoji={reaction.emoji}
@@ -337,7 +354,82 @@ function Reactions({ message, row }: { message: Message; row: { current: HTMLDiv
             shared.showReactions(message, reaction.key, returnTo);
           }}
         />
-      ))}
+        );
+        if (!shared.pointerFirst) return chip;
+        return (
+          <WhoReacted key={reaction.key} userIds={message.reactions.find((r) => r.emoji === reaction.key)?.userIds} what={reaction.emoji} me={shared.me}>
+            {chip}
+          </WhoReacted>
+        );
+      })}
+    </>
+  );
+}
+
+const NO_IDS: string[] = [];
+
+/** "you, aiko and 2 others reacted with 😂": the tooltip of a reaction (the names while they load are "…"). */
+export function whoReactedText(people: readonly ReactionPerson[], more: number, what: string, me: string): string {
+  const names = people.map((person) => (person.id === me ? 'you' : (person.name ?? '…')));
+  if (more > 0) names.push(more === 1 ? '1 other' : `${more} others`);
+  if (names.length === 0) return `Reacted with ${what}`;
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  // Only the literal "you" starts a sentence; a first name keeps its own case.
+  return `${names[0] === 'you' ? 'Y' : list[0]}${list.slice(1)} reacted with ${what}`;
+}
+
+/**
+ * Who reacted, as the chip's tooltip (wide, with a mouse: a hover or keyboard focus). The names are asked for only
+ * once the tooltip has opened (not on a pointer that merely passes, nor per chip of every row).
+ */
+function WhoReacted({
+  userIds,
+  what,
+  me,
+  children,
+}: {
+  userIds: string[] | undefined;
+  what: string;
+  me: string;
+  children: JSX.Element;
+}): JSX.Element {
+  const [asked, setAsked] = useState(false);
+  const { people, more } = useReactionPeople(asked ? userIds : NO_IDS);
+  return (
+    <Tooltip label={whoReactedText(people, more, what, me)} onOpen={() => setAsked(true)}>
+      {children}
+    </Tooltip>
+  );
+}
+
+/**
+ * The row's hover and focus toolbar (not touch-first): Add reaction, Reply and Reply in thread when they apply, and
+ * More actions, which opens the actions Menu beside it (focus goes to the row first, so closing returns it there).
+ */
+function RowToolbar({ message, row }: { message: Message; row: { current: HTMLDivElement | null } }): JSX.Element {
+  const shared = useShared();
+  const { canReact } = useMessagePermissions({ message, currentUserId: shared.me, communityId: shared.communityId });
+  const more = useRef<HTMLButtonElement>(null);
+  const { reply, openThread, openActions, pickReaction } = shared;
+  return (
+    <>
+      {canReact && <IconButton icon="SmilePlus" size="sm" variant="ghost" label="Add reaction" onClick={() => pickReaction(message, row.current)} />}
+      {reply !== undefined && <IconButton icon="Reply" size="sm" variant="ghost" label="Reply" onClick={() => reply(message)} />}
+      {openThread !== undefined && (
+        <IconButton icon="MessageSquare" size="sm" variant="ghost" label="Reply in thread" onClick={() => openThread(message, row.current)} />
+      )}
+      <IconButton
+        ref={more}
+        icon="Ellipsis"
+        size="sm"
+        variant="ghost"
+        label="More actions"
+        aria-haspopup="menu"
+        onClick={() => {
+          row.current?.focus({ preventScroll: true });
+          openActions(message, { via: 'keyboard' }, more.current);
+        }}
+      />
     </>
   );
 }
@@ -543,10 +635,10 @@ function ChatRowBody({
   const authorId = message.authorId;
   const { openActions } = shared;
   const onOpenActions = useCallback(
-    ({ via }: { via: OpenActionsVia }) => {
+    (request: OpenActionsRequest) => {
       // The row holds focus while its actions are open, so closing them brings focus back here.
       rowRef.current?.focus({ preventScroll: true });
-      openActions(message, via);
+      openActions(message, request, rowRef.current);
     },
     [openActions, message],
   );
@@ -600,6 +692,11 @@ function ChatRowBody({
           ) : undefined
         }
         onOpenAuthor={view.hasProfile && openProfile && authorId ? () => openProfile(authorId) : undefined}
+        actions={
+          shared.pointerFirst && shared.writable && !view.optimistic && !isEditing && !message.deletedAt ? (
+            <RowToolbar message={message} row={rowRef} />
+          ) : undefined
+        }
         onOpenActions={isEditing ? undefined : onOpenActions}
         onRetry={failed?.onRetry}
         onDelete={failed?.onDelete}

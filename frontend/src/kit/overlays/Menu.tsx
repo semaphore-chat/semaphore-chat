@@ -1,4 +1,4 @@
-import { useRef, useState, type JSX } from 'react';
+import { useRef, useState, type JSX, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import MuiMenu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
@@ -32,6 +32,11 @@ export type MenuEntry =
       shortcut?: string[];
       tone?: 'default' | 'danger';
       disabled?: boolean;
+      /**
+       * One choice of a set (a notification level): the item is a `menuitemradio`, checked or not, with a check mark
+       * at the right when it is.
+       */
+      checked?: boolean;
       onSelect: () => void;
     }
   | { id: string; divider: true };
@@ -40,6 +45,11 @@ export interface MenuProps {
   open: boolean;
   /** The element the menu opens from; focus returns to whatever had it when the menu opened. */
   anchor: HTMLElement | null;
+  /**
+   * Opens at this point instead of beside `anchor` (a right-click: the cursor, in viewport coordinates). `anchor` is
+   * still the menu's opener for focus.
+   */
+  point?: { x: number; y: number };
   onClose: () => void;
   /** Names the menu for assistive technology. */
   label: string;
@@ -97,7 +107,7 @@ const listSx = { padding: `${tokens.space.xs}px` };
  * arrows, Home, End and typing a letter move it, a disabled item is skipped.
  * Choosing an item calls `onSelect`, then `onClose`.
  */
-export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-start' }: MenuProps): JSX.Element {
+export function Menu({ open, anchor, point, onClose, label, items, placement = 'bottom-start' }: MenuProps): JSX.Element {
   const { anchorOrigin, transformOrigin } = placementOrigins(placement);
   const gap = placement.startsWith('bottom') ? ANCHOR_GAP : -ANCHOR_GAP;
   // Inside a Dialog the menu renders in the Dialog, where its focus trap lets focus in.
@@ -119,7 +129,9 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
     <SurfaceContext value="surface">
     <MuiMenu
       open={shown}
-      anchorEl={anchor}
+      anchorEl={point === undefined ? anchor : undefined}
+      anchorReference={point === undefined ? 'anchorEl' : 'anchorPosition'}
+      anchorPosition={point === undefined ? undefined : { top: point.y, left: point.x }}
       container={container}
       // No onClose: MUI's reasons (escapeKeyDown, backdropClick, tabKeyDown) are not ours to act on.
       disableEscapeKeyDown
@@ -130,8 +142,18 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
       transitionDuration={tokens.motion.fast}
       {...fadeTransition}
       slotProps={{
-        root: { ref: setModalRoot },
-        paper: { sx: [paperSx, { marginTop: `${gap}px` }], ref: paper },
+        root: {
+          ref: setModalRoot,
+          // A right-click away from a cursor menu closes it, as a press outside does, and the browser's menu stays hidden.
+          ...(point !== undefined && {
+            onContextMenu: (event: MouseEvent<HTMLElement>) => {
+              if (paper.current?.contains(event.target as Node)) return;
+              event.preventDefault();
+              onClose();
+            },
+          }),
+        },
+        paper: { sx: [paperSx, { marginTop: `${point === undefined ? gap : 0}px` }], ref: paper },
         list: { 'aria-label': label, sx: listSx },
       }}
     >
@@ -145,6 +167,7 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
             key={entry.id}
             $danger={danger}
             disabled={entry.disabled}
+            {...(entry.checked !== undefined && { role: 'menuitemradio', 'aria-checked': entry.checked })}
             // MUI relies on CSS pointer-events to keep a disabled item from
             // being chosen; an assistive technology's synthetic click skips CSS.
             onClick={() => {
@@ -161,6 +184,11 @@ export function Menu({ open, anchor, onClose, label, items, placement = 'bottom-
               </span>
             )}
             <span className="label">{entry.label}</span>
+            {entry.checked === true && (
+              <Keys>
+                <Icon name="Check" size="md" />
+              </Keys>
+            )}
             {entry.shortcut !== undefined && (
               <Keys>
                 {entry.shortcut.map((key) => (

@@ -110,7 +110,9 @@ vi.mock('../../../hooks/useMessageFileUpload', () => ({ useMessageFileUpload: ()
 vi.mock('../../../hooks/useComposerAvailability', () => ({ useComposerAvailability: () => ({ state: 'ok', channelName: 'lobby', canAttach: true }) }));
 vi.mock('../../../hooks/useTypingEmitter', () => ({ useTypingEmitter: () => ({ handleKeyPress: vi.fn(), sendTypingStop: vi.fn() }) }));
 vi.mock('../../../hooks/useAllCommunityMembers', () => ({ useAllCommunityMembers: () => ({ data: [], isLoading: false }) }));
-vi.mock('../../../data/touchFirst', () => ({ useTouchFirst: () => false }));
+// Touch-first by default: a message's actions are the Sheet (the Menu has its own tests, `touch.current = false`).
+const touch = vi.hoisted(() => ({ current: true }));
+vi.mock('../../../data/touchFirst', () => ({ useTouchFirst: () => touch.current }));
 
 // Files: every fetch answers at once with a blob address named after the file (thumbnail or whole).
 const files = vi.hoisted(() => ({ asked: [] as string[], fail: new Set<string>() }));

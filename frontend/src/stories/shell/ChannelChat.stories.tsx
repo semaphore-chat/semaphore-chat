@@ -13,6 +13,11 @@
  * permission, timed out, read-only); a message's actions Sheet on your own message, on someone else's (a plain
  * member), as a moderator (Pin and Delete), and without the right to react; editing in place; a failed send with
  * Retry; light variants of the main ones. The signed-in user is alexk (id `me`). Stories that need a press (the Sheet, Reply, Edit) make it themselves once the chat has loaded.
+ *
+ * Desktop input (PR 10e): at desktop width (wide, a mouse) the actions are a Menu, a right-click's at the pointer
+ * (`WideContextMenu*`), a row has the hover and focus toolbar (`WideRowHover`), a reaction says who reacted
+ * (`WideReactionTooltip`), and the header's More has the channel's notification level (`WideNotificationLevels`).
+ * At phone and tablet width those stories show what a touch-first width keeps: the Sheet, and no toolbar or tooltip.
  */
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { http, HttpResponse, delay, type HttpHandler } from 'msw';
@@ -176,9 +181,11 @@ function useSteps(steps: readonly { find: () => HTMLElement | null; run: (el: HT
 const rowWith = (words: string) => () =>
   [...document.querySelectorAll<HTMLElement>('[role="article"]')].find((row) => row.textContent?.includes(words)) ?? null;
 const buttonNamed = (name: string) => () =>
-  [...document.querySelectorAll<HTMLElement>('[role="dialog"] button, [role="dialog"] [role="button"]')].find(
-    (b) => (b.getAttribute('aria-label') ?? b.textContent) === name,
-  ) ?? null;
+  [
+    ...document.querySelectorAll<HTMLElement>(
+      '[role="dialog"] button, [role="dialog"] [role="button"], [role="menu"] [role="menuitem"], [role="menu"] [role="menuitemradio"]',
+    ),
+  ].find((b) => (b.getAttribute('aria-label') ?? b.textContent) === name) ?? null;
 const openActions = (words: string) => ({
   find: rowWith(words),
   run: (row: HTMLElement) => {
@@ -187,6 +194,24 @@ const openActions = (words: string) => ({
   },
 });
 const press = (name: string) => ({ find: buttonNamed(name), run: (el: HTMLElement) => el.click() });
+/** A right-click in the middle of the row (a mouse's: the Menu opens at the pointer). */
+const rightClick = (words: string) => ({
+  find: rowWith(words),
+  run: (row: HTMLElement) => {
+    const box = row.getBoundingClientRect();
+    const at = { bubbles: true, cancelable: true, clientX: box.left + box.width / 3, clientY: box.top + box.height / 2 };
+    row.dispatchEvent(new PointerEvent('pointerdown', { ...at, pointerType: 'mouse', button: 2 }));
+    row.dispatchEvent(new MouseEvent('contextmenu', at));
+  },
+});
+/** Focus on the row: its toolbar shows, as on hover. */
+const focusRow = (words: string) => ({ find: rowWith(words), run: (row: HTMLElement) => row.focus() });
+/** Keyboard focus on the row's first reaction: its tooltip says who reacted. */
+const focusReaction = (words: string) => ({
+  find: () => rowWith(words)()?.querySelector<HTMLElement>('button[aria-pressed]') ?? null,
+  run: (chip: HTMLElement) => chip.focus(),
+});
+const headerMore = { find: () => document.querySelector<HTMLElement>('button[aria-label="More"]'), run: (el: HTMLElement) => el.click() };
 const composerField = () => document.querySelector<HTMLTextAreaElement>('textarea[aria-label^="Message"]');
 /** The caret to the end of the draft, so the mention list reads the word being typed. */
 const caretToEnd = {
@@ -897,3 +922,51 @@ export const ActionsUnpin = story({
   ],
   steps: [openActions('bringing the headset')],
 });
+
+// --- Desktop input (PR 10e) ---
+
+/** The row's toolbar on hover or focus: Add reaction, Reply, Reply in thread, More actions (desktop width only). */
+export const WideRowHover = story({ steps: [focusRow('you in?')] });
+
+/** Light: the row's toolbar. */
+export const WideRowHoverLight = story({ mode: 'light', steps: [focusRow('you in?')] });
+
+/** A right-click on your own message: the actions Menu at the pointer (desktop); the Sheet at phone and tablet. */
+export const WideContextMenuOwn = story({ steps: [rightClick('bringing the headset')] });
+
+/** Light: the Menu on your own message. */
+export const WideContextMenuOwnLight = story({ mode: 'light', steps: [rightClick('bringing the headset')] });
+
+/** A right-click on someone else's message, as a plain member: Reply, Reply in thread, Add reaction, Copy. */
+export const WideContextMenuOther = story({ steps: [rightClick('you in?')] });
+
+/** As a moderator: Pin and Delete too, after a divider. */
+export const WideContextMenuModerator = story({ handlers: moderatorHandlers, steps: [rightClick('you in?')] });
+
+/** Who reacted, as the reaction's tooltip (desktop width; keyboard focus here, a hover in use). */
+export const WideReactionTooltip = story({ steps: [focusReaction('supercalifragilistic')] });
+
+/** Light: who reacted. */
+export const WideReactionTooltipLight = story({ mode: 'light', steps: [focusReaction('supercalifragilistic')] });
+
+/** The channel has a level of its own (All messages); the reader's default is only @mentions. */
+const notificationHandlers: HttpHandler[] = [
+  http.get(`/api/notifications/channels/${CHANNEL}/override`, () => HttpResponse.json({ id: 'o-1', userId: 'me', channelId: CHANNEL, level: 'all', createdAt: at(2, 0), updatedAt: at(2, 0) })),
+  http.get('/api/notifications/settings', () => HttpResponse.json({ id: 's-1', userId: 'me', defaultChannelLevel: 'mentions' })),
+];
+
+/** The header's More: Notifications says the channel's level. */
+export const WideNotificationsInMore = story({ handlers: notificationHandlers, steps: [headerMore] });
+
+/** The levels, the channel's own (All messages) checked. */
+export const WideNotificationLevels = story({ handlers: notificationHandlers, steps: [headerMore, press('Notifications: All messages')] });
+
+/** Light: the levels. */
+export const WideNotificationLevelsLight = story({
+  mode: 'light',
+  handlers: notificationHandlers,
+  steps: [headerMore, press('Notifications: All messages')],
+});
+
+/** Phone: the header's More has the channel's notification level too (the menu is at every width). */
+export const PhoneNotificationsInMore = story({ handlers: notificationHandlers, steps: [headerMore] });
