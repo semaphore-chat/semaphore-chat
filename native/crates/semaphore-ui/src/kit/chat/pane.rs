@@ -223,6 +223,26 @@ impl RenderOnce for ChatPane {
                     }
                 })
             })
+            .when_some(over.clone(), |base, over| {
+                // Some platforms end a drag with neither a drop nor an exit. A file drag reaches
+                // the window as moves with the button held, so the first move without it, or a
+                // release, means the drag is over and clears the drop look.
+                let stale = {
+                    let over_now = over_now.clone();
+                    move |window: &mut Window, cx: &mut App| {
+                        if over_now.replace(false) {
+                            over(false, window, cx);
+                        }
+                    }
+                };
+                let on_up = stale.clone();
+                base.on_mouse_move(move |event: &MouseMoveEvent, window, cx| {
+                    if event.pressed_button.is_none() {
+                        stale(window, cx)
+                    }
+                })
+                .on_mouse_up(MouseButton::Left, move |_, window, cx| on_up(window, cx))
+            })
             .when_some(over, |base, over| {
                 base.on_drag_move(move |event: &DragMoveEvent<ExternalPaths>, window, cx| {
                     let inside = event.bounds.contains(&event.event.position);

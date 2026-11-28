@@ -40,6 +40,11 @@ impl MentionSource for Fixture {
         ]
         .into_iter()
         .filter(|c| c.insert_text.contains(query))
+        // A right-to-left name, offered only when asked for, so the other lists stay as they are.
+        .chain(
+            (query.len() >= 2 && "layla".starts_with(query))
+                .then(|| candidate(MentionKind::User, "u3", "ليلى حداد", "@layla")),
+        )
         .collect()
     }
 }
@@ -50,13 +55,23 @@ struct Host {
 
 impl Render for Host {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .justify_end()
-            .child(self.composer.clone())
+        crate::kit::BehaviourRoot::new(
+            div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .justify_end()
+                .child(self.composer.clone())
+                .child(crate::kit::ToastRegion::new()),
+        )
     }
+}
+
+fn init(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        gpui_kit::init(cx);
+        crate::theme::init(cx);
+    });
 }
 
 #[derive(Default)]
@@ -87,7 +102,7 @@ fn rig(cx: &mut TestAppContext) -> Rig {
 }
 
 fn rig_sized(cx: &mut TestAppContext, window_size: Size<gpui_kit::Pixels>) -> Rig {
-    cx.update(gpui_kit::init);
+    init(cx);
     let drafts = cx.update(|cx| cx.new(|_| DraftStore::default()));
     open(cx, window_size, drafts)
 }
@@ -101,7 +116,7 @@ fn open(
 }
 
 fn rig_mode(cx: &mut TestAppContext, mode: ComposerMode) -> Rig {
-    cx.update(gpui_kit::init);
+    init(cx);
     let drafts = cx.update(|cx| cx.new(|_| DraftStore::default()));
     open_mode(cx, size(px(900.), px(800.)), drafts, mode)
 }
@@ -235,7 +250,15 @@ impl Rig {
     }
 
     fn menu_open(&self, cx: &mut TestAppContext) -> bool {
-        self.with(cx, |_, window, _| window.try_find("mention-menu").is_some())
+        self.with(cx, |_, window, _| window.try_find("mention-list").is_some())
+    }
+
+    /// The `index`th option of the open mention list.
+    fn option(&self, cx: &mut TestAppContext, index: usize) -> ElementId {
+        self.with(cx, |_, window, _| {
+            let options = window.find_all_by_role(Role::ListBoxOption);
+            options[index].path().last().expect("an id").clone()
+        })
     }
 
     fn options(&self, cx: &mut TestAppContext) -> Vec<(String, bool)> {
@@ -244,10 +267,13 @@ impl Rig {
                 .find_all_by_role(Role::ListBoxOption)
                 .iter()
                 .map(|option| {
-                    (
-                        option.label().unwrap_or_default().to_owned(),
-                        option.selected().unwrap_or(false),
-                    )
+                    // "Ava Chen, @ava" or "@here, Notify online": the inserted text.
+                    let label = option.label().unwrap_or_default();
+                    let handle = label
+                        .split(", ")
+                        .find(|part| part.starts_with(['@', '#']))
+                        .unwrap_or(label);
+                    (handle.to_owned(), option.selected().unwrap_or(false))
                 })
                 .collect()
         })
@@ -294,6 +320,27 @@ impl Rig {
     }
 }
 
+/// A part of the kit composer (`field`, `submit`, `attach`, `banner-cancel`, `drop`, `hint-save`).
+fn part(name: &'static str) -> ElementId {
+    ElementId::NamedChild(std::sync::Arc::new("composer".into()), name.into())
+}
+
+/// The danger toast's words, while one shows.
+fn toast(rig: &Rig, cx: &mut TestAppContext) -> Option<String> {
+    rig.with(cx, |_, window, _| {
+        window
+            .try_find("composer-error")
+            .and_then(|toast| toast.label().map(str::to_owned))
+    })
+}
+
+/// A press does nothing and the control says why it can't act.
+fn unavailable(rig: &Rig, cx: &mut TestAppContext, label: &str) -> bool {
+    rig.with(cx, |_, window, _| {
+        window.find_by_label(label).description() == Some("unavailable")
+    })
+}
+
 fn file(name: &str) -> PendingAttachment {
     PendingAttachment::from_path(std::path::Path::new(name))
 }
@@ -330,19 +377,18 @@ fn only_whitespace_does_not_send_and_outer_whitespace_is_trimmed(cx: &mut TestAp
 #[gpui_kit::test]
 fn the_send_button_sends_and_gives_focus_back(cx: &mut TestAppContext) {
     let rig = rig(cx);
-    let send = |rig: &Rig, cx: &mut TestAppContext| {
-        rig.with(cx, |_, window, _| window.find_by_label("send").disabled())
-    };
-    assert_eq!(send(&rig, cx), Some(true), "disabled while empty");
-    rig.typed(cx, "hi");
-    assert_ne!(send(&rig, cx), Some(true));
-    rig.click(cx, "composer-send");
-    assert_eq!(rig.sends(), 1);
-    assert_eq!(
-        send(&rig, cx),
-        Some(true),
-        "disabled again while it is on its way"
+    assert!(
+        unavailable(&rig, cx, "Send message"),
+        "unavailable while empty"
     );
+    rig.typed(cx, "hi");
+    assert!(!unavailable(&rig, cx, "Send message"));
+    rig.click(cx, part("submit"));
+    assert_eq!(rig.sends(), 1);
+    let busy = rig.with(cx, |_, window, _| {
+        window.find_by_label("Send message").description() == Some("busy")
+    });
+    assert!(busy, "busy while it is on its way");
     let id = rig.field_id(cx);
     assert_eq!(
         rig.with(cx, |_, window, _| window.find(id).focused()),
@@ -367,12 +413,10 @@ fn one_send_at_a_time_and_a_failure_puts_the_message_back(cx: &mut TestAppContex
 
     rig.settle(cx, Err(String::new()));
     assert_eq!(rig.value(cx), "second", "failed, so it comes back");
-    let error = rig.with(cx, |_, window, _| {
-        window
-            .find_by_label("Failed to send message. Please try again.")
-            .role()
-    });
-    assert_eq!(error, Some(Role::Alert));
+    assert_eq!(
+        toast(&rig, cx).as_deref(),
+        Some("Failed to send message. Please try again.")
+    );
 }
 
 #[gpui_kit::test]
@@ -387,51 +431,45 @@ fn a_failure_does_not_overwrite_what_was_typed_since(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn the_field_grows_with_its_text_up_to_the_cap(cx: &mut TestAppContext) {
-    // A 400 px window caps the draft at 40%: 160 px, or six 23 px lines.
-    let rig = rig_sized(cx, size(px(900.), px(400.)));
+    // A wide window caps the draft at ten lines (`ComposerCap::Desktop`), a phone at four.
+    let line = semaphore_design::lounge::TEXT_BODY.line_height;
+    let rig = rig_sized(cx, size(px(900.), px(800.)));
     let id = rig.field_id(cx);
     let height = |rig: &Rig, cx: &mut TestAppContext| {
         let id = id.clone();
         rig.with(cx, |_, window, _| window.find(id).bounds().size.height)
     };
     let one = height(&rig, cx);
-    assert_eq!(one, px(23.));
+    assert_eq!(one, px(line));
     rig.typed(cx, "a");
     rig.press(cx, "shift-enter");
     rig.typed(cx, "b");
-    assert_eq!(height(&rig, cx), px(46.));
+    assert_eq!(height(&rig, cx), px(line * 2.));
     for _ in 0..20 {
         rig.press(cx, "shift-enter");
     }
-    assert_eq!(height(&rig, cx), px(23. * 6.));
+    assert_eq!(height(&rig, cx), px(line * 10.));
+
+    let phone = rig_sized(cx, size(px(390.), px(800.)));
+    let id = phone.field_id(cx);
+    for _ in 0..20 {
+        phone.press(cx, "shift-enter");
+    }
+    let tall = phone.with(cx, |_, window, _| window.find(id).bounds().size.height);
+    assert_eq!(tall, px(line * 4.));
 }
 
 #[gpui_kit::test]
-fn the_field_is_40_px_high_and_lines_up_with_the_buttons(cx: &mut TestAppContext) {
+fn the_field_lines_up_with_send(cx: &mut TestAppContext) {
     let rig = rig(cx);
     let (field, send) = rig.with(cx, |_, window, _| {
         (
-            window.find("composer-field").bounds(),
-            window.find("composer-send").bounds(),
+            window.find(part("field")).bounds(),
+            window.find(part("submit")).bounds(),
         )
     });
-    assert_eq!(field.size.height, px(40.));
-    assert_eq!(send.size, size(px(40.), px(40.)));
+    assert_eq!(field.size.height, send.size.height);
     assert_eq!(field.bottom(), send.bottom());
-}
-
-#[gpui_kit::test]
-fn the_notice_takes_the_composers_height_so_the_chat_does_not_jump(cx: &mut TestAppContext) {
-    let rig = rig(cx);
-    // The paper's top: the field's, less its 16 px padding and 1 px border.
-    let field = rig.with(cx, |_, window, _| {
-        window.find("composer-field").bounds().top()
-    });
-    rig.availability(cx, Availability::NoPermission { channel_name: None });
-    let notice = rig.with(cx, |_, window, _| {
-        window.find("composer-unavailable").bounds().top()
-    });
-    assert_eq!(field - px(17.), notice);
 }
 
 #[gpui_kit::test]
@@ -454,13 +492,13 @@ fn each_conversation_keeps_its_draft(cx: &mut TestAppContext) {
     switch(&rig, cx, "b");
     assert_eq!(rig.value(cx), "");
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find_by_label("remove a.txt").is_none()
+        window.try_find_by_label("Remove a.txt").is_none()
     }));
     rig.typed(cx, "for b");
     switch(&rig, cx, "a");
     assert_eq!(rig.value(cx), "for a");
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find_by_label("remove a.txt").is_some()
+        window.try_find_by_label("Remove a.txt").is_some()
     }));
     // The caret comes back too.
     assert_eq!(rig.field(cx).read_with(cx, |f, _| f.cursor()), 5);
@@ -597,7 +635,8 @@ fn undo_takes_a_picked_mention_back(cx: &mut TestAppContext) {
 fn a_click_on_a_row_picks_it_and_the_field_keeps_focus(cx: &mut TestAppContext) {
     let rig = rig(cx);
     rig.typed(cx, "@");
-    rig.click(cx, ("mention-option", 1usize));
+    let second = rig.option(cx, 1);
+    rig.click(cx, second);
     assert_eq!(rig.value(cx), "@night-crew ");
     let id = rig.field_id(cx);
     assert_eq!(
@@ -607,24 +646,19 @@ fn a_click_on_a_row_picks_it_and_the_field_keeps_focus(cx: &mut TestAppContext) 
 }
 
 #[gpui_kit::test]
-fn the_highlight_scrolls_into_view(cx: &mut TestAppContext) {
-    // 40% of this window fits about three rows of the four.
-    let rig = rig_sized(cx, size(px(900.), px(700.)));
+fn the_list_sits_over_the_conversation_above_the_composer(cx: &mut TestAppContext) {
+    let rig = rig(cx);
     rig.typed(cx, "@");
-    let last_visible = |rig: &Rig, cx: &mut TestAppContext| {
-        rig.with(cx, |_, window, _| {
-            let list = window.find("mention-listbox").bounds();
-            let row = window.find(("mention-option", 3usize)).bounds();
-            row.bottom() <= list.bottom() && row.top() >= list.top()
-        })
-    };
-    assert!(
-        !last_visible(&rig, cx),
-        "the fixture has to overflow for this to test anything"
-    );
+    let (list, field) = rig.with(cx, |_, window, _| {
+        (
+            window.find("mention-list").bounds(),
+            window.find(part("field")).bounds(),
+        )
+    });
+    assert!(list.bottom() <= field.top(), "{list:?} above {field:?}");
+    assert!(list.size.width >= field.size.width, "across the composer");
     rig.press(cx, "up");
     assert_eq!(rig.selected_option(cx).as_deref(), Some("@ben"));
-    assert!(last_visible(&rig, cx));
 }
 
 #[gpui_kit::test]
@@ -651,64 +685,17 @@ fn moving_the_caret_out_of_the_mention_closes_it(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_dropdown_sits_above_the_caret_and_follows_it(cx: &mut TestAppContext) {
-    let rig = rig(cx);
-    rig.typed(cx, "@");
-    let at = |rig: &Rig, cx: &mut TestAppContext| {
-        rig.with(cx, |_, window, _| window.find("mention-menu").bounds())
-    };
-    let first = at(&rig, cx);
-    let caret = rig
-        .field(cx)
-        .read_with(cx, |f, _| f.cursor_layout().expect("laid out").0);
-    assert!(first.bottom() <= caret.top(), "{first:?} above {caret:?}");
-    assert!(first.left() <= caret.left() && caret.left() <= first.right());
-
-    rig.press(cx, "escape");
-    rig.typed(cx, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa @");
-    let moved = at(&rig, cx);
-    assert!(
-        moved.left() > first.left(),
-        "{moved:?} moved right of {first:?}"
-    );
-
-    rig.press(cx, "escape");
-    rig.press(cx, "shift-enter");
-    rig.typed(cx, "@");
-    let lower = at(&rig, cx);
-    assert!(lower.left() < moved.left(), "back to the new line's start");
-}
-
-#[gpui_kit::test]
-fn on_a_narrow_window_it_takes_the_width_and_the_slim_layout_shows(cx: &mut TestAppContext) {
+fn a_phone_has_the_same_buttons_and_no_actions_sheet(cx: &mut TestAppContext) {
     let rig = rig_sized(cx, size(px(360.), px(700.)));
+    for label in ["Add emoji", "Attach a file", "Send message"] {
+        let role = rig.with(cx, |_, window, _| window.find_by_label(label).role());
+        assert_eq!(role, Some(Role::Button), "{label}");
+    }
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find("composer-emoji").is_none()
+        window.try_find("composer-actions").is_none()
     }));
-    assert!(
-        rig.with(cx, |_, window, _| window
-            .try_find("composer-send")
-            .is_none()),
-        "no send until there's content"
-    );
-    rig.typed(cx, "@");
-    let menu = rig.with(cx, |_, window, _| window.find("mention-menu").bounds());
-    assert_eq!(menu.size.width, px(344.));
-    assert_eq!(menu.left(), px(8.));
-    let row = rig.with(cx, |_, window, _| {
-        window.find(("mention-option", 0usize)).bounds()
-    });
-    assert_eq!(row.size.height, px(44.), "one line per row, as on a phone");
-    assert!(rig.with(cx, |_, window, _| {
-        window.try_find("composer-send").is_some()
-    }));
-
-    rig.click(cx, "composer-actions");
     rig.click(cx, "composer-emoji");
     assert_eq!(rig.log.borrow().emoji, 1);
-    assert!(rig.with(cx, |_, window, _| {
-        window.try_find("composer-actions-sheet").is_none()
-    }));
 }
 
 #[gpui_kit::test]
@@ -743,10 +730,6 @@ fn the_emoji_button_asks_the_owner_and_the_answer_lands_at_the_caret(cx: &mut Te
     rig.press(cx, "left");
     rig.click(cx, "composer-emoji");
     assert_eq!(rig.log.borrow().emoji, 1);
-    let expanded = rig.with(cx, |_, window, _| {
-        window.find_by_label("add emoji").expanded()
-    });
-    assert_eq!(expanded, Some(true));
     rig.with(cx, |composer, window, cx| {
         composer.update(cx, |composer, cx| {
             composer.set_emoji_picker_open(false, cx);
@@ -764,31 +747,30 @@ fn the_emoji_button_asks_the_owner_and_the_answer_lands_at_the_caret(cx: &mut Te
 #[gpui_kit::test]
 fn attachments_list_remove_and_go_with_the_message(cx: &mut TestAppContext) {
     let rig = rig(cx);
-    rig.click(cx, "composer-attach");
+    rig.click(cx, part("attach"));
     assert_eq!(rig.log.borrow().files, 1);
     rig.with(cx, |composer, window, cx| {
         composer.update(cx, |composer, cx| {
             composer.add_attachments(vec![file("a.txt"), file("b.txt")], window, cx)
         });
     });
-    let list = rig.with(cx, |_, window, _| {
-        window.find_by_label("Attachments").role()
-    });
-    assert_eq!(list, Some(Role::List));
-    let remove: ElementId = ElementId::NamedInteger("remove-attachment".into(), 0);
+    let remove = ElementId::NamedChild(
+        std::sync::Arc::new(ElementId::NamedInteger("composer-file".into(), 0)),
+        "remove".into(),
+    );
     rig.click(cx, remove);
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find_by_label("remove a.txt").is_none()
+        window.try_find_by_label("Remove a.txt").is_none()
     }));
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find_by_label("remove b.txt").is_some()
+        window.try_find_by_label("Remove b.txt").is_some()
     }));
 
     // Files alone are enough to send.
     rig.press(cx, "enter");
     assert_eq!(rig.log.borrow().sends[0].2, 1);
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find_by_label("Attachments").is_none()
+        window.try_find_by_label("Remove b.txt").is_none()
     }));
 }
 
@@ -805,14 +787,13 @@ fn attachment_limits_match_the_web(cx: &mut TestAppContext) {
         cx,
         (0..11).map(|i| file(&format!("{i}.txt"))).collect(),
     );
-    assert!(rig.with(cx, |_, window, _| {
-        window
-            .try_find_by_label("Maximum 10 files per message")
-            .is_some()
-    }));
+    assert_eq!(
+        toast(&rig, cx).as_deref(),
+        Some("Maximum 10 files per message")
+    );
     assert!(
         rig.with(cx, |_, window, _| window
-            .try_find_by_label("Attachments")
+            .try_find_by_label("Remove 0.txt")
             .is_none()),
         "all or none"
     );
@@ -823,7 +804,7 @@ fn attachment_limits_match_the_web(cx: &mut TestAppContext) {
     };
     add(&rig, cx, vec![big]);
     let copy = "File \"big.bin\" exceeds the 10 MB size limit";
-    assert!(rig.with(cx, |_, window, _| window.try_find_by_label(copy).is_some()));
+    assert_eq!(toast(&rig, cx).as_deref(), Some(copy));
 }
 
 #[gpui_kit::test]
@@ -836,19 +817,22 @@ fn attaching_can_be_turned_off(cx: &mut TestAppContext) {
             channel_name: Some("general".into()),
         },
     );
-    let disabled = rig.with(cx, |_, window, _| {
-        window.find_by_label("attach file").disabled()
-    });
-    assert_eq!(disabled, Some(true));
+    assert!(unavailable(&rig, cx, "Attach a file"));
+    rig.click(cx, part("attach"));
+    assert_eq!(
+        rig.log.borrow().files,
+        0,
+        "an unavailable button opens nothing"
+    );
     rig.with(cx, |composer, window, cx| {
         composer.update(cx, |composer, cx| {
             composer.add_attachments(vec![file("a.txt")], window, cx)
         });
     });
     let copy = "Attaching files is turned off in #general";
-    assert!(rig.with(cx, |_, window, _| window.try_find_by_label(copy).is_some()));
+    assert_eq!(toast(&rig, cx).as_deref(), Some(copy));
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find_by_label("remove a.txt").is_none()
+        window.try_find_by_label("Remove a.txt").is_none()
     }));
 }
 
@@ -873,7 +857,7 @@ fn pasting_an_image_adds_it_and_inserts_nothing(cx: &mut TestAppContext) {
     rig.press(cx, "ctrl-v");
     assert_eq!(rig.value(cx), "look");
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find_by_label("remove image.png").is_some()
+        window.try_find_by_label("Remove image.png").is_some()
     }));
 }
 
@@ -897,18 +881,18 @@ fn a_reply_shows_goes_with_the_message_and_escape_cancels_it(cx: &mut TestAppCon
     };
     set_reply(&rig, cx);
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find_by_label("Replying to Priya").is_some()
+        window.try_find_by_label("Cancel reply").is_some()
     }));
 
     rig.press(cx, "escape");
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find_by_label("Replying to Priya").is_none()
+        window.try_find_by_label("Cancel reply").is_none()
     }));
 
     set_reply(&rig, cx);
-    rig.click(cx, "cancel-reply");
+    rig.click(cx, part("banner-cancel"));
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find_by_label("Replying to Priya").is_none()
+        window.try_find_by_label("Cancel reply").is_none()
     }));
 
     set_reply(&rig, cx);
@@ -916,7 +900,7 @@ fn a_reply_shows_goes_with_the_message_and_escape_cancels_it(cx: &mut TestAppCon
     rig.press(cx, "enter");
     assert_eq!(rig.last_draft().reply_to_message_id.as_deref(), Some("m1"));
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find_by_label("Replying to Priya").is_none()
+        window.try_find_by_label("Cancel reply").is_none()
     }));
 }
 
@@ -940,7 +924,7 @@ fn escape_closes_the_dropdown_before_it_cancels_a_reply(cx: &mut TestAppContext)
     rig.press(cx, "escape");
     assert!(!rig.menu_open(cx));
     assert!(rig.with(cx, |_, window, _| {
-        window.try_find_by_label("Replying to Priya").is_some()
+        window.try_find_by_label("Cancel reply").is_some()
     }));
 }
 
@@ -982,10 +966,7 @@ fn slow_mode_holds_the_send_but_not_the_typing(cx: &mut TestAppContext) {
     rig.press(cx, "enter");
     assert_eq!(rig.sends(), 1, "held");
     assert_eq!(rig.value(cx), "two", "and not lost");
-    assert_eq!(
-        rig.with(cx, |_, window, _| window.find_by_label("send").disabled()),
-        Some(true)
-    );
+    assert!(unavailable(&rig, cx, "Send message"));
 
     cx.executor().advance_clock(Duration::from_secs(12));
     cx.run_until_parked();
@@ -1046,7 +1027,7 @@ fn a_denied_user_gets_a_notice_and_no_field(cx: &mut TestAppContext) {
     for (availability, copy) in cases {
         rig.availability(cx, availability);
         let (role, label, field) = rig.with(cx, |_, window, _| {
-            let notice = window.find("composer-unavailable");
+            let notice = window.find(part("notice"));
             (
                 notice.role(),
                 notice.label().map(str::to_owned),
@@ -1082,7 +1063,7 @@ fn a_timeout_counts_down_and_opens_by_itself(cx: &mut TestAppContext) {
     let label = |rig: &Rig, cx: &mut TestAppContext| {
         rig.with(cx, |_, window, _| {
             window
-                .try_find("composer-unavailable")
+                .try_find(part("notice"))
                 .map(|n| n.label().unwrap_or_default().to_owned())
         })
     };
@@ -1223,9 +1204,10 @@ fn the_field_is_named_and_reports_its_value(cx: &mut TestAppContext) {
         )
     });
     assert_eq!(role, Some(Role::MultilineTextInput));
-    assert_eq!(label.as_deref(), Some("Message"));
+    // The kit names the field by what it is for, and draws that as its placeholder.
+    assert_eq!(label.as_deref(), Some("Type a message..."));
     assert_eq!(value.as_deref(), Some("hi"));
-    assert_eq!(placeholder.as_deref(), Some("Type a message..."));
+    assert_eq!(placeholder, None);
     assert_eq!(focused, Some(true));
 }
 
@@ -1238,16 +1220,18 @@ fn the_placeholder_follows_the_conversation(cx: &mut TestAppContext) {
             composer.set_placeholder("Message #random", window, cx)
         })
     });
-    let placeholder = rig.with(cx, |_, window, _| {
-        window.find(id).placeholder().map(str::to_owned)
+    let label = rig.with(cx, |_, window, _| {
+        window.find(id).label().map(str::to_owned)
     });
-    assert_eq!(placeholder.as_deref(), Some("Message #random"));
+    assert_eq!(label.as_deref(), Some("Message #random"));
+    let placeholder = cx.update(|cx| rig.composer.read(cx).placeholder().to_string());
+    assert_eq!(placeholder, "Message #random");
 }
 
 #[gpui_kit::test]
 fn every_control_is_named_with_the_webs_label(cx: &mut TestAppContext) {
     let rig = rig(cx);
-    for label in ["add emoji", "attach file", "send"] {
+    for label in ["Add emoji", "Attach a file", "Send message"] {
         let role = rig.with(cx, |_, window, _| window.find_by_label(label).role());
         assert_eq!(role, Some(Role::Button), "{label}");
     }
@@ -1478,9 +1462,12 @@ fn edit_mode_removing_an_attachment_lists_the_rest(cx: &mut TestAppContext) {
     );
     rig.click(
         cx,
-        ElementId::NamedInteger("edit-remove-attachment".into(), 0),
+        ElementId::NamedChild(
+            std::sync::Arc::new(ElementId::NamedInteger("composer-kept".into(), 0)),
+            "remove".into(),
+        ),
     );
-    rig.click(cx, "edit-save");
+    rig.click(cx, part("hint-save"));
     let log = rig.log.borrow();
     assert_eq!(log.edits[0].2, Some(vec!["f2".to_owned()]));
 }
@@ -1505,13 +1492,201 @@ fn edit_mode_wont_save_an_empty_message(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn thread_mode_has_no_attach_or_edit_last(cx: &mut TestAppContext) {
     let rig = rig_mode(cx, ComposerMode::Thread);
-    let has_attach = rig.with(cx, |_, window, _| {
-        window.try_find("composer-attach").is_some()
-    });
+    let has_attach = rig.with(cx, |_, window, _| window.try_find(part("attach")).is_some());
     assert!(!has_attach);
     rig.press(cx, "up");
     assert_eq!(rig.log.borrow().edit_last, 0);
     rig.typed(cx, "a reply");
     rig.press(cx, "enter");
     assert_eq!(rig.log.borrow().sends.len(), 1);
+}
+
+#[gpui_kit::test]
+fn pasting_files_with_text_adds_the_files_and_inserts_the_text(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    let image = Image::from_bytes(ImageFormat::Png, vec![1, 2, 3]);
+    cx.update(|cx| {
+        cx.write_to_clipboard(ClipboardItem {
+            entries: vec![
+                ClipboardEntry::Image(image),
+                ClipboardEntry::String(gpui_kit::ClipboardString::new("caption".into())),
+            ],
+        })
+    });
+    rig.press(cx, "ctrl-v");
+    assert_eq!(rig.value(cx), "caption");
+    assert!(rig.with(cx, |_, window, _| {
+        window.try_find_by_label("Remove image.png").is_some()
+    }));
+}
+
+#[gpui_kit::test]
+fn pasting_a_file_where_attaching_is_off_says_why(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.availability(
+        cx,
+        Availability::Open {
+            can_attach: false,
+            channel_name: Some("news".into()),
+        },
+    );
+    let image = Image::from_bytes(ImageFormat::Png, vec![1, 2, 3]);
+    cx.update(|cx| {
+        cx.write_to_clipboard(ClipboardItem {
+            entries: vec![ClipboardEntry::Image(image)],
+        })
+    });
+    rig.press(cx, "ctrl-v");
+    assert_eq!(
+        toast(&rig, cx).as_deref(),
+        Some("Attaching files is turned off in #news")
+    );
+    assert!(rig.with(cx, |_, window, _| {
+        window.try_find_by_label("Remove image.png").is_none()
+    }));
+}
+
+#[gpui_kit::test]
+fn ctrl_b_during_composition_belongs_to_the_input_method(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.typed(cx, "ab");
+    rig.ime(cx, |input, cx| {
+        input.compose_text(None, "に", Some(1..1), cx)
+    });
+    rig.press(cx, "ctrl-b");
+    assert_eq!(rig.value(cx), "abに", "no markers around a preedit");
+}
+
+fn drop_label(rig: &Rig, cx: &mut TestAppContext) -> Option<String> {
+    rig.with(cx, |_, window, _| {
+        window
+            .try_find(part("drop"))
+            .and_then(|drop| drop.label().map(str::to_owned))
+    })
+}
+
+fn set_dropping(rig: &Rig, cx: &mut TestAppContext, dropping: bool) {
+    rig.with(cx, |composer, _, cx| {
+        composer.update(cx, |composer, cx| composer.set_dropping(dropping, cx))
+    });
+}
+
+#[gpui_kit::test]
+fn files_over_the_conversation_draw_the_composer_as_the_drop_target(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    assert_eq!(drop_label(&rig, cx), None);
+    set_dropping(&rig, cx, true);
+    assert_eq!(
+        drop_label(&rig, cx).as_deref(),
+        Some("Drop files to attach them")
+    );
+    set_dropping(&rig, cx, false);
+    assert_eq!(drop_label(&rig, cx), None);
+
+    rig.availability(
+        cx,
+        Availability::Open {
+            can_attach: false,
+            channel_name: Some("general".into()),
+        },
+    );
+    set_dropping(&rig, cx, true);
+    assert_eq!(
+        drop_label(&rig, cx).as_deref(),
+        Some("Attaching files is turned off in #general"),
+        "says why they can't go"
+    );
+}
+
+#[gpui_kit::test]
+fn a_thread_reply_takes_no_files_and_says_so(cx: &mut TestAppContext) {
+    let rig = rig_mode(cx, ComposerMode::Thread);
+    set_dropping(&rig, cx, true);
+    assert_eq!(
+        drop_label(&rig, cx).as_deref(),
+        Some("Files can't be attached to a thread reply")
+    );
+    set_dropping(&rig, cx, false);
+    rig.with(cx, |composer, window, cx| {
+        composer.update(cx, |composer, cx| {
+            composer.add_attachments(vec![file("a.txt")], window, cx)
+        });
+    });
+    assert_eq!(
+        toast(&rig, cx).as_deref(),
+        Some("Files can't be attached to a thread reply")
+    );
+}
+
+#[gpui_kit::test]
+fn a_thread_composer_drop_zone_clears_after_a_lost_drag(cx: &mut TestAppContext) {
+    let rig = rig_mode(cx, ComposerMode::Thread);
+    let inside = rig.with(cx, |_, window, _| {
+        window.find(part("field")).bounds().center()
+    });
+    let mut vcx = gpui_kit::VisualTestContext::from_window(rig.window, cx);
+    vcx.simulate_event(gpui_kit::FileDropEvent::Entered {
+        position: inside,
+        paths: gpui_kit::ExternalPaths(vec![std::path::PathBuf::from("/tmp/a.png")].into()),
+    });
+    vcx.simulate_event(gpui_kit::FileDropEvent::Pending { position: inside });
+    vcx.run_until_parked();
+    assert_eq!(
+        drop_label(&rig, cx).as_deref(),
+        Some("Files can't be attached to a thread reply")
+    );
+    let mut vcx = gpui_kit::VisualTestContext::from_window(rig.window, cx);
+    vcx.simulate_event(gpui_kit::MouseMoveEvent {
+        position: inside,
+        pressed_button: None,
+        modifiers: gpui_kit::Modifiers::default(),
+    });
+    vcx.run_until_parked();
+    assert_eq!(drop_label(&rig, cx), None);
+}
+
+#[gpui_kit::test]
+fn an_edit_in_place_has_the_hint_and_its_buttons_save_and_cancel(cx: &mut TestAppContext) {
+    let rig = rig_mode(cx, edit_mode());
+    start_edit(
+        &rig,
+        cx,
+        MessageDraft {
+            text: "draft".into(),
+            ..MessageDraft::default()
+        },
+        Vec::new(),
+    );
+    assert!(rig.with(cx, |_, window, _| window.try_find(part("submit")).is_none()));
+    rig.click(cx, part("hint-cancel"));
+    assert_eq!(rig.log.borrow().cancels, vec!["m-1".to_owned()]);
+    rig.click(cx, part("hint-save"));
+    assert_eq!(rig.log.borrow().edits.len(), 1);
+}
+
+#[gpui_kit::test]
+fn up_does_not_edit_with_files_queued(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.with(cx, |composer, window, cx| {
+        composer.update(cx, |composer, cx| {
+            composer.add_attachments(vec![file("a.txt")], window, cx)
+        });
+    });
+    rig.press(cx, "up");
+    assert_eq!(rig.log.borrow().edit_last, 0);
+}
+
+#[gpui_kit::test]
+fn a_right_to_left_name_is_offered_and_picked(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.typed(cx, "@lay");
+    assert_eq!(rig.selected_option(cx).as_deref(), Some("@layla"));
+    let name = rig.with(cx, |_, window, _| {
+        window.find_all_by_role(Role::ListBoxOption)[0]
+            .label()
+            .map(str::to_owned)
+    });
+    assert_eq!(name.as_deref(), Some("ليلى حداد, @layla"));
+    rig.press(cx, "enter");
+    assert_eq!(rig.value(cx), "@layla ");
 }

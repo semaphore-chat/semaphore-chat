@@ -853,3 +853,48 @@ fn files_dropped_on_the_conversation_reach_the_screen(cx: &mut TestAppContext) {
         "{lines:?}"
     );
 }
+
+#[gpui_kit::test]
+fn a_drag_that_never_exits_is_cleared_by_the_next_plain_move_or_release(cx: &mut TestAppContext) {
+    let (rig, log) = host(cx, |log, _, _, _| {
+        let over_log = log.clone();
+        pane_frame(
+            ChatPane::new("pane")
+                .list(div().flex_1())
+                .on_drop_files(|_, _, _| {})
+                .on_files_over(move |over, _, _| {
+                    over_log.borrow_mut().push(format!("over {over}"))
+                }),
+        )
+    });
+    let inside = point(px(100.), px(100.));
+    let mut cx = VisualTestContext::from_window(rig.window, cx);
+    let enter = |cx: &mut VisualTestContext| {
+        cx.simulate_event(FileDropEvent::Entered {
+            position: inside,
+            paths: ExternalPaths(vec![PathBuf::from("/tmp/a.png")].into()),
+        });
+        cx.simulate_event(FileDropEvent::Pending { position: inside });
+        cx.run_until_parked();
+    };
+    enter(&mut cx);
+    // No Exited and no Submit: the platform lost the end of the drag.
+    cx.simulate_event(MouseMoveEvent {
+        position: inside,
+        pressed_button: None,
+        modifiers: Modifiers::default(),
+    });
+    cx.run_until_parked();
+    assert_eq!(logged(&log), ["over true", "over false"]);
+
+    log.borrow_mut().clear();
+    enter(&mut cx);
+    cx.simulate_event(MouseUpEvent {
+        position: inside,
+        button: MouseButton::Left,
+        modifiers: Modifiers::default(),
+        click_count: 1,
+    });
+    cx.run_until_parked();
+    assert_eq!(logged(&log), ["over true", "over false"]);
+}

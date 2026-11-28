@@ -4,7 +4,7 @@
 //! keeping the composer's own trigger type. Offsets here are bytes, where the web's are UTF-16 units,
 //! because the kit's caret is a byte offset.
 
-use semaphore_core::model::{DraftMention, MentionCandidate, MentionKind};
+use semaphore_core::model::{DraftMention, MentionCandidate};
 use semaphore_core::text::{self, MentionTarget, Trigger};
 use std::ops::Range;
 use std::time::Duration;
@@ -122,24 +122,6 @@ pub fn resolve_mentions(
     found
 }
 
-/// The dropdown's heading for what it lists, as `MentionDropdown` chooses it.
-pub fn menu_heading(candidates: &[MentionCandidate]) -> &'static str {
-    let Some(first) = candidates.first() else {
-        return "Suggestions";
-    };
-    if candidates.iter().any(|c| c.kind != first.kind) {
-        return "Suggestions";
-    }
-    match first.kind {
-        MentionKind::User => "Members",
-        MentionKind::Alias => "Mention Groups",
-        MentionKind::Special => "Special Mentions",
-        MentionKind::Channel => "Channels",
-        MentionKind::Community => "Communities",
-        MentionKind::Emoji => "Emoji",
-    }
-}
-
 /// What Ctrl/Cmd+B or I does: the text and the selection after it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Wrapped {
@@ -217,6 +199,7 @@ pub fn collapse_whitespace(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use semaphore_core::model::MentionKind;
 
     fn candidate(kind: MentionKind, id: &str, insert: &str) -> MentionCandidate {
         MentionCandidate {
@@ -276,15 +259,6 @@ mod tests {
     fn a_picked_mention_the_user_then_edited_is_not_a_mention() {
         let ava = candidate(MentionKind::User, "u1", "@ava");
         assert!(resolve_mentions("@avalon", &[ava], |_| None).is_empty());
-    }
-
-    #[test]
-    fn heading_names_one_kind_and_mixed_is_suggestions() {
-        let user = candidate(MentionKind::User, "u", "@u");
-        let alias = candidate(MentionKind::Alias, "a", "@a");
-        assert_eq!(menu_heading(std::slice::from_ref(&user)), "Members");
-        assert_eq!(menu_heading(std::slice::from_ref(&alias)), "Mention Groups");
-        assert_eq!(menu_heading(&[user, alias]), "Suggestions");
     }
 
     #[test]

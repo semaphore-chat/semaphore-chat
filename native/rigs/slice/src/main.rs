@@ -1909,8 +1909,8 @@ impl Rig {
         }
         if let Condition::Above(upper, lower) = condition {
             let (upper, lower) = (
-                ElementId::Name(upper.clone().into()),
-                ElementId::Name(lower.clone().into()),
+                rig_shot::driver::element_id(upper),
+                rig_shot::driver::element_id(lower),
             );
             let edges = self.driver.query(|window| {
                 let upper = window.try_find(upper)?.bounds();
@@ -1920,7 +1920,7 @@ impl Rig {
             return Ok(edges.is_some_and(|(bottom, top)| bottom <= top));
         }
         if let Condition::Element(id, drawn) = condition {
-            let id = ElementId::Name(id.clone().into());
+            let id = rig_shot::driver::element_id(id);
             let found = self.driver.query(|window| window.try_find(id).is_some())?;
             return Ok(found == *drawn);
         }
@@ -2903,7 +2903,7 @@ impl Rig {
                 }
                 Step::Scroll { id, dx, dy } => {
                     self.driver.settle()?;
-                    let target = ElementId::Name(id.clone().into());
+                    let target = rig_shot::driver::element_id(id);
                     let delta = ScrollDelta::Pixels(point(px(*dx), px(*dy)));
                     self.driver
                         .update(|window, cx| window.scroll(target, delta, cx))

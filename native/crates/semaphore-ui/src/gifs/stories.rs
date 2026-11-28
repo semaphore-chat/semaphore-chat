@@ -305,7 +305,6 @@ fn composer(enabled: bool, window: &mut Window, cx: &mut App) -> AnyView {
             window,
             cx,
         );
-        composer.follow_theme(cx);
         composer.set_gifs_enabled(enabled, cx);
         composer
     });

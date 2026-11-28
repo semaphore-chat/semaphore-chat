@@ -34,7 +34,7 @@ expect label "GIF from media.gifs.example"
 # (ConversationPane's ToastAnchor), never over it.
 toast Saved
 wait core element kit-toast-region
-wait core above kit-toast-region composer-field
+wait core above kit-toast-region composer/field
 toast off
 wait core no-element kit-toast-region
 

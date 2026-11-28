@@ -27,7 +27,7 @@ wait core composer-text "reselected" within 5
 restart
 wait core session signed-in
 wait core channel $ID(cc-general)
-wait core element composer-field
+wait core element composer/field
 wait idle
 type " restored"
 wait core composer-text "restored" within 5
@@ -43,7 +43,7 @@ type "pw"
 click auth-login
 wait core session signed-in
 wait core channel $ID(cc-general)
-wait core element composer-field
+wait core element composer/field
 wait idle
 type " again"
 wait core composer-text "again" within 5
