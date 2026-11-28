@@ -86,4 +86,14 @@ describe('SessionsSettings: signing out everywhere else', () => {
     await waitFor(() => expect(getCurrentPushSubscription).toHaveBeenCalled());
     expect(posted).toEqual([]);
   });
+
+  it('closes the dialog and shows the message even if keeping push never settles', async () => {
+    getCurrentPushSubscription.mockReturnValue(new Promise(() => {}));
+    const { user } = renderWithProviders(<SessionsSettings />);
+
+    await signOutOthers(user);
+
+    expect(await screen.findByText('Signed out')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Sign Out Other Sessions?')).not.toBeInTheDocument());
+  });
 });

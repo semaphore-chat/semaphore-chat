@@ -63,6 +63,7 @@ export const AppRoutes: React.FC = () => (
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="friends" element={<FriendsPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings/:section" element={<SettingsPage />} />
 
         {/* Admin routes with dedicated layout */}
         <Route path="admin" element={<AdminLayout />}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Card,
@@ -37,13 +37,9 @@ import { accentColors } from '../theme/constants';
 import { isElectron, hasElectronFeature, getElectronAPI } from '../utils/platform';
 import { getActiveServer, updateServer } from '../utils/serverStorage';
 import { clearTokens } from '../utils/tokenService';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  appearanceSettingsControllerGetSettingsOptions,
-  appearanceSettingsControllerGetSettingsQueryKey,
-  appearanceSettingsControllerUpdateSettingsMutation,
-} from '../api-client/@tanstack/react-query.gen';
-import type { AppearanceSettingsResponseDto } from '../api-client/types.gen';
+import { useIsFetching, useQueryClient } from '@tanstack/react-query';
+import { useParams } from 'react-router-dom';
+import { usePrivacySettings } from '../data/privacySettings';
 import { clearShellSessionState } from '../shell/sessionState';
 import { normalizeUrlForComparison } from '../config/env';
 import { FormPageShell, type FormPageSection } from '../components/Common/PageShell';
@@ -57,42 +53,49 @@ interface HealthResponse {
   timestamp: string;
 }
 
-// Appearance Settings Component
-/**
- * Settings > Privacy: whether pictures from other sites load on their own (link-preview pictures and site icons,
- * GIF links drawn as the GIF, webhook avatars). Stored with the appearance settings (`loadRemoteContent`), the
- * query both shells already load at start; the switch moves at once and goes back if the save fails.
- */
-/** An older server does not know the setting: nothing to switch, so no Privacy card and no nav entry. */
-const privacyUnsupported = (data: unknown, isError: boolean): boolean =>
-  !isError && !!data && typeof (data as { loadRemoteContent?: unknown }).loadRemoteContent !== 'boolean';
+/** How many times the cards' late data may pull the page back to the section named in the URL. */
+const MAX_SECTION_RESCROLLS = 3;
 
+/** Presses that scroll the page: one of them means the reader has taken over. */
+const SCROLL_KEYS: Record<string, true> = {
+  ArrowUp: true,
+  ArrowDown: true,
+  PageUp: true,
+  PageDown: true,
+  Home: true,
+  End: true,
+  ' ': true,
+  Spacebar: true,
+};
+
+/**
+ * The queries the cards above the sections load. Each one turns a skeleton into content and moves the sections
+ * below it down the page, so the scroll to `/settings/:section` has to be repeated once they finish.
+ */
+const SETTINGS_CARD_QUERIES: Record<string, true> = {
+  notificationsControllerGetSettings: true,
+  pushNotificationsControllerGetVapidPublicKey: true,
+  pushNotificationsControllerGetStatus: true,
+  appearanceSettingsControllerGetSettings: true,
+  authControllerGetSessions: true,
+};
+
+const isSettingsCardQuery = (query: { queryKey: readonly unknown[] }): boolean => {
+  const id = (query.queryKey[0] as { _id?: string } | undefined)?._id;
+  return id !== undefined && SETTINGS_CARD_QUERIES[id] === true;
+};
+
+/**
+ * Settings > Privacy: whether pictures from other sites load on their own (`usePrivacySettings`, shared with the new
+ * shell). An older server does not know the setting: nothing to switch, so no Privacy card and no nav entry.
+ */
 export const PrivacySettings: React.FC = () => {
-  const queryClient = useQueryClient();
-  const queryKey = appearanceSettingsControllerGetSettingsQueryKey();
-  const { data, isPending, isError } = useQuery(appearanceSettingsControllerGetSettingsOptions());
-  const { mutate, isError: saveFailed, isPending: saving } = useMutation({
-    ...appearanceSettingsControllerUpdateSettingsMutation(),
-    onMutate: async ({ body }) => {
-      await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<AppearanceSettingsResponseDto>(queryKey);
-      if (previous && body?.loadRemoteContent !== undefined) {
-        queryClient.setQueryData<AppearanceSettingsResponseDto>(queryKey, {
-          ...previous,
-          loadRemoteContent: body.loadRemoteContent,
-        });
-      }
-      return { previous };
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
-    },
-    onSettled: () => queryClient.invalidateQueries({ queryKey }),
-  });
+  const { supported, loadRemoteContent, loading: isPending, error: isError, saving, saveFailed, setLoadRemoteContent } =
+    usePrivacySettings();
 
   if (isPending) return <SettingsCardSkeleton rows={1} label="Loading privacy settings" />;
   // An older server does not know the setting: nothing to switch, and its pictures stay on.
-  if (privacyUnsupported(data, isError)) return null;
+  if (!supported) return null;
 
   return (
     <Card sx={{ mb: 3 }}>
@@ -101,16 +104,16 @@ export const PrivacySettings: React.FC = () => {
           <PrivacyTip /> Privacy
         </Typography>
         <Divider sx={{ mb: 3 }} />
-        {isError || !data ? (
+        {isError || loadRemoteContent === undefined ? (
           <Alert severity="error">Failed to load privacy settings</Alert>
         ) : (
           <>
             <FormControlLabel
               control={
                 <Switch
-                  checked={data.loadRemoteContent}
+                  checked={loadRemoteContent}
                   disabled={saving}
-                  onChange={(event) => mutate({ body: { loadRemoteContent: event.target.checked } })}
+                  onChange={(event) => setLoadRemoteContent(event.target.checked)}
                   slotProps={{ input: { 'aria-describedby': 'load-remote-content-description' } }}
                 />
               }
@@ -259,8 +262,7 @@ const SettingsPage: React.FC = () => {
   const [isElectronApp, setIsElectronApp] = useState(false);
   const { isDesktop } = useResponsive();
   // Same (shared) query as PrivacySettings, so the nav and the card agree.
-  const appearance = useQuery(appearanceSettingsControllerGetSettingsOptions());
-  const showPrivacy = !privacyUnsupported(appearance.data, appearance.isError);
+  const { supported: showPrivacy } = usePrivacySettings();
 
   // Section nav for the desktop form shell; the Electron-only section only when present.
   const sections: FormPageSection[] = [
@@ -272,6 +274,49 @@ const SettingsPage: React.FC = () => {
     ...(isElectronApp ? [{ id: 'settings-desktop-app', label: 'Desktop app' }] : []),
   ];
   const [activeSection, scrollToSection] = useScrollSpy(sections.map((section) => section.id));
+  // `/settings/:section` (the new shell's links, e.g. its "Voice & video" row): open on that section.
+  const { section } = useParams<{ section?: string }>();
+  const sectionId = section && sections.some((entry) => entry.id === `settings-${section}`) ? `settings-${section}` : undefined;
+  useEffect(() => {
+    if (sectionId) scrollToSection(sectionId);
+  }, [sectionId, scrollToSection]);
+
+  // The sections sit below the cards, whose skeletons are shorter than their loaded content. Re-run the scroll
+  // to `/settings/:section` once those loads settle (a few times at most), and never after the reader has
+  // scrolled, wheeled, touched, pressed or pressed a scroll key themselves.
+  const pendingCardLoads = useIsFetching({ predicate: isSettingsCardQuery });
+  const sectionRescrolls = useRef(0);
+  const sawCardLoads = useRef(false);
+  const readerTookOver = useRef(false);
+  useEffect(() => {
+    const takeOver = (event: Event) => {
+      if (event.type === 'keydown' && SCROLL_KEYS[(event as KeyboardEvent).key] !== true) return;
+      readerTookOver.current = true;
+    };
+    const passive = { passive: true } as const;
+    window.addEventListener('wheel', takeOver, passive);
+    window.addEventListener('touchmove', takeOver, passive);
+    window.addEventListener('pointerdown', takeOver, passive);
+    window.addEventListener('keydown', takeOver);
+    return () => {
+      window.removeEventListener('wheel', takeOver);
+      window.removeEventListener('touchmove', takeOver);
+      window.removeEventListener('pointerdown', takeOver);
+      window.removeEventListener('keydown', takeOver);
+    };
+  }, []);
+  useEffect(() => {
+    if (!sectionId) return;
+    // The direct check matters on mount, when this render's count can still predate the cards' fetches.
+    if (pendingCardLoads > 0 || queryClient.isFetching({ predicate: isSettingsCardQuery }) > 0) {
+      sawCardLoads.current = true;
+      return;
+    }
+    if (!sawCardLoads.current || readerTookOver.current) return;
+    if (sectionRescrolls.current >= MAX_SECTION_RESCROLLS) return;
+    sectionRescrolls.current += 1;
+    scrollToSection(sectionId);
+  }, [sectionId, pendingCardLoads, queryClient, scrollToSection]);
   const [currentBackendUrl, setCurrentBackendUrl] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [backendVersion, setBackendVersion] = useState<string | null>(null);

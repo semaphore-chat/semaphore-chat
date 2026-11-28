@@ -25,20 +25,7 @@ import {
   Logout as LogoutIcon,
 } from '@mui/icons-material';
 import { formatDistanceToNow } from 'date-fns';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  authControllerGetSessionsOptions,
-  authControllerRevokeSessionMutation,
-  authControllerRevokeAllOtherSessionsMutation,
-  pushNotificationsControllerSubscribeMutation,
-} from '../../api-client/@tanstack/react-query.gen';
-import {
-  extractSubscriptionData,
-  getCurrentPushSubscription,
-  hasNotificationPermission,
-  isPushSupported,
-} from '../../utils/pushSubscription';
-
+import { useSessions } from '../../data/sessions';
 import type { SessionInfoDto as SessionInfo } from '../../api-client/types.gen';
 import ConfirmDialog from '../Common/ConfirmDialog';
 import { useNotification } from '../../contexts/NotificationContext';
@@ -132,29 +119,24 @@ const SessionSkeleton: React.FC = () => (
 
 const SessionsSettings: React.FC = () => {
   const { showNotification } = useNotification();
-  const queryClient = useQueryClient();
-  const { data: sessions, isLoading, error, refetch } = useQuery(authControllerGetSessionsOptions());
-  const { mutateAsync: revokeSession } = useMutation({
-    ...authControllerRevokeSessionMutation(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [{ _id: 'authControllerGetSessions' }] });
-    },
-  });
-  const { mutateAsync: revokeAllOther, isPending: isRevokingAll } = useMutation({
-    ...authControllerRevokeAllOtherSessionsMutation(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [{ _id: 'authControllerGetSessions' }] });
-    },
-  });
+  const {
+    sessions,
+    otherCount: otherSessionsCount,
+    loading: isLoading,
+    error,
+    refetch,
+    revoke,
+    revokeOthers,
+    revokingOthers: isRevokingAll,
+  } = useSessions();
 
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const { mutateAsync: subscribePush } = useMutation(pushNotificationsControllerSubscribeMutation());
 
   const handleRevokeSession = async (sessionId: string) => {
     setRevokingId(sessionId);
     try {
-      await revokeSession({ path: { sessionId } });
+      await revoke(sessionId);
       showNotification('Session revoked', 'success');
     } catch (err) {
       logger.error('Failed to revoke session:', err);
@@ -164,32 +146,17 @@ const SessionsSettings: React.FC = () => {
     }
   };
 
-  const keepThisDevicePush = async () => {
-    try {
-      if (!isPushSupported() || !hasNotificationPermission()) return;
-      const subscription = await getCurrentPushSubscription();
-      if (subscription) {
-        await subscribePush({ body: extractSubscriptionData(subscription) });
-      }
-    } catch (err) {
-      logger.warn('Could not keep push on this device:', err);
-    }
-  };
-
   const handleRevokeAllOther = async () => {
     try {
-      const result = await revokeAllOther({});
-      showNotification(result.message, 'success');
+      const message = await revokeOthers();
+      showNotification(message, 'success');
       setConfirmDialogOpen(false);
-      // The server ended every push subscription with them; this device stays
-      await keepThisDevicePush();
     } catch (err) {
       logger.error('Failed to revoke sessions:', err);
       showNotification('Failed to revoke sessions', 'error');
     }
   };
 
-  const otherSessionsCount = sessions?.filter(s => !s.isCurrent).length ?? 0;
 
   return (
     <>
