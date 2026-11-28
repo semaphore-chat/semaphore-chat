@@ -130,8 +130,8 @@ private val WITH_FILES: List<ChatMessage> = listOf(
     message(33, "You", "u-me", 1, text("Uploading mine"), MessageState.Pending).copy(
         clientNonce = "n33",
         uploads = listOf(
-            UploadModel("render.png", 4_000_000, 2_400_000),
-            UploadModel("archive.zip", 9_900_000, 0, failed = "The file is too large for this server"),
+            UploadModel(1u, "render.png", 4_000_000, 2_400_000),
+            UploadModel(2u, "archive.zip", 9_900_000, 0, failed = "The file is too large for this server"),
         ),
     ),
 )

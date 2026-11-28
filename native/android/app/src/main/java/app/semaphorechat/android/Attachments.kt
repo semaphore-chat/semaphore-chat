@@ -20,6 +20,7 @@ import app.semaphorechat.android.screens.ComposerCaps
 import app.semaphorechat.android.screens.fileSizeText
 import java.io.IOException
 import java.io.InputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +28,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import uniffi.semaphore.SemaphoreCore
 
 /**
  * A file picked for the next message. Its bytes are read only when it is sent ([read]), so ten
@@ -62,10 +62,14 @@ fun attachProblem(queued: Int, picked: List<PickedFile>, canAttach: Boolean, cha
 
 /**
  * Reads [input] whole, refusing past [limit] bytes: a picker's size can be missing or wrong, so the
- * limit holds while reading, not only before.
+ * limit holds while reading, not only before. The buffer is sized from [expected] (the size the
+ * picker gave) so a large file isn't copied while growing; the growth past that is still bounded by
+ * [limit].
  */
-fun readCapped(input: InputStream, limit: Long, name: String): ByteArray {
-    val out = java.io.ByteArrayOutputStream()
+fun readCapped(input: InputStream, limit: Long, name: String, expected: Long? = null): ByteArray {
+    // A megabyte up front at most: the picker's size may be wrong in the other direction too.
+    val initial = expected?.coerceIn(0, minOf(limit, 1L shl 20))?.toInt() ?: (8 * 1024)
+    val out = java.io.ByteArrayOutputStream(initial)
     val buffer = ByteArray(64 * 1024)
     var total = 0L
     while (true) {
@@ -93,8 +97,20 @@ fun pickedFile(resolver: ContentResolver, uri: Uri): PickedFile {
     val shown = name?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "file"
     val mime = resolver.getType(uri) ?: "application/octet-stream"
     return PickedFile(shown, size, mime) {
-        val input = resolver.openInputStream(uri) ?: throw UnreadableFile(shown)
-        input.use { readCapped(it, ComposerCaps.MAX_FILE_BYTES, shown) }
+        try {
+            val input = resolver.openInputStream(uri) ?: throw UnreadableFile(shown)
+            input.use { readCapped(it, ComposerCaps.MAX_FILE_BYTES, shown, size) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (unreadable: UnreadableFile) {
+            throw unreadable
+        } catch (_: IOException) {
+            // The picker withdrew the file, the stream broke, or storage went away since picking.
+            throw UnreadableFile(shown)
+        } catch (_: SecurityException) {
+            // The grant was revoked, or the provider refuses this app the bytes it named.
+            throw UnreadableFile(shown)
+        }
     }
 }
 
@@ -128,10 +144,12 @@ fun sampleSize(width: Int, height: Int, maxSide: Int): Int {
  * The tiles' pictures, through core's `file` (the session's auth and refresh). Decoded pictures
  * are kept in a memory cache bounded by their bytes; nothing is written to disk. A picture that
  * isn't an image, is too big by desktop's rules, or fails to fetch is [ImageLoad.Failed], and the
- * tile draws its file row instead. At most [PARALLEL] fetches run at once.
+ * tile draws its file row instead; a failure is forgotten, so the next draw tries again. At most
+ * [PARALLEL] fetches and decodes run at once.
  */
 class AttachmentLoader(
-    private val core: SemaphoreCore,
+    /** The file's bytes, or its small copy: core's `file`, or a test's. */
+    private val fetch: suspend (fileId: String, thumbnail: Boolean) -> ByteArray,
     private val scope: CoroutineScope,
     /** Pixels on the longer side a decoded picture needs at most (a 320 dp box on this screen). */
     private val maxSide: Int,
@@ -147,38 +165,75 @@ class AttachmentLoader(
         }
     }
 
-    override fun image(fileId: String, thumbnail: Boolean): StateFlow<ImageLoad> {
+    /** The session's pictures were cleared; a load started under an older one must not land. */
+    private var generation = 0
+
+    override fun image(fileId: String, thumbnail: Boolean, sizeBytes: Long?): StateFlow<ImageLoad> {
         val key = fileId to thumbnail
         synchronized(lock) {
             flows[key]?.let { return it }
+            // What the message says the file is: a full picture over the decode limits costs nothing
+            // to refuse. A thumbnail is small whatever the file is.
+            if (!thumbnail && sizeBytes != null && sizeBytes > MAX_IMAGE_BYTES) {
+                return MutableStateFlow(ImageLoad.Failed)
+            }
             val flow = MutableStateFlow<ImageLoad>(ImageLoad.Loading)
             flows[key] = flow
-            scope.launch(Dispatchers.IO) { flow.value = load(key) }
+            val started = generation
+            scope.launch(Dispatchers.IO) { flow.value = load(key, started) }
             return flow
         }
     }
 
-    private suspend fun load(key: Pair<String, Boolean>): ImageLoad {
-        decoded.get(key)?.let { return ImageLoad.Ready(it) }
+    private suspend fun load(key: Pair<String, Boolean>, started: Int): ImageLoad = gate.withPermit {
+        decoded.get(key)?.let { return@withPermit ImageLoad.Ready(it) }
         val bytes = try {
-            gate.withPermit { core.file(key.first, key.second) }
-        } catch (_: Exception) {
+            fetch(key.first, key.second)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
             // Not only CoreException: a failed picture must never end the process.
-            return ImageLoad.Failed
+            return@withPermit failed(key)
         }
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        if (!imageDecodable(bytes.size, bounds.outWidth, bounds.outHeight, bounds.outMimeType)) return ImageLoad.Failed
-        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, maxSide) }
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return ImageLoad.Failed
-        val image = bitmap.asImageBitmap()
-        decoded.put(key, image)
-        return ImageLoad.Ready(image)
+        if (stale(started)) return@withPermit ImageLoad.Failed
+        try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (!imageDecodable(bytes.size, bounds.outWidth, bounds.outHeight, bounds.outMimeType)) {
+                return@withPermit failed(key)
+            }
+            val options = BitmapFactory.Options().apply { inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, maxSide) }
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return@withPermit failed(key)
+            val image = bitmap.asImageBitmap()
+            // The session may have ended while it decoded: another account's picture is not cached.
+            if (stale(started)) {
+                bitmap.recycle()
+                return@withPermit ImageLoad.Failed
+            }
+            decoded.put(key, image)
+            ImageLoad.Ready(image)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            // A decode can run out of memory or hit a corrupt header: the row stands in.
+            failed(key)
+        }
+    }
+
+    private fun stale(started: Int): Boolean = synchronized(lock) { generation != started }
+
+    /** Forgets the failure, so the next draw of the tile fetches again. */
+    private fun failed(key: Pair<String, Boolean>): ImageLoad {
+        synchronized(lock) { flows.remove(key) }
+        return ImageLoad.Failed
     }
 
     /** The session ended: forget every picture, which was another account's. */
     fun clear() {
-        synchronized(lock) { flows.clear() }
+        synchronized(lock) {
+            generation++
+            flows.clear()
+        }
         decoded.evictAll()
     }
 

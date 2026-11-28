@@ -111,6 +111,8 @@ val CHAT_KIT_STORIES: List<Story> = listOf(
                     MediaTile("v-none", "no-still.mp4", "3 MB", 240.dp, 160.dp, video = true, thumbnail = false, onOpen = {})
                     MediaTile("broken", "not-an-image.png", "12 Bytes", 240.dp, 160.dp, video = false, thumbnail = true, onOpen = {})
                     FileTile("Q3 plan — final.pdf", "2.13 MB", Icons.Paperclip, onOpen = {})
+                    // A sender's right-to-left override is dropped, so this reads as it is written.
+                    FileTile("invoice\u202Efdp.exe", "18 KB", Icons.Paperclip, onOpen = {})
                     FileTile("a file name long enough that it cannot fit on one phone line at all.tar.gz", "10 MB", Icons.Paperclip, onOpen = {})
                     FileTile("theme.ogg", "640 KB", Icons.Music, onOpen = {})
                 }

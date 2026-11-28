@@ -162,6 +162,7 @@ fun chatMessage(row: MessageRow, meId: String?, rules: ChatRules): ChatMessage {
         attachments = row.attachments.map { attachmentModel(it, rules) },
         uploads = row.uploads.map { upload ->
             UploadModel(
+                upload.id,
                 upload.name,
                 upload.sizeBytes.toLong(),
                 upload.sentBytes.toLong(),
@@ -409,14 +410,14 @@ class ConversationStore(
         scope.launch { runCatching { core.discardFailedSend(clientNonce) } }
     }
 
-    /** Retry of a failed upload: core's upload [index] in the send [clientNonce]; its row shows progress again. */
-    fun retryUpload(clientNonce: String, index: Int) {
-        scope.launch { runCatching { core.retryUpload(clientNonce, index.toUInt()) } }
+    /** Retry of a failed upload: upload [id] of the send [clientNonce]; its row shows progress again. */
+    fun retryUpload(clientNonce: String, id: ULong) {
+        scope.launch { runCatching { core.retryUpload(clientNonce, id) } }
     }
 
     /** Takes an upload off its message (core releases its slot); the row changes through core's list. */
-    fun removeUpload(clientNonce: String, index: Int) {
-        scope.launch { runCatching { core.removeUpload(clientNonce, index.toUInt()) } }
+    fun removeUpload(clientNonce: String, id: ULong) {
+        scope.launch { runCatching { core.removeUpload(clientNonce, id) } }
     }
 
     /** Builds the state from what is held and what core says now. Under [lock]. */

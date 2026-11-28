@@ -126,7 +126,7 @@ class ConversationStoreTest {
                     AttachmentView("v", "clip.mp4", "video/mp4", 10u, AttachmentKind.VIDEO, false, null, null),
                     AttachmentView("a", "tune.ogg", "audio/ogg", 10u, AttachmentKind.AUDIO, false, null, null),
                 ),
-                uploads = listOf(UploadView("big.zip", 100u, 40u, ErrorView("FILE_TOO_LARGE", "too big", false, null))),
+                uploads = listOf(UploadView(3u, "big.zip", 100u, 40u, ErrorView("FILE_TOO_LARGE", "too big", false, null))),
             ),
             meId = "u-me",
             rules = FakeRules,
@@ -147,7 +147,7 @@ class ConversationStoreTest {
             message.attachments,
         )
         val upload = message.uploads.single()
-        assertEquals(UploadModel("big.zip", 100, 40, upload.failed), upload)
+        assertEquals(UploadModel(3u, "big.zip", 100, 40, upload.failed), upload)
         assertTrue(upload.failed!!.isNotBlank())
         assertTrue(message.extras.isEmpty())
         val kinds = message.pieces.map { it.kind }

@@ -45,7 +45,7 @@ data class ChatMessage(
     val replyCount: Int = 0,
     /** Files sent with it, drawn under its words. */
     val attachments: List<AttachmentModel> = emptyList(),
-    /** Its files still on their way (a send from this device), by core's upload index. */
+    /** Its files still on their way (a send from this device), each by core's upload id. */
     val uploads: List<UploadModel> = emptyList(),
     /**
      * One line for each thing this build does not draw yet (a GIF, link previews), so nothing in a
@@ -74,8 +74,11 @@ data class AttachmentModel(
     val thumbnail: Boolean = false,
 )
 
-/** A file on its way (core's `UploadView`): [failed] is why it stopped, already through errorText. */
-data class UploadModel(val name: String, val sizeBytes: Long, val sentBytes: Long, val failed: String? = null)
+/**
+ * A file on its way (core's `UploadView`): [id] names it for Retry and Remove while the rest come
+ * and go, [failed] is why it stopped, already through errorText.
+ */
+data class UploadModel(val id: ULong, val name: String, val sizeBytes: Long, val sentBytes: Long, val failed: String? = null)
 
 /** A file picked in the composer, not sent yet. */
 data class PickedFileModel(val name: String, val sizeBytes: Long)

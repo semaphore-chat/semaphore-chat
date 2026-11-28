@@ -365,6 +365,7 @@ pub fn stories() -> Vec<Story> {
                         upload: Some(ProfileUpload {
                             image: ProfileImage::Banner,
                             upload: UploadView {
+                                id: 0,
                                 name: "mountains.png".into(),
                                 size_bytes: 4096,
                                 sent_bytes: 1638,

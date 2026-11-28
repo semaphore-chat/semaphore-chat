@@ -40,6 +40,13 @@ android {
         compose = true
     }
 
+    testOptions {
+        unitTests {
+            // Robolectric reads the merged manifest (the FileProvider) and resources.
+            isIncludeAndroidResources = true
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -104,6 +111,11 @@ android.testOptions.unitTests.all { test ->
     providers.gradleProperty("semaphore.hostLibDir").orNull?.let {
         test.systemProperty("jna.library.path", it)
     }
+    // The image's user has no passwd entry, so the JVM's user.home is "?" and Robolectric would put
+    // its android-all jars in a "?" directory here; the image's home is ANDROID_SDK_HOME (as the
+    // kit's tests say).
+    System.getenv("ANDROID_SDK_HOME")?.let { test.systemProperty("user.home", it) }
+    test.maxHeapSize = "2g"
     test.testLogging {
         events("passed", "skipped", "failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
@@ -169,9 +181,11 @@ dependencies {
     implementation("org.rustls:rustls-platform-verifier:${rustlsAndroidVersion.get()}")
 
     // The JVM test: JUnit, and JNA's plain jar, which carries the desktop libjnidispatch the @aar
-    // above leaves out.
+    // above leaves out. Robolectric runs FileOpener and AttachmentLoader against Android's own
+    // FileProvider, Intent and LruCache (same version as the kit's tests).
     testImplementation("junit:junit:4.13.2")
     testImplementation("net.java.dev.jna:jna:5.15.0")
+    testImplementation("org.robolectric:robolectric:4.18.1")
 
     // The instrumented test (src/androidTest): JUnit on the device, and the runner that gives it
     // InstrumentationRegistry (its arguments come from `adb shell am instrument -e`).

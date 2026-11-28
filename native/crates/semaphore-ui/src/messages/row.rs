@@ -664,14 +664,14 @@ fn render_uploads(shared: &Rc<Shared>, row: &MessageRow, cx: &App) -> Vec<AnyEle
             (Some(error), Some(nonce)) => {
                 let (retry_shared, remove_shared) = (shared.clone(), shared.clone());
                 let (retry_nonce, remove_nonce) = (nonce.clone(), nonce.clone());
-                let index = index as u32;
+                let upload_id = upload.id;
                 tile = tile
                     .error(error.message.clone())
                     .on_retry(move |_, cx| {
                         retry_shared.emit(
                             MessageListEvent::RetryUpload {
                                 client_nonce: retry_nonce.clone(),
-                                index,
+                                upload_id,
                             },
                             cx,
                         );
@@ -680,7 +680,7 @@ fn render_uploads(shared: &Rc<Shared>, row: &MessageRow, cx: &App) -> Vec<AnyEle
                         remove_shared.emit(
                             MessageListEvent::RemoveUpload {
                                 client_nonce: remove_nonce.clone(),
-                                index,
+                                upload_id,
                             },
                             cx,
                         );

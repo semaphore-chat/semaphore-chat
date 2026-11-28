@@ -33,6 +33,19 @@ impl FilesBackend for HttpBackend {
         bytes(rpc!(self, c => c.file_controller_get_file_thumbnail(id))?).await
     }
 
+    async fn file_controller_get_file_range(
+        &self,
+        id: String,
+        start: u64,
+        end: u64,
+    ) -> BackendResult<semaphore_core::model::FileRange> {
+        let range = self.file_range(&id, start, end).await?;
+        Ok(semaphore_core::model::FileRange {
+            bytes: range.bytes,
+            size: range.size,
+        })
+    }
+
     /// On a client of its own: the usual read deadline covers sending the whole request too, which a
     /// large file on a slow link outlasts. Retried once after a refresh, as other calls are.
     async fn file_upload_controller_upload_file(

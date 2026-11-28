@@ -229,13 +229,32 @@ class ChatFlowJvmTest {
             composer.onDraftChange(TextFieldValue())
             assertTrue(composer.state.value.files.isEmpty())
 
+            // A pick the picker's provider refused: the tray says so instead of dropping it.
+            composer.unreadable("locked.bin")
+            assertEquals("Couldn't read \"locked.bin\"", composer.state.value.fileProblem)
+            composer.removeFile(0)
+
+            // Reading the picks runs out of memory: the text and a budget of files come back, and
+            // the tray names what could not (a third full-cap pick is past the budget).
+            val cap = ComposerCaps.MAX_FILE_BYTES
+            composer.attach(List(3) { PickedFile("oom$it.bin", cap, "application/octet-stream") { throw OutOfMemoryError() } })
+            assertEquals(3, composer.state.value.files.size)
+            composer.onDraftChange(TextFieldValue("out of memory", TextRange(14)))
+            composer.send()
+            until("the draft back after running out of memory") { composer.draft.text == "out of memory" }
+            assertEquals(listOf("oom0.bin", "oom1.bin"), composer.state.value.files.map { it.name })
+            assertEquals("Couldn't bring back \"oom2.bin\"", composer.state.value.fileProblem)
+            assertFalse("nothing sent", "out of memory" in requestLog())
+            composer.state.value.files.indices.reversed().forEach(composer::removeFile)
+            composer.onDraftChange(TextFieldValue())
+
             // An upload that fails stays on its row with why; Retry sends it again.
             control("fail_route", """{"operationId":"FileUploadController_uploadFile","status":500,"code":"INTERNAL"}""")
             composer.attach(listOf(MemoryFile("retry.txt", "again".toByteArray()).picked))
             composer.onDraftChange(TextFieldValue("upload fails", TextRange(12)))
             composer.send()
             until("the failed upload") { last()?.let { words(it) == "upload fails" && it.uploads.singleOrNull()?.failed != null } == true }
-            chat.retryUpload(last()!!.clientNonce!!, 0)
+            chat.retryUpload(last()!!.clientNonce!!, last()!!.uploads.single().id)
             until("the retried file attached") {
                 last()?.let { words(it) == "upload fails" && it.uploads.isEmpty() && it.attachments.singleOrNull()?.name == "retry.txt" } == true
             }
@@ -246,7 +265,7 @@ class ChatFlowJvmTest {
             composer.onDraftChange(TextFieldValue("upload dropped", TextRange(14)))
             composer.send()
             until("the second failed upload") { last()?.let { words(it) == "upload dropped" && it.uploads.singleOrNull()?.failed != null } == true }
-            chat.removeUpload(last()!!.clientNonce!!, 0)
+            chat.removeUpload(last()!!.clientNonce!!, last()!!.uploads.single().id)
             until("the upload gone") { last()?.let { words(it) == "upload dropped" && it.uploads.isEmpty() && it.attachments.isEmpty() } == true }
         } finally {
             pipe.close()

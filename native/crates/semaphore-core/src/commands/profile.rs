@@ -251,6 +251,7 @@ impl Core {
             state.w3.edit_upload = Some(ProfileUpload {
                 image,
                 upload: UploadView {
+                    id: 0,
                     name: file.name.clone(),
                     size_bytes: total,
                     sent_bytes: 0,

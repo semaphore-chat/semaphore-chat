@@ -51,6 +51,12 @@ private const val SEEN_MAX = 500
 /** At most this many suggestions are listed; the list shows [ComposerCaps.SUGGESTIONS_SHOWN] then scrolls. */
 const val SUGGESTIONS_MAX = 25
 
+/**
+ * Bytes a tray may bring back after reading its files ran out of memory: two full-cap files. What
+ * doesn't fit is named in the tray's problem line rather than silently dropped.
+ */
+const val RESTORE_BYTES = 20L * 1024 * 1024
+
 // ---- The composer's text rules, in UTF-16 units (Kotlin's), with the byte offsets core wants. ----
 
 /** A mention being typed: `@sa` or `#de` with the caret at its end. [start] is at the `@` or `#`. */
@@ -393,6 +399,17 @@ class ComposerStore(
     }
 
     /**
+     * A pick that couldn't even be read from the picker (its provider refused): the tray says so
+     * instead of the file silently not being sent.
+     */
+    fun unreadable(name: String) {
+        synchronized(lock) {
+            fileProblem = "Couldn't read \"$name\""
+            publish()
+        }
+    }
+
+    /**
      * Sends the draft, trimmed, as the web and desktop do: the field clears at once, and the pending
      * row carries the text from then on. From history the list goes back to the newest first. Core
      * sends nothing unless that row shows (`send_message_with_row`), so if it can't (the list isn't
@@ -420,6 +437,10 @@ class ComposerStore(
                 throw cancelled
             } catch (unreadable: UnreadableFile) {
                 restore(raw, picks, sending, "Couldn't read \"${unreadable.name}\"")
+            } catch (_: OutOfMemoryError) {
+                // Reading the picks ran the device out of memory: the text must come back, and only
+                // as many files as the tray can honestly hold again.
+                restore(raw, picks, sending, null, budget = RESTORE_BYTES)
             } catch (_: Exception) {
                 // Not only CoreException: nothing that goes wrong here may end the process or the text.
                 restore(raw, picks, sending, null)
@@ -427,12 +448,34 @@ class ComposerStore(
         }
     }
 
-    /** Puts an unsent draft back: alone if the field is still empty, else before what was typed since. */
-    private fun restore(text: String, picks: List<MentionSuggestion>, sent: List<PickedFile>, problem: String?) {
+    /**
+     * Puts an unsent draft back: alone if the field is still empty, else before what was typed since.
+     * With a [budget], only files whose sizes fit it come back in order; the rest are named in
+     * [fileProblem] rather than dropped silently.
+     */
+    private fun restore(text: String, picks: List<MentionSuggestion>, sent: List<PickedFile>, problem: String?, budget: Long? = null) {
+        var kept = sent
+        val missing = mutableListOf<PickedFile>()
+        if (budget != null) {
+            var used = 0L
+            kept = sent.filter { file ->
+                val size = file.sizeBytes ?: 0L
+                if (used + size <= budget) {
+                    used += size
+                    true
+                } else {
+                    missing += file
+                    false
+                }
+            }
+        }
         synchronized(lock) {
             picks.filter { it !in picked }.forEach { picked += it }
-            files.addAll(0, sent)
-            fileProblem = problem
+            files.addAll(0, kept)
+            fileProblem = listOfNotNull(
+                problem,
+                missing.takeIf { it.isNotEmpty() }?.joinToString(", ") { "\"${it.name}\"" }?.let { "Couldn't bring back $it" },
+            ).joinToString("; ").ifEmpty { null }
             publish()
         }
         // Snapshot state may be written from any thread; the field picks it up next frame.

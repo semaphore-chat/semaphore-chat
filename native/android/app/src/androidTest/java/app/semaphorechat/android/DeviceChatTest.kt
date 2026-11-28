@@ -16,6 +16,7 @@ import app.semaphorechat.android.screens.MessageState
 import java.io.ByteArrayOutputStream
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import android.view.View
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
@@ -296,13 +297,14 @@ class DeviceChatTest {
         val sent = chat.state.value.messages.last().attachments.single()
         waitFor(hasContentDescription("red square.png") or hasText("red square.png"))
         // Decoded on a real runtime from core's authenticated fetch.
-        val full = session.images.image(sent.fileId, false)
+        val full = session.images.image(sent.fileId, false, sent.sizeBytes)
         until("the picture decoded") { full.value !is ImageLoad.Loading }
         val image = (full.value as ImageLoad.Ready).image
         assertEquals(64 to 48, image.width to image.height)
         // Opening writes it where only the provider serves it, and the URI reads back the bytes.
         val staged = runBlocking { session.files.stage(sent.fileId, "../../escape/${sent.name}") }
-        assertEquals(fileAuthority(context), staged.authority)
+        assertNotNull("staged", staged)
+        assertEquals(fileAuthority(context), staged!!.authority)
         assertArrayEquals(png, context.contentResolver.openInputStream(staged)!!.use { it.readBytes() })
         assertTrue(File(context.cacheDir, OPEN_DIR).walk().none { it.name == "escape" })
         closeAndAwaitDetach(scenario)

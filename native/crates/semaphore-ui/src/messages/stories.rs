@@ -193,12 +193,14 @@ fn uploads(cx: &mut App) -> AnyView {
     row.pending_attachments = 3;
     row.uploads = vec![
         UploadView {
+            id: 1,
             name: "holiday-photos.zip".into(),
             size_bytes: 8_400_000,
             sent_bytes: 3_150_000,
             failed: None,
         },
         UploadView {
+            id: 2,
             name: "a-very-large-recording-of-the-whole-meeting.mp4".into(),
             size_bytes: 52_000_000,
             sent_bytes: 0,

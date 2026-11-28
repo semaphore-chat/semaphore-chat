@@ -35,7 +35,7 @@ fun WithImages(content: @Composable () -> Unit) {
     val images = remember(palette) {
         val wide = storyImage(640, 360, palette.accent, palette.surface)
         val tall = storyImage(270, 480, palette.positive, palette.surface)
-        AttachmentImages { id, _ ->
+        AttachmentImages { id, _, _ ->
             MutableStateFlow(
                 when {
                     id.startsWith("img-tall") -> ImageLoad.Ready(tall)

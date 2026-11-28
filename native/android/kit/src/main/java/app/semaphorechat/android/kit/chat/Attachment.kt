@@ -61,11 +61,23 @@ import kotlinx.coroutines.flow.StateFlow
 object AttachmentText {
     const val PLAY = "Play"
     const val ATTACH = "Attach files"
-    fun open(name: String) = "Open $name"
-    fun remove(name: String) = "Remove $name"
-    fun uploading(name: String) = "Uploading $name"
-    fun retry(name: String) = "Retry uploading $name"
+    fun open(name: String) = "Open ${displayName(name)}"
+    fun remove(name: String) = "Remove ${displayName(name)}"
+    fun uploading(name: String) = "Uploading ${displayName(name)}"
+    fun retry(name: String) = "Retry uploading ${displayName(name)}"
 }
+
+/**
+ * A file name as it may be drawn and read aloud: without the bidi controls that can make
+ * `exe.txt` read as `txt.exe` (`strip_bidi` in `semaphore_design::chat`, and Rust's rules for
+ * messages). Names come from whoever sent the file.
+ */
+fun displayName(name: String): String = buildString(name.length) {
+    name.forEach { if (!isBidiControl(it)) append(it) }
+}
+
+private fun isBidiControl(c: Char): Boolean =
+    c == '\u061C' || c == '\u200E' || c == '\u200F' || c in '\u202A'..'\u202E' || c in '\u2066'..'\u2069'
 
 /** A picture on its way from the server, ready, or one that won't be drawn (the file row stands in). */
 sealed interface ImageLoad {
@@ -74,12 +86,16 @@ sealed interface ImageLoad {
     data object Failed : ImageLoad
 }
 
-/** Where tiles get their pictures: the app's loader over core's `file`, or the stories' fixtures. */
+/**
+ * Where tiles get their pictures: the app's loader over core's `file`, or the stories' fixtures.
+ * [sizeBytes] is what the message says the file is (null when unknown), so a tile never fetches a
+ * file the loader would refuse to decode.
+ */
 fun interface AttachmentImages {
-    fun image(fileId: String, thumbnail: Boolean): StateFlow<ImageLoad>
+    fun image(fileId: String, thumbnail: Boolean, sizeBytes: Long?): StateFlow<ImageLoad>
 }
 
-private val NO_IMAGES = AttachmentImages { _, _ -> MutableStateFlow(ImageLoad.Failed) }
+private val NO_IMAGES = AttachmentImages { _, _, _ -> MutableStateFlow(ImageLoad.Failed) }
 
 /** The tiles' pictures, provided around the chat. Without one every picture falls back to its file row. */
 val LocalAttachmentImages = staticCompositionLocalOf { NO_IMAGES }
@@ -100,12 +116,18 @@ fun MediaTile(
     video: Boolean,
     thumbnail: Boolean,
     onOpen: () -> Unit,
+    /** What the message says the file is, so a picture too big to decode is never fetched. */
+    sizeBytes: Long? = null,
     modifier: Modifier = Modifier,
 ) {
     val images = LocalAttachmentImages.current
     // A video has only the server's still: without one there is nothing to fetch.
-    val flow = remember(images, fileId, thumbnail, video) {
-        if (video && !thumbnail) MutableStateFlow(ImageLoad.Failed) else images.image(fileId, thumbnail)
+    val flow = remember(images, fileId, thumbnail, video, sizeBytes) {
+        if (video && !thumbnail) {
+            MutableStateFlow(ImageLoad.Failed)
+        } else {
+            images.image(fileId, thumbnail, sizeBytes)
+        }
     }
     val load by flow.collectAsState()
     if (load == ImageLoad.Failed) {
@@ -122,7 +144,7 @@ fun MediaTile(
             .clip(shape)
             .background(palette.standOutFill(Kit.surface))
             .clickable(role = Role.Button, onClickLabel = AttachmentText.open(name), onClick = onOpen)
-            .semantics { contentDescription = name },
+            .semantics { contentDescription = displayName(name) },
         contentAlignment = Alignment.Center,
     ) {
         (load as? ImageLoad.Ready)?.let {
@@ -213,7 +235,7 @@ private fun TileFrame(modifier: Modifier, content: @Composable androidx.compose.
 @Composable
 private fun NameAndSize(name: String, size: String, modifier: Modifier = Modifier) {
     Column(modifier) {
-        Text(name, variant = TextVariant.Body, truncate = true)
+        Text(displayName(name), variant = TextVariant.Body, truncate = true)
         Text(size, variant = TextVariant.Small, tone = TextTone.Dim)
     }
 }

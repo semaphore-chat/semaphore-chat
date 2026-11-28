@@ -131,10 +131,10 @@ class ChatActions(
     val onRemoveFile: (Int) -> Unit = {},
     /** Open a sent file in another app. */
     val onOpenAttachment: (AttachmentModel) -> Unit = {},
-    /** Retry a failed upload: the send's client nonce and core's upload index. */
-    val onRetryUpload: (String, Int) -> Unit = { _, _ -> },
-    /** Remove an upload from its message: the send's client nonce and core's upload index. */
-    val onRemoveUpload: (String, Int) -> Unit = { _, _ -> },
+    /** Retry a failed upload: the send's client nonce and core's upload id. */
+    val onRetryUpload: (String, ULong) -> Unit = { _, _ -> },
+    /** Remove an upload from its message: the send's client nonce and core's upload id. */
+    val onRemoveUpload: (String, ULong) -> Unit = { _, _ -> },
 )
 
 /**
@@ -471,18 +471,19 @@ private fun Attachments(message: ChatMessage, actions: ChatActions) {
                     // The row draws the small copy when there is one; opening fetches the file.
                     thumbnail = file.thumbnail,
                     onOpen = open,
+                    sizeBytes = file.sizeBytes,
                 )
             }
         }
         val nonce = message.clientNonce
-        message.uploads.forEachIndexed { index, upload ->
+        message.uploads.forEach { upload ->
             UploadTile(
                 upload.name,
                 fileSizeText(upload.sizeBytes),
                 progress = if (upload.sizeBytes > 0) upload.sentBytes.toFloat() / upload.sizeBytes else 0f,
                 failed = upload.failed,
-                onRetry = nonce?.let { { actions.onRetryUpload(it, index) } },
-                onRemove = nonce?.let { { actions.onRemoveUpload(it, index) } },
+                onRetry = nonce?.let { { actions.onRetryUpload(it, upload.id) } },
+                onRemove = nonce?.let { { actions.onRemoveUpload(it, upload.id) } },
             )
         }
     }

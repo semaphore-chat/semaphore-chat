@@ -243,17 +243,17 @@ impl ConversationPane {
             }
             MessageListEvent::RetryUpload {
                 client_nonce,
-                index,
+                upload_id,
             } => self.command("retrying an upload", window, cx, async move {
-                core.retry_upload(client_nonce, index).await
+                core.retry_upload(client_nonce, upload_id).await
             }),
             MessageListEvent::RemoveUpload {
                 client_nonce,
-                index,
+                upload_id,
             } => self.exec.fire(async move {
                 log_failure(
                     "removing an upload",
-                    core.remove_upload(client_nonce, index).await,
+                    core.remove_upload(client_nonce, upload_id).await,
                 );
             }),
             MessageListEvent::OpenThread { message_id } => self.open_thread(message_id, window, cx),

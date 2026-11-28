@@ -158,7 +158,7 @@ object SemaphoreHost {
         val modelScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         // Opened files left by an earlier run (another session's, maybe) go first.
         val files = FileOpener(app, core).also { runCatching { it.clear() } }
-        val images = AttachmentLoader(core, modelScope, maxSide = imageSide(app))
+        val images = AttachmentLoader({ fileId, thumbnail -> core.file(fileId, thumbnail) }, modelScope, maxSide = imageSide(app))
         val store = CoreStore(core, modelScope, events.events) {
             images.clear()
             runCatching { files.clear() }

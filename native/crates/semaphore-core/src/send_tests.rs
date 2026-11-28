@@ -162,7 +162,7 @@ fn a_message_of_files_alone_still_sends_one_empty_span() {
         ..MessageDraft::default()
     };
     assert_eq!(
-        wire_spans(&files),
+        wire_spans(&files, true),
         vec![serde_json::json!({ "type": "PLAINTEXT", "text": "" })]
     );
     let words = MessageDraft {
@@ -170,7 +170,9 @@ fn a_message_of_files_alone_still_sends_one_empty_span() {
         ..MessageDraft::default()
     };
     assert_eq!(
-        wire_spans(&words),
+        wire_spans(&words, false),
         vec![serde_json::json!({ "type": "PLAINTEXT", "text": "hi" })]
     );
+    // Nothing at all is nothing to send: no empty span stands in for it.
+    assert!(wire_spans(&MessageDraft::default(), false).is_empty());
 }

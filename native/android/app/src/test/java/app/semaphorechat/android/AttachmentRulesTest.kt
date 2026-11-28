@@ -1,5 +1,6 @@
 package app.semaphorechat.android
 
+import app.semaphorechat.android.kit.chat.displayName
 import app.semaphorechat.android.screens.ComposerCaps
 import java.io.ByteArrayInputStream
 import org.junit.Assert.assertArrayEquals
@@ -66,13 +67,22 @@ class AttachmentRulesTest {
         assertEquals("a_b", safeFileName("a\u0000b"))
         assertEquals("a_b", safeFileName("a\nb"))
         assertEquals("C_x", safeFileName("C:x"))
-        // A right-to-left override can't make "exe" look like "txt".
-        assertEquals("photo_gpj.exe", safeFileName("photo‮gpj.exe"))
+        // A right-to-left override is dropped, so "exe" can't be made to read as "txt" (and the
+        // name is what the provider, the tray and the viewer all show).
+        assertEquals("photogpj.exe", safeFileName("photo‮gpj.exe"))
+        assertEquals("photogpj.exe", displayName("photo‮gpj.exe"))
         assertEquals("名前 😀.png", safeFileName("名前 😀.png"))
+        // The 255-byte filesystem limit, with room for the directory: 200 bytes, not characters.
         val long = safeFileName("a".repeat(300) + ".tar.gz")
-        assertEquals(120, long.length)
+        assertEquals(200, long.length)
         assertTrue(long.endsWith(".gz"))
-        assertEquals(120, safeFileName("b".repeat(300)).length)
+        assertEquals(200, safeFileName("b".repeat(300)).length)
+        assertEquals(200, safeFileName("😀".repeat(100)).toByteArray(Charsets.UTF_8).size)
+        val emoji = safeFileName("😀".repeat(100) + ".png")
+        assertEquals(200, emoji.toByteArray(Charsets.UTF_8).size)
+        assertTrue(emoji.endsWith(".png"))
+        // An "extension" that is really a sentence is not kept.
+        assertEquals(200, safeFileName("a".repeat(300) + "." + "b".repeat(40)).length)
     }
 
     @Test

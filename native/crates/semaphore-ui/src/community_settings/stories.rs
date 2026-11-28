@@ -253,6 +253,7 @@ fn uploading(kind: K, target: Option<&str>, name: &str, sent: u64, size: u64) ->
     op(vec![AdminActionState {
         busy: true,
         upload: Some(UploadView {
+            id: 0,
             name: name.into(),
             size_bytes: size,
             sent_bytes: sent,

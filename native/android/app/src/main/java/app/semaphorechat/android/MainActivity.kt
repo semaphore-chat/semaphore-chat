@@ -22,6 +22,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import app.semaphorechat.android.kit.chat.LocalAttachmentImages
+import app.semaphorechat.android.kit.chat.displayName
 import app.semaphorechat.android.screens.ComposerCaps
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -248,10 +249,22 @@ private fun ChannelChat(model: AppModel, links: LinkOpener, communityId: String,
     val picked: (List<Uri>) -> Unit = { uris ->
         if (uris.isNotEmpty()) {
             scope.launch {
-                val files = withContext(Dispatchers.IO) {
-                    uris.mapNotNull { uri -> runCatching { pickedFile(context.contentResolver, uri) }.getOrNull() }
+                // A pick that can't even be read (the provider refuses the query, the grant was
+                // revoked) is named in the tray instead of vanishing from the send.
+                val (files, unreadable) = withContext(Dispatchers.IO) {
+                    val readable = mutableListOf<PickedFile>()
+                    val refused = mutableListOf<String>()
+                    uris.forEach { uri ->
+                        try {
+                            readable += pickedFile(context.contentResolver, uri)
+                        } catch (_: Exception) {
+                            refused += uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "file"
+                        }
+                    }
+                    readable to refused
                 }
                 composer.attach(files)
+                unreadable.forEach(composer::unreadable)
             }
         }
     }
@@ -300,7 +313,7 @@ private fun ChannelChat(model: AppModel, links: LinkOpener, communityId: String,
             onOpenAttachment = { file ->
                 scope.launch {
                     if (!session.files.open(file.fileId, file.name, file.mimeType)) {
-                        Toast.makeText(context, "Couldn't open ${file.name}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Couldn't open ${displayName(file.name)}", Toast.LENGTH_SHORT).show()
                     }
                 }
             },
