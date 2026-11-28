@@ -6,7 +6,7 @@
  */
 
 import { createPortal } from 'react-dom';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Card,
   CardContent,
@@ -34,12 +34,7 @@ import {
   PlayArrow as PlayArrowIcon,
   Send as SendIcon,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  notificationsControllerGetSettingsOptions,
-  notificationsControllerUpdateSettingsMutation,
-  pushNotificationsControllerSendTestPushToSelfMutation,
-} from '../../api-client/@tanstack/react-query.gen';
+import { useNotificationSettingsForm, useTestPush } from '../../data/notificationSettings';
 import SettingsCardSkeleton from './SettingsCardSkeleton';
 import { StickySaveBar, useSaveBarSlot } from '../Common/PageShell';
 
@@ -48,18 +43,19 @@ import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { isElectron } from '../../utils/platform';
 import { showNotification } from '../../utils/notifications';
 import { logger } from '../../utils/logger';
-import type { UpdateNotificationSettingsDto } from '../../types/notification.type';
 import { playSound, Sounds, type SoundName } from '../../hooks/useSound';
 
 export const NotificationSettings: React.FC = () => {
-  const queryClient = useQueryClient();
-  const { data: settings, isLoading, error } = useQuery(notificationsControllerGetSettingsOptions());
-  const { mutateAsync: updateSettings, isPending: isUpdating } = useMutation({
-    ...notificationsControllerUpdateSettingsMutation(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [{ _id: 'notificationsControllerGetSettings' }] });
-    },
-  });
+  const {
+    values: formValues,
+    loading: isLoading,
+    error,
+    saving: isUpdating,
+    dirty: isDirty,
+    change,
+    reset: handleReset,
+    save,
+  } = useNotificationSettingsForm();
   const {
     isEnabled,
     isDenied,
@@ -78,76 +74,22 @@ export const NotificationSettings: React.FC = () => {
     toggle: togglePush,
   } = usePushNotifications();
 
-  const { mutateAsync: sendTestPush, isPending: isTestPushPending } = useMutation(
-    pushNotificationsControllerSendTestPushToSelfMutation(),
-  );
+  const { send: sendTestPush, sending: isTestPushPending } = useTestPush();
 
   const showPushOption = !isElectron() && isPushSupported && isPushServerEnabled;
 
-  // Local form state
-  const [formValues, setFormValues] = useState<UpdateNotificationSettingsDto>({
-    desktopEnabled: true,
-    playSound: true,
-    soundType: 'default',
-    doNotDisturb: false,
-    dndStartTime: '22:00',
-    dndEndTime: '08:00',
-    defaultChannelLevel: 'mentions',
-    dmNotifications: true,
-  });
-
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [testPushResult, setTestPushResult] = useState<{ success: boolean; message: string } | null>(null);
-
-  // The last saved values, to tell whether the form has unsaved changes.
-  const [savedValues, setSavedValues] = useState<UpdateNotificationSettingsDto | null>(null);
   const saveBarSlot = useSaveBarSlot();
 
-  // Update form when settings load
-  useEffect(() => {
-    if (settings) {
-      const loaded: UpdateNotificationSettingsDto = {
-        desktopEnabled: settings.desktopEnabled,
-        playSound: settings.playSound,
-        // GET response DTO types these as plain string; the update DTO narrows
-        // to the literal unions the backend actually stores
-        soundType: settings.soundType as UpdateNotificationSettingsDto['soundType'],
-        doNotDisturb: settings.doNotDisturb,
-        dndStartTime: settings.dndStartTime || '22:00',
-        dndEndTime: settings.dndEndTime || '08:00',
-        defaultChannelLevel: settings.defaultChannelLevel as UpdateNotificationSettingsDto['defaultChannelLevel'],
-        dmNotifications: settings.dmNotifications,
-      };
-      setFormValues(loaded);
-      setSavedValues(loaded);
-    }
-  }, [settings]);
-
-  const isDirty =
-    !!savedValues &&
-    (Object.keys(formValues) as (keyof UpdateNotificationSettingsDto)[]).some(
-      (key) => formValues[key] !== savedValues[key],
-    );
-
-  const handleReset = () => {
-    if (savedValues) setFormValues(savedValues);
-  };
-
-  const handleChange = <K extends keyof UpdateNotificationSettingsDto>(
-    key: K,
-    value: UpdateNotificationSettingsDto[K]
-  ) => {
-    setFormValues((prev) => ({ ...prev, [key]: value }));
+  const handleChange: typeof change = (key, value) => {
+    change(key, value);
     setSaveSuccess(false);
   };
 
   const handleSave = async () => {
     try {
-      // Stamp the device timezone so the backend can evaluate the DND
-      // window in the user's local time when sending push notifications
-      const dndTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      await updateSettings({ body: { ...formValues, dndTimezone } });
-      setSavedValues(formValues);
+      await save();
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
@@ -302,7 +244,7 @@ export const NotificationSettings: React.FC = () => {
                     mention: Sounds.mention,
                     dm: Sounds.directMessage,
                   };
-                  playSound(soundTypeMap[formValues.soundType ?? 'default'] || Sounds.channelMessage);
+                  playSound(soundTypeMap[formValues.soundType] || Sounds.channelMessage);
                 }}
               >
                 <PlayArrowIcon />
@@ -458,12 +400,7 @@ export const NotificationSettings: React.FC = () => {
               disabled={isTestPushPending}
               onClick={async () => {
                 setTestPushResult(null);
-                try {
-                  const result = await sendTestPush({});
-                  setTestPushResult({ success: result.success, message: result.message });
-                } catch {
-                  setTestPushResult({ success: false, message: 'Failed to send test push notification' });
-                }
+                setTestPushResult(await sendTestPush());
                 setTimeout(() => setTestPushResult(null), 5000);
               }}
             >

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { Route, Routes } from 'react-router-dom';
 import { screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
@@ -52,5 +53,38 @@ describe('SettingsPage — Privacy section follows the server', () => {
     const nav = await screen.findByRole('navigation', { name: 'Settings sections' });
     expect(await within(nav).findByText('Privacy')).toBeInTheDocument();
     expect(await screen.findByRole('switch', { name: PRIVACY_CARD })).toBeInTheDocument();
+  });
+});
+
+describe('SettingsPage — /settings/:section', () => {
+  const renderAt = (path: string) =>
+    renderWithProviders(
+      <Routes>
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings/:section" element={<SettingsPage />} />
+      </Routes>,
+      { routerProps: { initialEntries: [path] } },
+    );
+
+  it('opens on the named section (the new shell links to /settings/voice until it has its own)', async () => {
+    server.use(http.get(URL, () => HttpResponse.json(createAppearanceSettings({ loadRemoteContent: true }))));
+    const scrolled: string[] = [];
+    const scrollIntoView = vi.fn(function (this: HTMLElement) {
+      scrolled.push(this.id);
+    });
+    Element.prototype.scrollIntoView = scrollIntoView;
+    renderAt('/settings/voice');
+    await waitFor(() => expect(scrolled).toContain('settings-voice'));
+    const nav = await screen.findByRole('navigation', { name: 'Settings sections' });
+    expect(within(nav).getByRole('button', { name: 'Voice & video' })).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('ignores an unknown section and stays on the first', async () => {
+    server.use(http.get(URL, () => HttpResponse.json(createAppearanceSettings({ loadRemoteContent: true }))));
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    renderAt('/settings/nope');
+    await screen.findByRole('navigation', { name: 'Settings sections' });
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 });
