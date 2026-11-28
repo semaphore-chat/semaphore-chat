@@ -560,12 +560,14 @@ impl Shell {
         let more = (!voice).then(|| self.more_menu(cx));
         let notifications = match self.header_accessory.clone() {
             Some(accessory) => accessory.into_any_element(),
+            // Until the app's level menu is ready, a stand-in drawn exactly as that menu's
+            // button for the default level, so which arrives first never shows.
             None => IconButton::new(
                 "header-notifications",
                 IconName::AlternateEmail,
                 "Channel notifications",
             )
-            .lounge_icon(LoungeIcon::Bell)
+            .small()
             .into_any_element(),
         };
         Some(
