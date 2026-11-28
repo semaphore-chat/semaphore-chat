@@ -6,8 +6,7 @@
 //! - `rules`: the text rules, as plain functions. U6 replaces the mention half.
 //! - `model`: what the owner hands in and what comes back as a [`ComposerEvent`].
 //! - `view`: the view. It holds the kit's `Textarea`, which owns editing, IME and accessibility.
-//! - `menu`: the dropdown, positioned from the caret in the same frame.
-//! - `palette`: the web's colours and our icons, local until U8's theme lands.
+//! - The view draws with the kit's `Composer` and `SuggestionList` (`kit/chat`).
 //!
 //! The owner makes a [`Composer`], subscribes to its events, and calls
 //! [`Composer::send_settled`] after each `Send`. Nothing here talks to core directly, so stories and
@@ -18,9 +17,7 @@
 //! T4 needs the owner's desktop.
 
 mod edit;
-mod menu;
 mod model;
-mod palette;
 mod rules;
 mod view;
 

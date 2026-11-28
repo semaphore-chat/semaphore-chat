@@ -25,6 +25,7 @@ pub struct Suggestion {
     label: SharedString,
     detail: Option<SharedString>,
     avatar: Option<(Option<ImageSource>, Option<Rgba>)>,
+    file: Option<SharedString>,
     icon: Option<LoungeIcon>,
 }
 
@@ -36,6 +37,7 @@ impl Suggestion {
             label: label.into(),
             detail: None,
             avatar: None,
+            file: None,
             icon: None,
         }
     }
@@ -49,6 +51,12 @@ impl Suggestion {
     /// A person: their avatar, the picture if there is one, initials from the label otherwise.
     pub fn avatar(mut self, src: Option<ImageSource>, colour: Option<Rgba>) -> Self {
         self.avatar = Some((src, colour));
+        self
+    }
+
+    /// The person's avatar file, drawn through the app's `AvatarImages` once it has it.
+    pub fn avatar_file(mut self, file_id: Option<&str>) -> Self {
+        self.file = file_id.map(|id| SharedString::from(id.to_owned()));
         self
     }
 
@@ -204,6 +212,7 @@ impl RenderOnce for SuggestionList {
                             (Some((src, colour)), _) => Avatar::new(suggestion.label.clone())
                                 .size(AvatarSize::Sm)
                                 .image(src)
+                                .file(suggestion.file.as_deref())
                                 .colour(colour)
                                 .decorative(true)
                                 .into_any_element(),

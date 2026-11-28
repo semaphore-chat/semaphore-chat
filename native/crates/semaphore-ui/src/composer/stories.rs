@@ -4,10 +4,9 @@
 use super::model::{
     Availability, ComposerMode, DraftStore, MentionSource, PendingAttachment, ReplyTarget,
 };
-use super::palette::Palette;
 use super::view::{Composer, ComposerConfig};
 use crate::stories::{Story, StoryEnv};
-use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode};
+use crate::theme::SemTheme;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
@@ -51,6 +50,8 @@ impl MentionSource for Fixture {
             candidate(MentionKind::User, "u1", "Ava Chen", "@ava_chen67"),
             candidate(MentionKind::User, "u2", "Ava Ibrahim", "@ava_ibrahim17"),
             candidate(MentionKind::User, "u3", "Priya Nilsson", "@priya"),
+            // A right-to-left name: the list lays it out by its own direction.
+            candidate(MentionKind::User, "u4", "ليلى حداد", "@layla"),
             candidate(MentionKind::Channel, "c1", "general", "#general"),
             candidate(
                 MentionKind::Channel,
@@ -72,29 +73,15 @@ struct Host {
 }
 
 impl Render for Host {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
-            .bg(Palette::dark().background)
+            .bg(cx.sem().role.ground)
             .flex()
             .flex_col()
             .justify_end()
             .child(self.composer.clone())
     }
-}
-
-/// The kit's colours for what `Textarea` paints itself. U8's theme takes this over.
-fn use_web_input_colours(cx: &mut App) {
-    Theme::change(ThemeMode::Dark, None, cx);
-    let p = Palette::dark();
-    let theme = Theme::global_mut(cx);
-    theme.colors.muted_foreground = p.text_secondary;
-    theme.colors.caret = p.text;
-    theme.colors.selection = Hsla {
-        a: 0.3,
-        ..p.primary
-    };
-    let _ = cx.theme();
 }
 
 fn host(
@@ -123,7 +110,6 @@ fn new_composer(
     placeholder: &'static str,
     setup: impl FnOnce(&mut Composer, &mut Window, &mut Context<Composer>),
 ) -> Entity<Composer> {
-    use_web_input_colours(cx);
     let drafts = cx.new(|_| DraftStore::default());
     cx.new(|cx| {
         let mut composer = Composer::new(
@@ -397,8 +383,31 @@ pub fn stories() -> Vec<Story> {
                 c.insert_at_caret("hey @a", window, cx)
             })
         }),
-        Story::new("composer-narrow-actions", |_, window, cx| {
-            build(window, cx, |c, _, cx| c.open_actions_for_story(cx))
+        Story::new("composer-mention-rtl", |_, window, cx| {
+            build(window, cx, |c, window, cx| {
+                c.insert_at_caret("ask @lay", window, cx)
+            })
+        }),
+        Story::new("composer-drop", |_, window, cx| {
+            build(window, cx, |c, _, cx| c.set_dropping(true, cx))
+        }),
+        Story::new("composer-drop-unavailable", |_, window, cx| {
+            build(window, cx, |c, window, cx| {
+                c.set_availability(
+                    Availability::Open {
+                        can_attach: false,
+                        channel_name: channel("announcements"),
+                    },
+                    window,
+                    cx,
+                );
+                c.set_dropping(true, cx);
+            })
+        }),
+        Story::new("composer-thread-drop", |_, window, cx| {
+            host_mode(window, cx, ComposerMode::Thread, "Reply...", |c, _, cx| {
+                c.set_dropping(true, cx)
+            })
         }),
         Story::new("composer-ime-preedit", |_, window, cx| {
             build(window, cx, |c, window, cx| {

@@ -33,6 +33,7 @@ mod typing;
 pub use attachment::{AttachmentKind, AttachmentTile, PlayerSlot};
 pub use composer::{
     BannerKind, Composer, ComposerBanner, ComposerCap, ComposerKey, ComposerMode, ComposerNotice,
+    PastedFile,
 };
 pub use jump::JumpToLatest;
 pub use link_card::{LINK_CARD_BANNER_RATIO, LinkCard};

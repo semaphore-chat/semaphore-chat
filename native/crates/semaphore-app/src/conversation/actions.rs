@@ -366,7 +366,6 @@ impl ConversationPane {
         let attachments = row.attachments.clone();
         let composer = cx.new(|cx| {
             let mut composer = Composer::new(config, window, cx);
-            composer.follow_theme(cx);
             composer.set_edit_content(draft, attachments, window, cx);
             composer
         });

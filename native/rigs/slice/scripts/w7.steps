@@ -178,12 +178,12 @@ wait core w7 new-requests Fixture_image >= 2 within 10
 wait idle
 shot 13-preview-on
 
-# 14. At phone width the composer's "+" sheet offers GIF, and the picker is a bottom sheet.
+# 14. At phone width the GIF button sits in the composer's field, as wide, and the picker is a
+# bottom sheet.
 app 390 844
 wait core session signed-in
 navigate /community/$ID(c-couch)/channel/$ID(cc-general)
 wait core channel $ID(cc-general)
-click composer-actions
 wait core element composer-gif
 click composer-gif
 wait core w7 picker open

@@ -44,6 +44,41 @@ pub enum ComposerKey {
 }
 
 type KeyHandler = Rc<dyn Fn(ComposerKey, &mut Window, &mut App) -> bool>;
+type PasteHandler = Rc<dyn Fn(Vec<PastedFile>, &mut Window, &mut App)>;
+
+/// A file among what was pasted into the field (`onPasteFiles`): a picture, or a copied file.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PastedFile {
+    Image(Image),
+    Path(std::path::PathBuf),
+}
+
+/// The files among what was pasted (pictures, copied files); none for plain text.
+pub fn pasted_files(item: &ClipboardItem) -> Vec<PastedFile> {
+    item.entries()
+        .iter()
+        .flat_map(|entry| match entry {
+            ClipboardEntry::Image(image) => vec![PastedFile::Image(image.clone())],
+            ClipboardEntry::ExternalPaths(paths) => paths
+                .paths()
+                .iter()
+                .cloned()
+                .map(PastedFile::Path)
+                .collect(),
+            ClipboardEntry::String(_) => Vec::new(),
+        })
+        .collect()
+}
+
+/// Whether the paste brings text of its own, which pastes as usual beside the files.
+///
+/// `ClipboardItem::text()` falls back to the concatenated paths of a file-only paste, so it can't
+/// answer this: a paste of files alone has no text, and the field must insert nothing.
+fn pasted_text(item: &ClipboardItem) -> bool {
+    item.entries().iter().any(
+        |entry| matches!(entry, ClipboardEntry::String(string) if !string.text.trim().is_empty()),
+    )
+}
 
 /// What the composer does to a message other than writing a new one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,8 +166,10 @@ pub struct Composer {
     on_cancel: Option<Action>,
     on_key: Option<KeyHandler>,
     on_caret_move: Option<Action>,
+    on_paste_files: Option<PasteHandler>,
     on_attach: Option<Action>,
     attach_unavailable: bool,
+    on_attach_unavailable_press: Option<Action>,
     emoji: Vec<AnyElement>,
     drop_target: Option<SharedString>,
     banner: Option<ComposerBanner>,
@@ -165,8 +202,10 @@ impl Composer {
             on_cancel: None,
             on_key: None,
             on_caret_move: None,
+            on_paste_files: None,
             on_attach: None,
             attach_unavailable: false,
+            on_attach_unavailable_press: None,
             emoji: Vec::new(),
             drop_target: None,
             banner: None,
@@ -251,6 +290,17 @@ impl Composer {
         self
     }
 
+    /// Files were pasted into the field (a picture, copied files): they go to the screen, and
+    /// whatever text came with them pastes as usual. A paste is taken whole: files alone insert
+    /// no text, not even their paths.
+    pub fn on_paste_files(
+        mut self,
+        handler: impl Fn(Vec<PastedFile>, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_paste_files = Some(Rc::new(handler));
+        self
+    }
+
     /// Shows the leading attach button ("Attach a file").
     pub fn on_attach(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
         self.on_attach = Some(Rc::new(handler));
@@ -261,6 +311,15 @@ impl Composer {
     /// as unavailable and does not call `on_attach`.
     pub fn attach_unavailable(mut self, unavailable: bool) -> Self {
         self.attach_unavailable = unavailable;
+        self
+    }
+
+    /// A press on the attach button while it is unavailable (`onAttachUnavailablePress`): say why.
+    pub fn on_attach_unavailable_press(
+        mut self,
+        handler: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_attach_unavailable_press = Some(Rc::new(handler));
         self
     }
 
@@ -552,6 +611,7 @@ impl RenderOnce for Composer {
         // at its smallest size is taken out of the frame's.
         let pad_y = px((CONTROL_MD - TEXT_BODY.line_height) / 2.);
         let pad_x = px(SPACE_SM) - Size::XSmall.input_px();
+        let on_paste_files = self.on_paste_files.clone();
         let field = div()
             .relative()
             .flex_1()
@@ -567,7 +627,19 @@ impl RenderOnce for Composer {
                     .text_size(px(TEXT_BODY.size))
                     .line_height(px(TEXT_BODY.line_height))
                     .font_family(TEXT_BODY.family)
-                    .aria_label(self.label.clone()),
+                    .aria_label(self.label.clone())
+                    .when_some(on_paste_files, |field, on_paste_files| {
+                        field.on_paste(move |item, window, cx| {
+                            let files = pasted_files(item);
+                            if files.is_empty() {
+                                return false;
+                            }
+                            let text = pasted_text(item);
+                            on_paste_files(files, window, cx);
+                            // Text that came with the files still pastes.
+                            !text
+                        })
+                    }),
             )
             .children(empty.then(|| {
                 one_line(TEXT_BODY, placeholder)
@@ -587,6 +659,7 @@ impl RenderOnce for Composer {
 
         let attach = self.on_attach.map(|on_attach| {
             let unavailable = self.attach_unavailable;
+            let why = self.on_attach_unavailable_press.clone();
             IconButton::new(child_id(&self.id, "attach"), I::AttachFile, "Attach a file")
                 .lounge_icon(LoungeIcon::Paperclip)
                 .variant(IconButtonVariant::Soft)
@@ -597,9 +670,13 @@ impl RenderOnce for Composer {
                         on_attach(window, cx);
                     }
                 })
+                .when_some(why, |button, why| {
+                    button.on_unavailable_press(move |_, window, cx| why(window, cx))
+                })
         });
         let field_box = div()
             .id(child_id(&self.id, "field"))
+            .test_support()
             .relative()
             .flex_1()
             .min_w_0()
@@ -743,13 +820,18 @@ impl RenderOnce for Composer {
                 .children(self.attachments)
         });
 
+        // Deferred: above the composer and its own popovers (the emoji picker), which paint later
+        // in the tree; laid out in place, so `bottom(relative(1.))` still puts it on the field.
         let above = self.suggestions.map(|list| {
-            div()
-                .absolute()
-                .bottom(relative(1.))
-                .left(px(if self.inline { 0. } else { SPACE_MD }))
-                .right(px(if self.inline { 0. } else { SPACE_MD }))
-                .child(list)
+            deferred(
+                div()
+                    .absolute()
+                    .bottom(relative(1.))
+                    .left(px(if self.inline { 0. } else { SPACE_MD }))
+                    .right(px(if self.inline { 0. } else { SPACE_MD }))
+                    .child(list),
+            )
+            .with_priority(1)
         });
 
         let drop = self.drop_target.map(|label| {

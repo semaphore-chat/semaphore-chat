@@ -64,8 +64,8 @@ pub use chat::{
     AttachmentKind, AttachmentTile, BannerKind, ChatPane, Composer, ComposerBanner, ComposerCap,
     ComposerKey, ComposerMode, ComposerNotice, JumpToLatest, LINK_CARD_BANNER_RATIO, LinkCard,
     MentionKind, MentionSegment, MessageQuote, MessageRow, MessageSegment, MessageState,
-    MessageText, OpenActionsRequest, PlayerSlot, ReactionChip, RowFocus, RowTabScope, SegmentStyle,
-    Suggestion, SuggestionList, TypingLine,
+    MessageText, OpenActionsRequest, PastedFile, PlayerSlot, ReactionChip, RowFocus, RowTabScope,
+    SegmentStyle, Suggestion, SuggestionList, TypingLine,
 };
 pub use controls::{
     Button, ButtonSize, CheckState, Checkbox, IconButton, IconButtonVariant, KeyCap, Orientation,

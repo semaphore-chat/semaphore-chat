@@ -124,7 +124,7 @@ impl Driver {
         match step {
             Step::Click { id, at } => {
                 self.settle()?;
-                let target = ElementId::Name(id.clone().into());
+                let target = element_id(id);
                 self.update(|window, cx| match at {
                     Some((x, y)) => window.click_at(target, point(px(*x), px(*y)), cx),
                     None => window.click(target, cx),
@@ -132,12 +132,12 @@ impl Driver {
             }
             Step::Hover { id } => {
                 self.settle()?;
-                let target = ElementId::Name(id.clone().into());
+                let target = element_id(id);
                 self.update(|window, cx| window.hover(target, cx))?;
             }
             Step::RightClick { id } => {
                 self.settle()?;
-                let target = ElementId::Name(id.clone().into());
+                let target = element_id(id);
                 self.update(|window, cx| window.right_click(target, cx))?;
             }
             Step::Drag { from, to } => {
@@ -194,5 +194,39 @@ impl Driver {
 
     pub fn has_label(&mut self, label: &str) -> Result<bool> {
         self.query(|window| !window.find_all_by_label(label).is_empty())
+    }
+}
+
+/// A steps file's element name: `composer-gif` is a plain name, and `composer/submit` a part a kit
+/// piece names under its own id (`ElementId::NamedChild`), as `parent/child/...`.
+pub fn element_id(name: &str) -> ElementId {
+    let mut parts = name.split('/');
+    let first = ElementId::Name(parts.next().unwrap_or_default().to_owned().into());
+    parts.fold(first, |parent, child| {
+        ElementId::NamedChild(std::sync::Arc::new(parent), child.to_owned().into())
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::element_id;
+    use core::prelude::v1::test;
+    use gpui_kit::ElementId;
+
+    #[test]
+    fn a_steps_element_name_splits_on_every_slash_into_named_children() {
+        assert_eq!(element_id("composer"), ElementId::Name("composer".into()));
+        assert_eq!(
+            element_id("composer/submit"),
+            ElementId::NamedChild(
+                std::sync::Arc::new(ElementId::Name("composer".into())),
+                "submit".into()
+            )
+        );
+        assert_eq!(
+            element_id("a/b/c"),
+            ElementId::NamedChild(std::sync::Arc::new(element_id("a/b")), "c".into()),
+            "each later part nests under the one before"
+        );
     }
 }

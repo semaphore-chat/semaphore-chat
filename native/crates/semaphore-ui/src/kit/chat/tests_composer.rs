@@ -772,6 +772,45 @@ fn the_list_sits_just_above_the_composer(cx: &mut TestAppContext) {
     });
 }
 
+#[gpui_kit::test]
+fn the_list_paints_above_what_the_composer_draws_after_it(cx: &mut TestAppContext) {
+    // The composer's own popovers (the emoji picker) paint after it in tree order; the list is
+    // deferred, so it stays above them. A cover after the composer stands in for one here: it
+    // hides the list's rows unless the list is painted past the whole tree.
+    let (rig, log) = host(cx, |state, log, _, _| {
+        let picks = log.clone();
+        div()
+            .relative()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .justify_end()
+            .child(composer(state, log, move |c| {
+                let picks = picks.clone();
+                c.suggestions(
+                    SuggestionList::new("list", "Mention suggestions", options(3), None).on_pick(
+                        move |index, _, _| picks.borrow_mut().push(format!("pick {index}")),
+                    ),
+                )
+            }))
+            .child(
+                div()
+                    .id("cover")
+                    .test_support()
+                    .absolute()
+                    .inset_0()
+                    .occlude(),
+            )
+            .into_any_element()
+    });
+    click(&rig, cx, id_of("list", "k2"));
+    assert_eq!(
+        logged(&log),
+        ["pick 2"],
+        "the row is in front of the cover, so the press reaches it"
+    );
+}
+
 // ---------------------------------------------------------------------------------------------
 // AttachmentTile on its way
 

@@ -512,7 +512,6 @@ impl ConversationPane {
                 };
                 let composer = cx.new(|cx| {
                     let mut composer = Composer::new(config, window, cx);
-                    composer.follow_theme(cx);
                     composer.set_gifs_enabled(self.media_gifs_enabled(), cx);
                     composer
                 });
@@ -974,7 +973,24 @@ impl Render for ConversationPane {
             .composer(composer)
             // Toasts sit at the foot of the messages, above the composer.
             .list_foot(semaphore_ui::kit::ToastAnchor::new())
-            .when_some(self.list.clone(), |pane, list| pane.list(list));
+            .when_some(self.list.clone(), |pane, list| pane.list(list))
+            // Files dropped anywhere on the conversation go to its composer, which is drawn as
+            // the drop target (or says why they can't go) while they are over it.
+            .when_some(self.composer.clone(), |pane, composer| {
+                let over = composer.clone();
+                pane.on_drop_files(move |paths, window, cx| {
+                    let files = paths
+                        .iter()
+                        .map(|path| semaphore_ui::composer::PendingAttachment::from_path(path))
+                        .collect();
+                    composer.update(cx, |composer, cx| {
+                        composer.add_attachments(files, window, cx)
+                    });
+                })
+                .on_files_over(move |inside, _, cx| {
+                    over.update(cx, |composer, cx| composer.set_dropping(inside, cx));
+                })
+            });
         div()
             .id("conversation")
             .key_context("ConversationPane")

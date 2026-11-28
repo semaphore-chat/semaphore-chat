@@ -23,7 +23,7 @@ window activate
 
 # 1. The landing: the home, with no composer drawn, and nothing marked read.
 wait core element channel-$ID(cc-general)
-wait core no-element composer-actions
+wait core no-element composer/field
 wait idle
 shot 01-home
 wait core requests markAsRead == 0 within 2
@@ -38,7 +38,7 @@ shot 02-home-unread
 # 3. A channel row: the chat, which is read now.
 click channel-$ID(cc-general)
 wait core channel $ID(cc-general)
-wait core element composer-actions
+wait core element composer/field
 wait core no-element channel-$ID(cc-general)
 wait core requests markAsRead >= 1 within 5
 wait core w9 unread $ID(cc-general) 0 within 5
@@ -48,7 +48,7 @@ shot 03-chat
 # 4. Back: the home again.
 click phone-back
 wait core element channel-$ID(cc-general)
-wait core no-element composer-actions
+wait core no-element composer/field
 
 # 5. Settings from the home, then Close: the home it was opened from, not the chat.
 click dock-all
@@ -58,14 +58,14 @@ wait core route settings
 click settings-close
 wait core route channel
 wait core element channel-$ID(cc-general)
-wait core no-element composer-actions
+wait core no-element composer/field
 
 # 6. From the chat, a link to the community: the home, though the route settles on the channel.
 click channel-$ID(cc-general)
-wait core element composer-actions
+wait core element composer/field
 link "semaphore://community/$ID(c-couch)"
 wait core route channel/$ID(cc-general)
 wait core element channel-$ID(cc-general)
-wait core no-element composer-actions
+wait core no-element composer/field
 wait idle
 shot 04-home-from-link
