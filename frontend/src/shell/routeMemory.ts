@@ -16,6 +16,7 @@ const markers = new Map<string, (element: HTMLElement | null) => void>();
 /** The Lounge paths shown last, for a screen's Back (the chat's Back goes back only when it came from its home). */
 let currentPathname: string | null = null;
 let lastPathname: string | null = null;
+let replacing: { from: string | null; before: string | null } | null = null;
 
 export const LOUNGE_ROW_ATTRIBUTE = 'data-lounge-row';
 
@@ -43,14 +44,29 @@ export function rowMarker(rowId: string): (element: HTMLElement | null) => void 
 /** The frame tells the memory which Lounge path shows now. */
 export function notePathname(pathname: string): void {
   if (pathname === currentPathname) return;
-  lastPathname = currentPathname;
+  if (replacing !== null && replacing.from === currentPathname) {
+    // A redirect replaced the current entry: the screen before it is still the one before this.
+    lastPathname = replacing.before;
+  } else {
+    lastPathname = currentPathname;
+  }
+  replacing = null;
   currentPathname = pathname;
+}
+
+/**
+ * The current Lounge path is about to be replaced by another (a redirect, `replace: true`): the path shown before it
+ * stays the previous one, instead of the replaced path (whose entry is gone from the history).
+ */
+export function noteReplacing(): void {
+  replacing = { from: currentPathname, before: lastPathname };
 }
 
 /** The new shell went away (the old shell shows now): what was shown before it is not a Lounge path any more. */
 export function leftLounge(): void {
   currentPathname = null;
   lastPathname = null;
+  replacing = null;
 }
 
 /** The Lounge path shown before the current one, or null (a cold start, or the previous screen was the old shell's). */
@@ -64,4 +80,5 @@ export function forgetRouteMemory(): void {
   markers.clear();
   currentPathname = null;
   lastPathname = null;
+  replacing = null;
 }

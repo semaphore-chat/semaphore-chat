@@ -12,6 +12,7 @@ import { ChatPane, Stack, Text, useWidthRange } from '../../../kit';
 import { useCommunityChannels } from '../../../data/channels';
 import { useCurrentUser } from '../../../hooks/useCurrentUser';
 import { getLastChannelId, pickInitialChannel } from '../../../utils/lastChannel';
+import { noteReplacing } from '../../routeMemory';
 import { useLoungeLinks } from '../links';
 import type { LoungeScreenProps } from '../screen';
 
@@ -28,7 +29,10 @@ export function CommunityRedirect({ params }: LoungeScreenProps): JSX.Element | 
   const targetHref = target === null ? null : links.channel(communityId, target.id);
 
   useEffect(() => {
-    if (targetHref !== null) navigate(targetHref.replace(/^#/, ''), { replace: true });
+    if (targetHref === null) return;
+    // The home's entry is replaced: the channel's Back must not think the home came before it.
+    noteReplacing();
+    navigate(targetHref.replace(/^#/, ''), { replace: true });
   }, [targetHref, navigate]);
 
   if (!wanted || target !== null) return null;

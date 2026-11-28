@@ -1,9 +1,11 @@
 /** The community home's centre at compact and wide (PR 10e, finding 3): it opens the last or first text channel. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useLayoutEffect } from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import { useLocation } from 'react-router-dom';
 import { KitProvider } from '../../../kit';
 import { CommunityRedirect } from '../../../shell/lounge/screens/CommunityRedirect';
+import { forgetRouteMemory, notePathname, previousPathname } from '../../../shell/routeMemory';
 import { channelsControllerFindAllForCommunityQueryKey } from '../../../api-client/@tanstack/react-query.gen';
 import { setLastChannelId } from '../../../utils/lastChannel';
 import { mockViewport, WIDTH } from '../../kit/layout/matchMedia';
@@ -13,6 +15,8 @@ vi.mock('../../../hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ user:
 
 function Where() {
   const location = useLocation();
+  // As the frame does: it tells the route memory which Lounge path shows.
+  useLayoutEffect(() => notePathname(location.pathname), [location.pathname]);
   return <output data-testid="where">{location.pathname}</output>;
 }
 
@@ -35,7 +39,25 @@ function setup(channels = [
 const where = () => screen.getByTestId('where').textContent;
 
 describe('CommunityRedirect', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    forgetRouteMemory();
+  });
+
+  it('the home it replaced is not the previous Lounge path (the chat’s Back must not step back out of the app)', async () => {
+    mockViewport(WIDTH.wide);
+    notePathname('/community/c-0/channel/ch-9');
+    setup();
+    await waitFor(() => expect(where()).toBe('/community/c-1/channel/ch-general'));
+    expect(previousPathname()).toBe('/community/c-0/channel/ch-9');
+  });
+
+  it('with nothing before the home, the channel has no previous path', async () => {
+    mockViewport(WIDTH.wide);
+    setup();
+    await waitFor(() => expect(where()).toBe('/community/c-1/channel/ch-general'));
+    expect(previousPathname()).toBeNull();
+  });
 
   it('at wide opens the first text channel by position', async () => {
     mockViewport(WIDTH.wide);

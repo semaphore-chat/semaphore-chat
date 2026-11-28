@@ -164,7 +164,21 @@ afterEach(async () => {
   activeClient = undefined;
 });
 
-function setup(messages: Message[], list: ListState = 'TEXT', isPrivate = false) {
+const keyboardFocus = vi.hoisted(() => ({ value: true }));
+// jsdom does not tell a keyboard focus from a mouse press (`:focus-visible`): the helper that asks is faked per test.
+vi.mock('../../../shell/lounge/screens/chat/focusRules', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../shell/lounge/screens/chat/focusRules')>()),
+  hasKeyboardFocus: () => keyboardFocus.value,
+}));
+/** Focuses its first link or button as it mounts (what a press, or an opened layer, did before the entry's frame). */
+function FocusOnMount({ children }: { children: React.ReactNode }) {
+  const ref = React.useRef<HTMLSpanElement>(null);
+  React.useLayoutEffect(() => ref.current?.querySelector<HTMLElement>('a, button')?.focus(), []);
+  return <span ref={ref} style={{ display: 'contents' }}>{children}</span>;
+}
+const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+
+function setup(messages: Message[], list: ListState = 'TEXT', isPrivate = false, options: { extra?: React.ReactNode; entry?: string } = {}) {
   conversation.current = makeConversation(messages);
   const queryClient = createTestQueryClient();
   activeClient = queryClient;
@@ -199,13 +213,14 @@ function setup(messages: Message[], list: ListState = 'TEXT', isPrivate = false)
       <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
         <LoungeLinksContext value={FIXTURE_LINKS}>
           <ScreenChromeContext value={{ ...NO_SCREEN_CHROME, rightOpen: false, setRightOpen: () => undefined }}>
+            {options.extra}
             <ChannelChat params={{ communityId: 'c-1', channelId: 'ch-1' }} />
           </ScreenChromeContext>
         </LoungeLinksContext>
       </KitProvider>
     </FileCacheProvider>
   );
-  const view = renderWithProviders(ui(), { queryClient, routerProps: { initialEntries: ['/__lounge/community/c-1/channel/ch-1'] } });
+  const view = renderWithProviders(ui(), { queryClient, routerProps: { initialEntries: [options.entry ?? '/__lounge/community/c-1/channel/ch-1'] } });
   /** Shows `next` as the conversation (a status change, a row leaving and coming back). */
   const show = (next: Message[]) => {
     conversation.current = makeConversation(next);
@@ -548,6 +563,67 @@ describe('ChannelChat at wide (PR 10e)', () => {
     const field = await screen.findByRole('textbox', { name: 'Message #lobby' });
     await waitFor(() => expect(document.activeElement).toBe(field));
     expect(screen.queryByRole('button', { name: 'Back to the community' })).toBeNull();
+  });
+
+  describe('B4: what the entry focus leaves alone', () => {
+    it('keyboard focus on a left-island link keeps its place', async () => {
+      keyboardFocus.value = true;
+      setup([mine()], 'TEXT', false, { extra: <nav><FocusOnMount><a href="#general">general</a></FocusOnMount></nav> });
+      const link = screen.getByRole('link', { name: 'general' });
+      await screen.findByRole('textbox', { name: 'Message #lobby' });
+      await settle();
+      expect(link).toHaveFocus();
+    });
+
+    it('a mouse press on a left-island link does not: the composer takes focus', async () => {
+      keyboardFocus.value = false;
+      setup([mine()], 'TEXT', false, { extra: <nav><FocusOnMount><a href="#general">general</a></FocusOnMount></nav> });
+      const field = await screen.findByRole('textbox', { name: 'Message #lobby' });
+      await waitFor(() => expect(field).toHaveFocus());
+    });
+
+    it('an open dialog keeps focus', async () => {
+      keyboardFocus.value = false;
+      setup([mine()], 'TEXT', false, {
+        extra: (
+          <div role="dialog" aria-label="Settings">
+            <FocusOnMount>
+              <button type="button">in dialog</button>
+            </FocusOnMount>
+          </div>
+        ),
+      });
+      const inside = screen.getByRole('button', { name: 'in dialog' });
+      await screen.findByRole('textbox', { name: 'Message #lobby' });
+      await settle();
+      expect(inside).toHaveFocus();
+    });
+
+    it('an open menu (the header’s More) keeps focus', async () => {
+      keyboardFocus.value = false;
+      setup([mine()], 'TEXT', false, { extra: <FocusOnMount><button type="button" role="menuitem">a menu item</button></FocusOnMount> });
+      const item = screen.getByRole('menuitem', { name: 'a menu item' });
+      await screen.findByRole('textbox', { name: 'Message #lobby' });
+      await settle();
+      expect(item).toHaveFocus();
+    });
+
+    it('a thread open with the chat leaves focus alone', async () => {
+      setup([mine()], 'TEXT', false, { entry: '/__lounge/community/c-1/channel/ch-1?thread=m-mine' });
+      await screen.findByRole('textbox', { name: 'Message #lobby' });
+      await settle();
+      expect(composerField()).not.toHaveFocus();
+    });
+
+    it('a resize into wide after the entry at compact does not take focus', async () => {
+      const viewport = mockViewport(WIDTH.compact);
+      setup([mine()]);
+      await screen.findByRole('textbox', { name: 'Message #lobby' });
+      await settle();
+      await viewport.setWidth(WIDTH.wide);
+      await settle();
+      expect(composerField()).not.toHaveFocus();
+    });
   });
 
   it('the channel becomes the community’s last, so either shell opens it next', async () => {

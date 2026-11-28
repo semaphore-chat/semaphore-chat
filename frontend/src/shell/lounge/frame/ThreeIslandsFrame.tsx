@@ -98,6 +98,13 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
   const panelRef = useRef(panel);
   panelRef.current = panel;
   const closePanel = useCallback(() => panelRef.current?.onClose(), []);
+  // The Sheet below wide fades out after its panel clears: until it has, it keeps the panel's label, size and (empty)
+  // slot instead of flashing the members' title and list at another height. Adjusted while rendering, so no frame
+  // shows the gap.
+  const [closing, setClosing] = useState<RightPanel | null>(null);
+  if (panel !== null && closing !== panel) setClosing(panel);
+  if (panel === null && closing !== null && (range === 'wide' || rightChoice === true)) setClosing(null);
+  const shownPanel = panel ?? closing;
 
   // The Escape chain's panel step: closes the screen's panel, else the right island the user opened. Below wide the
   // right content is a Sheet, a layer that takes Escape itself before the screen sees it.
@@ -124,6 +131,8 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
     return () => cancelAnimationFrame(handle);
   }, [focusRight]);
   const showRight = useCallback(() => {
+    // One thing at a time in the right region: an open panel closes first, so the members really show.
+    panelRef.current?.onClose();
     setRightChoice(true);
     setFocusRight((n) => n + 1);
   }, []);
@@ -152,8 +161,8 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
       })()
     );
   const rightContent =
-    panel === null && defaultRight === undefined ? undefined : (
-      <RightRegion under={defaultRight} panel={panel} onTarget={setPanelTarget} />
+    shownPanel === null && defaultRight === undefined ? undefined : (
+      <RightRegion under={defaultRight} panel={shownPanel} onTarget={setPanelTarget} />
     );
   const defaultLabel = screen.rightLabel ?? (right === 'members' ? 'Members' : undefined);
 
@@ -186,11 +195,12 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
             }
             centreLabel={title ?? 'Conversation'}
             right={rightContent}
-            rightLabel={panel?.label ?? defaultLabel}
+            rightLabel={shownPanel?.label ?? defaultLabel}
             // A panel shows while it is open, at every width; closing it brings back what the user had.
             rightOpen={panel !== null ? true : (rightChoice ?? undefined)}
             onRightClose={panel !== null ? closePanel : () => setRightChoice(false)}
-            rightFill={panel?.fill === true}
+            onRightExited={() => setClosing(null)}
+            rightFill={shownPanel?.fill === true}
             callBar={callShown ? <ShellCall /> : undefined}
             phonePane={screen.phonePane}
           />

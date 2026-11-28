@@ -441,13 +441,14 @@ describe('ChannelChat (the new shell’s chat, read side)', () => {
     expect(showRight).not.toHaveBeenCalled();
   });
 
-  it('at wide with the island closed, Members shows it (and the frame moves focus into it)', () => {
+  it('at wide with the island closed, Members shows it through setRightOpen, so focus stays on the toggle', () => {
     mockViewport(WIDTH.wide);
-    const { showRight } = setup({ rightOpen: false });
+    const { setRightOpen, showRight } = setup({ rightOpen: false });
     const members = screen.getByRole('button', { name: 'Members' });
     expect(members).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(members);
-    expect(showRight).toHaveBeenCalledTimes(1);
+    expect(setRightOpen).toHaveBeenCalledWith(true);
+    expect(showRight).not.toHaveBeenCalled();
   });
 
   it('Members opens the right content; Search is the old shell’s search screen', () => {

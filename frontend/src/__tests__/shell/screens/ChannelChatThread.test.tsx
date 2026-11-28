@@ -16,6 +16,8 @@ import { FIXTURE_LINKS } from '../../../shell/lounge/screens/fixtureLinks';
 import { NO_SCREEN_CHROME, ScreenChromeContext, type RightPanel } from '../../../shell/lounge/screen';
 import { mockViewport, WIDTH } from '../../kit/layout/matchMedia';
 import { forgetRouteMemory } from '../../../shell/routeMemory';
+import { ThreeIslandsFrame } from '../../../shell/lounge/frame/ThreeIslandsFrame';
+import type { ThreeIslandsScreen } from '../../../shell/lounge/screen';
 import type { Conversation } from '../../../data/chat/useConversation';
 import {
   customEmojiControllerListCommunityEmojisQueryKey,
@@ -68,6 +70,16 @@ vi.mock('../../../shell/lounge/screens/chat/ChatComposer', () => ({
     <textarea aria-label={thread ? `composer for thread ${thread.parentMessageId}` : 'channel composer'} />
   ),
 }));
+
+// The frame's own pieces are stand-ins (each has its own tests): the frame test below runs the real frame and chat.
+vi.mock('../../../shell/lounge/pieces/MembersIsland', () => ({ MembersIslandConnected: () => <button type="button">a member</button> }));
+vi.mock('../../../shell/lounge/pieces/ShellDock', () => ({ ShellDockConnected: () => <div>dock</div> }));
+vi.mock('../../../shell/lounge/pieces/AllCommunitiesSheet', () => ({ AllCommunitiesSheetConnected: () => null }));
+vi.mock('../../../shell/lounge/pieces/community/CommunityLeft', () => ({ CommunityLeft: () => <p>channels</p> }));
+vi.mock('../../../shell/lounge/pieces/community/UserCard', () => ({ UserCardConnected: () => null }));
+vi.mock('../../../shell/lounge/pieces/call/ShellCall', () => ({ ShellCall: () => null }));
+vi.mock('../../../shell/lounge/pieces/signOutConfirm', () => ({ SignOutConfirmHost: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+vi.mock('../../../data/callSlot', () => ({ useCallSlotShown: () => false }));
 
 // Every navigate call the screen makes, so a test can tell a step back from a replace.
 const navCalls = vi.hoisted(() => [] as unknown[][]);
@@ -663,5 +675,56 @@ describe('ChannelChat at compact and wide (PR 10e): the thread and the pins are 
     await user.click(await screen.findByRole('menuitem', { name: /Pinned messages/ }));
     expect(await screen.findByRole('dialog', { name: 'Pinned messages (2)' })).toBeInTheDocument();
     expect(lastPanel.current).toBeNull();
+  });
+});
+
+describe('ChannelChat in the real frame: focus after the thread closes', () => {
+  beforeEach(() => {
+    mockViewport(WIDTH.wide);
+    resetFactoryCounter();
+    forgetRouteMemory();
+    navCalls.length = 0;
+    conversation.current = makeConversation({ orderedMessages: [parent()] });
+    threadModel.calls.length = 0;
+    vsize.scroll = 0;
+    vsize.viewport = 0;
+    thread();
+    pinned.current = { pins: [], isLoading: false, error: null, refetch: vi.fn(), canUnpin: false, unpin: vi.fn(async () => true) };
+  });
+
+  it('at wide with the members island hidden (rightChoice false), closing the thread returns focus to "2 replies", not the layout pane', async () => {
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(channelsControllerFindAllForCommunityQueryKey({ path: { communityId: 'c-1' } }), [
+      createChannel({ id: 'ch-1', name: 'lobby', communityId: 'c-1' }),
+    ]);
+    queryClient.setQueryData(userControllerGetUserByIdQueryKey({ path: { id: 'u-aiko' } }), { id: 'u-aiko', username: 'aiko', displayName: 'Aiko' });
+    queryClient.setQueryData(customEmojiControllerListCommunityEmojisQueryKey({ path: { communityId: 'c-1' } }), []);
+    const SCREEN: ThreeIslandsScreen = {
+      template: 'threeIslands',
+      place: 'community',
+      phonePane: 'centre',
+      Centre: ({ params }) => <ChannelChat params={params} />,
+      right: 'members',
+      links: FIXTURE_LINKS,
+      useTitle: () => 'lobby',
+    };
+    renderWithProviders(
+      <FileCacheProvider>
+        <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
+          <ThreeIslandsFrame screen={SCREEN} params={{ communityId: 'c-1', channelId: 'ch-1' }} resetKey="x" title="lobby" />
+        </KitProvider>
+      </FileCacheProvider>,
+      { queryClient, routerProps: { initialEntries: [FIXTURE_CHAT] } },
+    );
+    // Hide the members: the toggle is pressed while they show.
+    fireEvent.click(await screen.findByRole('button', { name: 'Members' }));
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Members' })).toBeNull());
+    const button = screen.getByRole('button', { name: '2 replies, open the thread' });
+    act(() => button.focus());
+    fireEvent.click(button);
+    await screen.findByRole('heading', { level: 2, name: 'Thread' });
+    fireEvent.click(screen.getByRole('button', { name: 'Close thread' }));
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Thread' })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: '2 replies, open the thread' })));
   });
 });

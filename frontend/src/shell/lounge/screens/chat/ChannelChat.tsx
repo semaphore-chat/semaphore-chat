@@ -66,6 +66,7 @@ import { PinnedPanel, PinnedSheet } from './PinnedSheet';
 import { ReactionPickerSheet, type ReactionPickerRequest } from './ReactionPickerSheet';
 import { useComposerDrop } from './composerDrop';
 import { findLastEditableMessage } from '../../../../data/chat/lastEditable';
+import { focusIsAtRest, hasKeyboardFocus } from './focusRules';
 import { useTouchFirst } from '../../../../data/touchFirst';
 import type { OpenActionsVia } from '../../../../kit';
 import { channelTitle, useRouteChannel } from './channelTitle';
@@ -157,8 +158,9 @@ function focusAfterThread(opener: HTMLElement | null, parentId: string | null, s
   let frames = 0;
   const attempt = () => {
     const active = document.activeElement;
-    // Something else took focus meanwhile (a sheet, the reader): leave it.
-    if (active !== null && active !== document.body && usable(active)) return;
+    // Something else took focus meanwhile (a sheet, the reader): leave it. The body and a layout pane (the frame
+    // focuses the pane when the members island is hidden) are nobody's choice.
+    if (!focusIsAtRest(active) && usable(active)) return;
     if (usable(opener)) return opener.focus({ preventScroll: true });
     const row =
       parentId === null
@@ -476,26 +478,37 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   // Members: at wide a toggle for the island (pressed while it shows, not while a panel has its place); below wide it
   // opens the Sheet. Showing them closes a panel (one thing at a time in the right region).
   const membersShown = range === 'wide' ? rightOpen && shownPanel === null : undefined;
+  // At wide the toggle stays on screen whichever way it is pressed, so focus stays on it: the island opens through
+  // `setRightOpen` (the frame closes a panel first through `showRight`, which also moves focus into the island).
   const onMembers = useCallback(() => {
     if (membersShown === true) {
       setRightOpen(false);
       return;
     }
-    shownPanel?.onClose();
+    if (range === 'wide') {
+      shownPanel?.onClose();
+      setRightOpen(true);
+      return;
+    }
     showRight();
-  }, [membersShown, setRightOpen, shownPanel, showRight]);
+  }, [membersShown, range, setRightOpen, shownPanel, showRight]);
 
   // B4: at wide, on a pointer-first device, the composer takes focus once on entry, unless the user is moving through
   // a list (the dock, the channels) or is in a layer, or a thread opened with the chat (its heading has focus).
   const composerShown = writable && (face === 'list' || face === 'empty');
   const entryFocused = useRef(false);
   useEffect(() => {
-    if (touch || range !== 'wide' || !composerShown || entryFocused.current) return;
+    if (touch || !composerShown || entryFocused.current) return;
     const handle = requestAnimationFrame(() => {
+      // The entry is over at any width: a later resize into wide must not take focus from where the user is.
       entryFocused.current = true;
-      if (threadId !== null) return;
+      if (range !== 'wide' || threadId !== null) return;
       const active = document.activeElement;
-      if (active?.closest('nav, [role="dialog"], [aria-modal="true"]')) return;
+      if (active?.closest('[role="dialog"], [aria-modal="true"]')) return;
+      // Focus rests (body, the heading, a pane), or a mouse press left it on a link of the left island. A keyboard
+      // user in the island, or in an open menu, keeps their place.
+      const pressed = active !== null && active.closest('nav') !== null && !hasKeyboardFocus(active);
+      if (!focusIsAtRest(active) && !pressed) return;
       inputRef.current?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(handle);

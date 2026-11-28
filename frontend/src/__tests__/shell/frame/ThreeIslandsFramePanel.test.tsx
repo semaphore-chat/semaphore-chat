@@ -34,6 +34,22 @@ vi.mock('../../../shell/lounge/pieces/signOutConfirm', () => ({ SignOutConfirmHo
 vi.mock('../../../data/callSlot', () => ({ useCallSlotShown: () => false }));
 
 const panelControl = vi.hoisted(() => ({ open: null as null | ((open: boolean) => void), closed: 0 }));
+/** Stands for `useComposerDraft`: the thread's field keeps its text outside the component, as the real one does. */
+const draftStore = vi.hoisted(() => ({ text: '' }));
+
+function DraftField(): React.JSX.Element {
+  const [text, setText] = React.useState(draftStore.text);
+  return (
+    <textarea
+      aria-label="Reply in thread"
+      value={text}
+      onChange={(event) => {
+        draftStore.text = event.target.value;
+        setText(event.target.value);
+      }}
+    />
+  );
+}
 
 /** A screen whose centre opens a filling panel with a draft field in it. */
 function Centre(_props: LoungeScreenProps): React.JSX.Element {
@@ -60,7 +76,7 @@ function Centre(_props: LoungeScreenProps): React.JSX.Element {
       <button type="button" onClick={showRight}>
         Show members
       </button>
-      {open && panelTarget !== null && createPortal(<textarea aria-label="Reply in thread" defaultValue="" />, panelTarget)}
+      {open && panelTarget !== null && createPortal(<DraftField />, panelTarget)}
     </div>
   );
 }
@@ -86,6 +102,7 @@ describe('ThreeIslandsFrame: the right panel', () => {
   beforeEach(() => {
     membersMounts.count = 0;
     panelControl.closed = 0;
+    draftStore.text = '';
   });
 
   it('at wide the panel takes the island; the members stay mounted but hidden and inert, and come back', async () => {
@@ -134,16 +151,45 @@ describe('ThreeIslandsFrame: the right panel', () => {
     await waitFor(() => expect(panelControl.closed).toBe(1));
   });
 
-  it('a width change from wide to compact moves the panel into the Sheet; the screen keeps its panel', async () => {
+  it('a width change from wide to compact moves the panel into the Sheet; the content remounts and the draft survives through the draft store', async () => {
     const viewport = mockViewport(WIDTH.wide);
+    const { user } = setup();
+    act(() => panelControl.open!(true));
+    await screen.findByRole('complementary', { name: 'Thread' });
+    await user.type(await screen.findByRole('textbox', { name: 'Reply in thread' }), 'half a reply');
+    expect(screen.getByRole('textbox', { name: 'Reply in thread' })).toHaveValue('half a reply');
+    await viewport.setWidth(WIDTH.compact);
+    const field = await screen.findByRole('textbox', { name: 'Reply in thread' });
+    expect(await screen.findByRole('dialog', { name: 'Thread' })).toContainElement(field);
+    expect(field).toHaveValue('half a reply');
+    expect(panelControl.closed).toBe(0);
+  });
+
+  it('when the panel clears below wide, the closing Sheet keeps its label until it has exited (no flash of the members)', async () => {
+    mockViewport(WIDTH.compact);
+    setup();
+    act(() => panelControl.open!(true));
+    await screen.findByRole('dialog', { name: 'Thread' });
+    act(() => panelControl.open!(false));
+    // Fading out: still the thread's Sheet, never the members' one.
+    expect(screen.getByRole('dialog', { name: 'Thread' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Members' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'a member' })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // Opened again afterwards, the Sheet holds the members.
+    fireEvent.click(screen.getByRole('button', { name: 'Show members' }));
+    expect(await screen.findByRole('dialog', { name: 'Members' })).toBeInTheDocument();
+  });
+
+  it('showRight closes an open panel first, so the members show (the header’s "N around" at wide)', async () => {
+    mockViewport(WIDTH.wide);
     setup();
     act(() => panelControl.open!(true));
     await screen.findByRole('complementary', { name: 'Thread' });
-    await viewport.setWidth(WIDTH.compact);
-    expect(await screen.findByRole('dialog', { name: 'Thread' })).toContainElement(
-      await screen.findByRole('textbox', { name: 'Reply in thread' }),
-    );
-    expect(panelControl.closed).toBe(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Show members' }));
+    expect(panelControl.closed).toBe(1);
+    expect(await screen.findByRole('complementary', { name: 'Members' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'a member' })).toBeInTheDocument();
   });
 
   it('showRight opens the members at wide and moves focus into the island', async () => {

@@ -36,6 +36,8 @@ export interface ThreeIslandsProps {
   rightOpen?: boolean;
   /** Called when the Sheet asks to close (Escape, the scrim, Close). */
   onRightClose?: () => void;
+  /** Called when the Sheet below wide has finished closing. */
+  onRightExited?: () => void;
   /**
    * The right content brings its own header (with a Close), scrolling and padding, and fills the region: a thread
    * with its list and composer. The island has no padding and the Sheet below wide is a filling one (`Sheet` `fill`).
@@ -177,6 +179,7 @@ export function ThreeIslands({
   rightLabel,
   rightOpen,
   onRightClose,
+  onRightExited,
   rightFill = false,
   callBar,
   phonePane = 'centre',
@@ -241,7 +244,7 @@ export function ThreeIslands({
       {phone && hasCall && <CallSlot data-slot="call-bar">{callBar}</CallSlot>}
       {phone && hasDock && <DockSlot>{dock}</DockSlot>}
       {range !== 'wide' && hasRight && (
-        <Sheet open={open} onClose={onRightClose ?? noop} title={name} fill={rightFill}>
+        <Sheet open={open} onClose={onRightClose ?? noop} title={name} fill={rightFill} onExited={onRightExited}>
           {right}
         </Sheet>
       )}

@@ -39,6 +39,8 @@ export interface SheetProps {
    * padded body, and the panel takes the full height it is allowed. `top` and `actions` are not drawn.
    */
   fill?: boolean;
+  /** Called once the closing transition has finished: until then the content stays as it was. */
+  onExited?: () => void;
 }
 
 const WIDTH = { md: tokens.layout.dialogMd, lg: 2 * tokens.layout.dialogSm } as const;
@@ -131,7 +133,7 @@ function Head({ titleId, title, onClose, focusClose }: { titleId: string; title:
  * Above the phone breakpoint it is a centred panel; at or below it, a bottom sheet
  * that is full width, rounded on top, and slides up.
  */
-export function Sheet({ open, onClose, title, children, top, actions, size = 'md', opener, fill = false }: SheetProps): JSX.Element {
+export function Sheet({ open, onClose, title, children, top, actions, size = 'md', opener, fill = false, onExited }: SheetProps): JSX.Element {
   const titleId = `${useId()}-title`;
   return (
     <Modal
@@ -140,6 +142,7 @@ export function Sheet({ open, onClose, title, children, top, actions, size = 'md
       onClose={onClose}
       labelledBy={titleId}
       opener={opener}
+      onExited={onExited}
       container={{
         ...gutterContainer,
         [PHONE]: { padding: 0, alignItems: 'flex-end' },
