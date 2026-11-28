@@ -27,6 +27,8 @@ const LOAD_NEWER_INDEX_PROXIMITY = 8;
 const BOTTOM_PIN_THRESHOLD_PX = 40;
 /** Growth (px) of a rendered row that counts as growing (ignores sub-pixel layout noise). */
 const ROW_GROWTH_EPSILON_PX = 0.5;
+/** `clientHeight` is rounded to whole px, the observed border box is not: a difference up to this is the same height. */
+const VIEWPORT_ROUNDING_PX = 1;
 /**
  * Previous-array prefix scanned by the cap-eviction disambiguation
  * (`isCapEvictionAppend`): one more than the 50-message anchored "around"
@@ -186,7 +188,8 @@ export interface MessageListCoreProps {
  *   "first positioning only" the way the initial-positioning effect is.
  *   Both positioning paths use the double-rAF re-assert pattern (a single
  *   rAF races virtua's measurement readiness on first mount).
- * - **atBottom**: derived from virtua's scroll offset, reported upward for FABs.
+ * - **atBottom**: derived on scroll from the scroller's live layout (its scrollTop, clientHeight and
+ *   scrollHeight, not virtua's cached sizes, which lag a resize; #930), reported upward for FABs.
  * - **Visible range without scrolling**: read tracking is fed from the
  *   visible range, which virtua only reports through `onScroll`. A list short
  *   enough to fit the viewport never scrolls (scrolling to its last row is a
@@ -610,6 +613,10 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
       };
     }, []);
 
+    // The list height the viewport observer below last acted on (null before its first notification). While the
+    // scroller's live height differs from it, a resize is laid out but not yet handled (see handleScroll).
+    const handledViewportHeightRef = useRef<number | null>(null);
+
     // Stay pinned when the list's viewport changes height (see the module
     // doc). The container's height is the VList's (the page-load bars are
     // absolutely positioned). Created in a layout effect after virtua's own
@@ -620,25 +627,24 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
     useLayoutEffect(() => {
       const container = listContainerRef.current;
       if (!container || typeof ResizeObserver === "undefined") return;
-      let height: number | null = null;
       const observer = new ResizeObserver((entries) => {
         const entry = entries[entries.length - 1];
         const next = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
-        const previous = height;
+        const previous = handledViewportHeightRef.current;
         if (previous === null) {
           // The first notification is the initial measurement (initial positioning owns that).
-          height = next;
+          handledViewportHeightRef.current = next;
           return;
         }
         if (next === 0) {
           // A hidden list has nothing to show; coming back from 0 is a fresh measurement of the shown list.
-          height = next;
+          handledViewportHeightRef.current = next;
           return;
         }
         // Ignore sub-pixel layout noise, but keep the last stored height as the baseline: comparing each noise-
         // sized step against the previous notification would swallow a run of them that adds up to a real change.
         if (Math.abs(next - previous) <= ROW_GROWTH_EPSILON_PX) return;
-        height = next;
+        handledViewportHeightRef.current = next;
         if (
           modeRef.current !== 'normal' ||
           // Opened at the start with a newer page still to load: the loaded end is not the live edge (same
@@ -651,7 +657,10 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
         if (pinnedRef.current) scrollToBottomRef.current();
       });
       observer.observe(container);
-      return () => observer.disconnect();
+      return () => {
+        observer.disconnect();
+        handledViewportHeightRef.current = null;
+      };
     }, []);
 
     // A new consumer callback (markAsRead is re-created when the socket
@@ -882,8 +891,24 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
         if (!handle) return;
 
         const { scrollSize, viewportSize } = handle;
-        const distanceFromBottom = scrollSize - offset - viewportSize;
-        const atBottom = distanceFromBottom < BOTTOM_PIN_THRESHOLD_PX;
+        // Pinned or not comes from the scroller's live layout, not virtua's cached sizes (#930). virtua records a new
+        // viewport size only when its ResizeObserver runs, and the scroll event of the browser clamping `scrollTop`
+        // after the list got taller can arrive first: with the old, shorter viewport a reader at the very bottom
+        // looked hundreds of px above it, was unpinned, and the next shrink left them stranded. Without layout (a
+        // hidden list, or jsdom) virtua's sizes are all there is.
+        const scroller = listContainerRef.current?.querySelector<HTMLElement>(':scope > [role="list"]') ?? null;
+        const live = scroller !== null && scroller.clientHeight > 0;
+        const distanceFromBottom = live
+          ? scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+          : scrollSize - offset - viewportSize;
+        // A height change laid out but not yet handled by the viewport observer (the scroll event and the observer
+        // come in either order): the observer decides from where the reader was before it, so the scroll event may
+        // pin a reader it finds at the bottom but not unpin one (after a shrink a pinned reader is briefly above
+        // the new bottom, until the observer scrolls them back down).
+        const handledHeight = handledViewportHeightRef.current;
+        const resizePending =
+          live && handledHeight !== null && Math.abs(scroller.clientHeight - handledHeight) > VIEWPORT_ROUNDING_PX;
+        const atBottom = distanceFromBottom < BOTTOM_PIN_THRESHOLD_PX || (resizePending && pinnedRef.current);
         pinnedRef.current = atBottom;
         onAtBottomChange?.(atBottom);
 

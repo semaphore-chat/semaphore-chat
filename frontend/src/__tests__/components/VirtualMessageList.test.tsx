@@ -35,7 +35,7 @@ vi.mock('virtua', async () => {
         capturedProps = props as typeof capturedProps;
         ReactMod.useImperativeHandle(ref, () => fakeHandle, []);
         return (
-          <div data-testid="vlist" aria-busy={props['aria-busy'] as boolean | undefined}>
+          <div data-testid="vlist" role={props.role as string | undefined} aria-busy={props['aria-busy'] as boolean | undefined}>
             {props.children as React.ReactNode}
           </div>
         );
@@ -150,6 +150,14 @@ function resizeViewport(height: number) {
     const entry = { target, contentRect: { height } as DOMRectReadOnly, borderBoxSize: [{ blockSize: height, inlineSize: 390 }] };
     act(() => observer.callback([entry] as unknown as ResizeObserverEntry[], observer as unknown as ResizeObserver));
   }
+}
+
+/** Give the fake scroller a live layout (jsdom has none, so the list falls back to virtua's sizes without it). */
+function layOut({ top, client, scroll }: { top: number; client: number; scroll: number }) {
+  const scroller = document.querySelector<HTMLElement>('[data-testid="vlist"]')!;
+  Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: client });
+  Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: scroll });
+  Object.defineProperty(scroller, 'scrollTop', { configurable: true, writable: true, value: top });
 }
 
 beforeEach(() => {
@@ -1428,6 +1436,98 @@ describe('VirtualMessageList', () => {
       resizeViewport(616);
 
       expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+    });
+
+    // #930: the pin comes from the scroller's live layout, and the scroll event and the viewport observer arrive in
+    // either order (under load, the browser's clamp scroll event often comes before virtua has the new size).
+    describe('decides from the live layout, whatever the order of the scroll event and the observer (#930)', () => {
+      const renderAtPhone = () => {
+        installFakeResizeObserver();
+        const onAtBottomChange = vi.fn();
+        render(<VirtualMessageList {...baseProps} orderedMessages={messages(5)} onAtBottomChange={onAtBottomChange} />);
+        resizeViewport(616); // the first measurement, at a phone
+        fakeHandle.viewportSize = 616;
+        fakeHandle.scrollSize = 1424;
+        layOut({ top: 808, client: 616, scroll: 1424 });
+        act(() => capturedProps.onScroll?.(808)); // at the bottom → pinned
+        fakeHandle.scrollToIndex.mockClear();
+        return { onAtBottomChange };
+      };
+
+      it("keeps a reader at the bottom pinned through a taller list's clamp scroll event, so the next shrink re-pins", () => {
+        const { onAtBottomChange } = renderAtPhone();
+
+        // 616 → 1028: the browser clamps scrollTop to the new end (still the bottom) and fires a scroll event while
+        // virtua still has the phone's viewport (its numbers put the reader 412 px above the bottom).
+        layOut({ top: 396, client: 1028, scroll: 1424 });
+        act(() => capturedProps.onScroll?.(396));
+        expect(onAtBottomChange).toHaveBeenLastCalledWith(true);
+        fakeHandle.viewportSize = 1028;
+        resizeViewport(1028);
+        fakeHandle.scrollToIndex.mockClear();
+
+        // Back to a phone: the browser keeps scrollTop, the observer scrolls the reader back to the newest.
+        layOut({ top: 396, client: 616, scroll: 1424 });
+        fakeHandle.viewportSize = 616;
+        resizeViewport(616);
+        expect(bottomScrolls()).toHaveLength(1);
+      });
+
+      it('does not unpin on a scroll event that comes after a shrink is laid out but before the observer', () => {
+        const { onAtBottomChange } = renderAtPhone();
+        layOut({ top: 396, client: 1028, scroll: 1424 });
+        fakeHandle.viewportSize = 1028;
+        resizeViewport(1028);
+        act(() => capturedProps.onScroll?.(396));
+        fakeHandle.scrollToIndex.mockClear();
+
+        // 1028 → 616 laid out, scrollTop kept: the reader is 412 px above the new bottom until the observer runs.
+        layOut({ top: 396, client: 616, scroll: 1424 });
+        act(() => capturedProps.onScroll?.(396));
+        expect(onAtBottomChange).toHaveBeenLastCalledWith(true);
+        resizeViewport(616);
+        expect(bottomScrolls()).toHaveLength(1);
+      });
+
+      it('leaves a reader who scrolled up in place, even when the scroll event comes before the observer', () => {
+        const { onAtBottomChange } = renderAtPhone();
+        layOut({ top: 200, client: 616, scroll: 1424 });
+        act(() => capturedProps.onScroll?.(200)); // 608 px above the bottom → not pinned
+        expect(onAtBottomChange).toHaveBeenLastCalledWith(false);
+
+        layOut({ top: 200, client: 1028, scroll: 1424 });
+        act(() => capturedProps.onScroll?.(200));
+        expect(onAtBottomChange).toHaveBeenLastCalledWith(false);
+        fakeHandle.viewportSize = 1028;
+        resizeViewport(1028);
+        layOut({ top: 200, client: 616, scroll: 1424 });
+        fakeHandle.viewportSize = 616;
+        resizeViewport(616);
+        expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+      });
+
+      it('pins an unpinned reader the browser clamped to the bottom before the observer sees the growth', () => {
+        const { onAtBottomChange } = renderAtPhone();
+        layOut({ top: 508, client: 616, scroll: 1424 });
+        act(() => capturedProps.onScroll?.(508)); // 300 px above the bottom → not pinned
+        expect(onAtBottomChange).toHaveBeenLastCalledWith(false);
+
+        // 616 → 1028 with the same 1424 px of content: the browser clamps scrollTop to the new end. The scroll event
+        // arrives first, so virtua still has the phone's viewport, whose cached numbers put the reader 412 px above
+        // the bottom; the live layout has them at it.
+        layOut({ top: 396, client: 1028, scroll: 1424 });
+        act(() => capturedProps.onScroll?.(396));
+        expect(onAtBottomChange).toHaveBeenLastCalledWith(true);
+
+        // virtua's observer catches up (the clamp did not move where the reader was), then the list shrinks back.
+        fakeHandle.viewportSize = 1028;
+        resizeViewport(1028);
+        fakeHandle.scrollToIndex.mockClear();
+        layOut({ top: 396, client: 616, scroll: 1424 });
+        fakeHandle.viewportSize = 616;
+        resizeViewport(616);
+        expect(bottomScrolls()).toHaveLength(1);
+      });
     });
   });
 });
