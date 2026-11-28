@@ -27,6 +27,7 @@ pub fn kind_label(kind: NotificationKind) -> &'static str {
         NotificationKind::DirectMessage => "Sent a message",
         NotificationKind::ChannelMessage => "New message",
         NotificationKind::ThreadReply => "Replied in a thread",
+        NotificationKind::IncomingCall => "Called you",
     }
 }
 
@@ -36,6 +37,7 @@ fn kind_icon(kind: NotificationKind) -> DesignIcon {
         NotificationKind::DirectMessage => DesignIcon::Chat,
         NotificationKind::ChannelMessage => DesignIcon::Tag,
         NotificationKind::ThreadReply => DesignIcon::Forum,
+        NotificationKind::IncomingCall => DesignIcon::Phone,
     }
 }
 

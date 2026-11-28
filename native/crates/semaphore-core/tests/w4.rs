@@ -9,8 +9,9 @@ use common::*;
 use semaphore_core::backend::BackendError;
 use semaphore_core::model::{
     AttachmentKind, CaptureRequest, ClipDestination, JoinFailureClass, LoadState, LocalMediaView,
-    LocalShare, RING_MS, ReplayMinutes, ReplayState, ReplayTrim, ScreenShareRequest, ShareTracks,
-    SoundCue, VoiceModerationCaps, VoiceRoom, VoiceStatus, VoiceView,
+    LocalShare, NotificationKind, RING_MS, ReplayMinutes, ReplayState, ReplayTrim,
+    ScreenShareRequest, ShareTracks, SoundCue, VoiceModerationCaps, VoiceRoom, VoiceStatus,
+    VoiceView,
 };
 use semaphore_core::platform::{CoreError, CoreEvent};
 use semaphore_wire::enums::{ErrorCode, VoiceClientPlatform, VoiceJoinErrorClass};
@@ -143,6 +144,7 @@ async fn someone_elses_call_rings_for_thirty_seconds_with_a_notification() {
         event,
         CoreEvent::Notify { notification } if notification.tag == format!("dm-call-{DM}")
             && notification.title == "bob name is calling"
+            && notification.kind == NotificationKind::IncomingCall
     )));
 }
 

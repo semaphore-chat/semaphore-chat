@@ -6,7 +6,7 @@
 //! `SEMAPHORE_REQUIRE_DBUS=1`, where a skip is a failure.
 #![cfg(target_os = "linux")]
 
-use semaphore_core::model::{Conversation, MessageLink, OsNotification};
+use semaphore_core::model::{Conversation, MessageLink, NotificationKind, OsNotification};
 use semaphore_core::platform::Notifier as _;
 use semaphore_platform_desktop::notify::FreedesktopNotifier;
 use semaphore_platform_desktop::{DesktopEvent, DesktopEventSink};
@@ -205,6 +205,7 @@ fn notification(tag: &str, title: &str, body: &str) -> OsNotification {
     OsNotification {
         id: format!("n-{title}"),
         tag: tag.into(),
+        kind: NotificationKind::DirectMessage,
         title: title.into(),
         body: body.into(),
         link: MessageLink {

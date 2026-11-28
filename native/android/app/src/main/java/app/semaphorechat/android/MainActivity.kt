@@ -66,6 +66,7 @@ import app.semaphorechat.android.screens.StartState
 import androidx.lifecycle.Lifecycle
 import java.time.ZoneId
 import uniffi.semaphore.Appearance
+import uniffi.semaphore.SessionState
 
 /**
  * The app's one activity. The screens come from the `screens` module, fed by [AppModel] over the
@@ -73,18 +74,40 @@ import uniffi.semaphore.Appearance
  *
  * Lifecycle: going to the background suspends the core (the socket closes) and waits briefly for
  * its secrets to be written, since Android may end the process there without another word; coming
- * back resumes it. Both are recorded even before the core has started (SemaphoreHost).
+ * back resumes it. While [ConnectionService] runs, the core stays connected in the background
+ * instead, so its notifications arrive. Both are recorded even before the core has started (SemaphoreHost).
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // TLS is initialised by SemaphoreApp.onCreate, before any component of this process starts.
         setContent { AppRoot() }
+        // A recreated activity (a rotation) has the tap's intent again: it was opened already.
+        if (savedInstanceState == null) openTapped(intent)
+    }
+
+    /** singleTop: a tap while the activity is on top arrives here. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openTapped(intent)
+    }
+
+    private fun openTapped(intent: Intent?) {
+        // From the recents list Android replays the intent that launched the app, whatever the user
+        // was doing since: its extras are the tap of that launch, not a new one.
+        if (intent == null || intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return
+        TapExtras.linkOf(intent.extras)?.let(SemaphoreHost::openTapped)
     }
 
     override fun onStart() {
         super.onStart()
         SemaphoreHost.foregrounded()
+        // Visible: the one time a foreground service may be started. A cold start isn't signed in
+        // yet here; Screens starts it once the session is.
+        SemaphoreHost.current()?.model?.takeIf { it.store.session.value is SessionState.SignedIn }?.let {
+            ConnectionService.start(this, it.server)
+        }
     }
 
     override fun onStop() {
@@ -162,6 +185,7 @@ private fun Screens(model: AppModel, links: LinkOpener, openWeb: (String) -> Uni
     LaunchedEffect(model) {
         model.store.notices.collect { if (it is CoreNotice.CommunityRemoved) notice = it.message }
     }
+    SignedInNotifications(model)
 
     Box {
         when (val route = stack.last()) {
@@ -233,6 +257,29 @@ private fun Screens(model: AppModel, links: LinkOpener, openWeb: (String) -> Uni
                 Alert(AlertSeverity.Warning, it, onClose = { notice = null })
             }
         }
+    }
+}
+
+/**
+ * Once a session is signed in: asks for `POST_NOTIFICATIONS` the first time (API 33+), and starts
+ * [ConnectionService] while the activity is visible and notifications are allowed.
+ */
+@Composable
+private fun SignedInNotifications(model: AppModel) {
+    val context = LocalContext.current
+    val session by model.store.session.collectAsState()
+    val signedIn = session is SessionState.SignedIn
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val startService = {
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) ConnectionService.start(context, model.server)
+    }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startService()
+    }
+    LaunchedEffect(signedIn) {
+        if (!signedIn) return@LaunchedEffect
+        val asked = NotificationPermission.of(context).maybeAsk { ask.launch(NotificationPermission.PERMISSION) }
+        if (!asked) startService()
     }
 }
 

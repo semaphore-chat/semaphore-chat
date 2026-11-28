@@ -366,6 +366,12 @@ impl State {
     /// then marks each unread row of this conversation, leaving other conversations alone. A
     /// notification that arrives while the conversation is open comes through here too.
     pub(crate) fn w2_auto_read(&mut self, conversation: &Conversation) {
+        // Only an app in front reads on its own: in the background (or behind other windows) the
+        // rows stay unread, so the OS notification they raised stands until the conversation is
+        // looked at (or the window is focused again: `Core::set_focused`).
+        if !self.focused {
+            return;
+        }
         let context_id = match conversation {
             Conversation::Channel { id } | Conversation::DirectMessage { id } => id,
             Conversation::Thread { .. } => return,
@@ -531,6 +537,8 @@ impl State {
                 format!("{author} replied in a thread{in_channel}"),
                 "New reply",
             ),
+            // `kind_from_wire` never yields this: a call rings from `w4_ring`.
+            NotificationKind::IncomingCall => (author.clone(), "New message"),
         };
         let body = if text.trim().is_empty() {
             fallback.to_owned()
@@ -546,6 +554,7 @@ impl State {
             notification: OsNotification {
                 id: event.notification_id.clone(),
                 tag,
+                kind,
                 title,
                 body,
                 link: MessageLink {

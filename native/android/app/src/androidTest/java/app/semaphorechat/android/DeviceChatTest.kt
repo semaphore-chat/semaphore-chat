@@ -90,6 +90,13 @@ class DeviceChatTest {
         NativeLib.init(context)
     }
 
+    /** The permission prompt would cover the screens this drives: it counts as asked already. */
+    @Before
+    fun noNotificationPrompt() {
+        context.getSharedPreferences(NotificationPermission.PREFS, android.content.Context.MODE_PRIVATE)
+            .edit().putBoolean(NotificationPermission.ASKED, true).commit()
+    }
+
     private fun argument(name: String): String {
         val value = arguments.getString(name)
         assumeTrue("native/scripts/android-device-test.sh passes -e $name", value != null)

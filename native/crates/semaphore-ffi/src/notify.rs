@@ -14,6 +14,7 @@ pub enum NotificationKind {
     DirectMessage,
     ChannelMessage,
     ThreadReply,
+    IncomingCall,
 }
 
 #[uniffi::remote(Record)]
@@ -94,6 +95,7 @@ pub struct ChannelNotifyLevelView {
 pub struct OsNotification {
     pub id: String,
     pub tag: String,
+    pub kind: NotificationKind,
     pub title: String,
     pub body: String,
     pub link: MessageLink,

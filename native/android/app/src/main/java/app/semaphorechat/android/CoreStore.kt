@@ -35,6 +35,7 @@ import uniffi.semaphore.Conversation
 import uniffi.semaphore.CoreEvent
 import uniffi.semaphore.CoreListener
 import uniffi.semaphore.LoadState
+import uniffi.semaphore.NotificationKind
 import uniffi.semaphore.RemovalCause
 import uniffi.semaphore.SemaphoreCore
 import uniffi.semaphore.SessionState
@@ -79,6 +80,8 @@ class CoreStore(
     private val core: SemaphoreCore,
     private val scope: CoroutineScope,
     events: ReceiveChannel<CoreEvent>,
+    /** Where core's notifications are shown and withdrawn (AndroidNotifier in the app). */
+    private val notifier: Notifier = Notifier.None,
     /** A session ended: what the app keeps for it besides the lists (pictures, opened files) goes too. */
     private val onSessionEnded: () -> Unit = {},
 ) {
@@ -206,15 +209,30 @@ class CoreStore(
                 is CoreEvent.MessagesChanged ->
                     synchronized(conversations) { conversations.entries.firstOrNull { it.key == event.conversation }?.value }
                         ?.apply(event.ops)
+                // Core decided it is due (notify.rs::decide) and says what it is. An incoming call
+                // is dropped: Android has no call screen yet, so posting it would be a notification
+                // that opens nothing (the ring and the in-app call banner still come from core).
+                is CoreEvent.Notify -> if (event.notification.kind != NotificationKind.INCOMING_CALL) {
+                    notifier.show(event.notification)
+                }
+                is CoreEvent.WithdrawNotifications -> notifier.withdraw(event.tag)
                 else -> Unit
             }
         }
         val session = core.session()
         // A new session starts with no lists: the old one's rows are another account's.
         if (session !is SessionState.SignedIn) {
-            if (sessionState.value is SessionState.SignedIn) onSessionEnded()
+            // Also for a cold start that restores no session: whatever the previous session posted
+            // (and whatever it cached) goes now, once per signed-out stretch.
+            if (!ended) {
+                ended = true
+                notifier.clearAll()
+                onSessionEnded()
+            }
             synchronized(conversations) { conversations.clear() }
             synchronized(composers) { composers.values.toList().also { composers.clear() } }.forEach { it.close() }
+        } else {
+            ended = false
         }
         sessionState.value = session
         val connection = core.connection()
@@ -236,6 +254,9 @@ class CoreStore(
         val ids = if (everything) channelStates.keys.toSet() else only.filterNotNull().toSet()
         ids.forEach { id -> channelStates[id]?.let { it.value = readChannels(id) } }
     }
+
+    /** Whether this signed-out stretch's notifications and kept files were already cleared. */
+    private var ended = false
 
     private fun readCommunities(): Load<List<CommunitySummary>> {
         if (core.session() !is SessionState.SignedIn) return Load.Loading
