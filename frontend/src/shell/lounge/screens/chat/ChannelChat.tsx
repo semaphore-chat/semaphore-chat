@@ -8,7 +8,8 @@
  * At compact and wide (PR 10e) the community's list is beside the chat, so there is no Back; a thread and (at wide)
  * the pinned messages are the frame's right panel (`ScreenChrome.setPanel`), portalled into its slot, in place of the
  * members; at wide the composer takes focus on entry (B4); the channel is remembered as the community's last at every
- * width (both shells open it next).
+ * width (both shells open it next). Not touch-first, a right-click or the keyboard opens a message's actions as a
+ * Menu (at the cursor, or beside the row), the same actions as the Sheet; rows have the hover toolbar.
  *
  * Typing in the composer and opening a message's actions re-render no row: the composer keeps its own state, and
  * what rows share (`ChatRowContext`) holds only stable values.
@@ -58,7 +59,7 @@ import { ChatHeader } from './ChatHeader';
 import { ChatList } from './ChatList';
 import { ChatRowContext, type ChatRowShared } from './ChatRow';
 import { ChatComposer } from './ChatComposer';
-import { MessageActionsSheet } from './MessageActionsSheet';
+import { MessageActionsSheet, type ActionsMenuPlacement } from './MessageActionsSheet';
 import { MessageMediaViewer, type ViewerRequest } from './MessageMediaViewer';
 import { ReactionPeopleSheet, type ReactionPeopleRequest } from './ReactionPeopleSheet';
 import { THREAD_VIEW_ATTRIBUTE, ThreadView } from './ThreadView';
@@ -68,7 +69,8 @@ import { useComposerDrop } from './composerDrop';
 import { findLastEditableMessage } from '../../../../data/chat/lastEditable';
 import { focusIsAtRest, hasKeyboardFocus } from './focusRules';
 import { useTouchFirst } from '../../../../data/touchFirst';
-import type { OpenActionsVia } from '../../../../kit';
+import { useChannelNotifications } from '../../../../data/channelNotifications';
+import type { OpenActionsRequest } from '../../../../kit';
 import { channelTitle, useRouteChannel } from './channelTitle';
 import { setLastChannelId } from '../../../../utils/lastChannel';
 
@@ -219,12 +221,20 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   const actionsRow = useRef<HTMLElement | null>(null);
   // Whether the open actions are a thread row's: at wide the thread and its channel are both on screen.
   const [actionsInThread, setActionsInThread] = useState(false);
-  const openActions = useCallback((message: Message, via: OpenActionsVia) => {
+  // Not touch-first, a right-click or the keyboard gets a Menu (at the cursor, or beside the row or More).
+  const [actionsMenu, setActionsMenu] = useState<ActionsMenuPlacement | undefined>(undefined);
+  const touchRef = useRef(true);
+  const openActions = useCallback((message: Message, request: OpenActionsRequest, anchor?: HTMLElement | null) => {
     if (!writableRef.current) return;
     const active = document.activeElement;
     actionsRow.current = active instanceof HTMLElement ? active : null;
     setActionsInThread(actionsRow.current?.closest(`[${THREAD_VIEW_ATTRIBUTE}]`) != null);
-    if (via === 'touch') hapticsRef.current.longPress();
+    if (request.via === 'touch') hapticsRef.current.longPress();
+    setActionsMenu(
+      touchRef.current || request.via === 'touch'
+        ? undefined
+        : { anchor: anchor ?? actionsRow.current, ...(request.via === 'pointer' ? { point: { x: request.x, y: request.y } } : {}) },
+    );
     setActionsFor(message);
   }, []);
   const closeActions = useCallback(() => setActionsFor(null), []);
@@ -248,7 +258,10 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   const [reactionPicker, setReactionPicker] = useState<ReactionPickerRequest | null>(null);
   const moreReactions = useCallback((message: Message) => setReactionPicker({ message, returnTo: actionsRow.current }), []);
   const closeReactionPicker = useCallback(() => setReactionPicker(null), []);
+  // The row toolbar's Add reaction: the same picker, focus back to the row.
+  const pickReaction = useCallback((message: Message, returnTo: HTMLElement | null) => setReactionPicker({ message, returnTo }), []);
   const touch = useTouchFirst(range);
+  touchRef.current = touch;
   // Files dropped on the conversation go to the composer.
   const drop = useComposerDrop();
   // Reply (the shared quote-reply state; it resets when the channel changes). Sending goes through the composer.
@@ -270,6 +283,10 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     },
     [handleQuoteReply, focusComposer],
   );
+  // The row toolbar's Reply, stable for the rows' shared context.
+  const onReplyRef = useRef(onReply);
+  onReplyRef.current = onReply;
+  const replyFromRow = useCallback((message: Message) => onReplyRef.current(message), []);
   const onEdit = useCallback(
     (message: Message) => (actionsInThread ? threadEditing : editing).start(message.id),
     [editing, threadEditing, actionsInThread],
@@ -438,6 +455,9 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
       openProfile: hasProfile ? openProfileStable : undefined,
       opener,
       openActions,
+      pointerFirst: !touch,
+      reply: replyFromRow,
+      pickReaction,
       openViewer,
       showReactions,
       editing,
@@ -457,6 +477,9 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
       openProfileStable,
       opener,
       openActions,
+      touch,
+      replyFromRow,
+      pickReaction,
       openViewer,
       showReactions,
       editing,
@@ -466,6 +489,8 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   );
 
   const { onBack } = useChatBack(communityId);
+  // The channel's notification level, for a channel the reader can see.
+  const notifications = useChannelNotifications(channelId, writable);
 
   const typingUsers = useUsers(conversation.typingUserIds);
   const typingNames = conversation.typingUserIds.map((_, i) => {
@@ -547,6 +572,7 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
             onSearch={() => navigate(`/community/${communityId}/channel/${channelId}/search`)}
             onShowPinned={face === 'gone' || face === 'noAccess' ? undefined : showPinned}
             pinnedCount={pins.length}
+            notifications={writable && face !== 'gone' && face !== 'noAccess' ? notifications : undefined}
           />
         }
         state={state}
@@ -596,6 +622,7 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
         message={actionsFor}
         me={conversation.me}
         communityId={communityId}
+        menu={actionsMenu}
         onDone={closeActions}
         // Inside a thread: no quote reply and no thread of a thread (as the old thread panel).
         onReply={actionsInThread ? undefined : onReply}

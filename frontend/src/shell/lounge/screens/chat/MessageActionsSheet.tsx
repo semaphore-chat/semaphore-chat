@@ -10,12 +10,29 @@
  *
  * One host per conversation: the screen hands it the message whose actions were asked for. The row had focus when
  * it opened, so closing returns focus there (the overlay stack); Edit and Reply then move it to their field.
+ *
+ * On a device that is not touch-first (PR 10e) a right-click or the keyboard opens the same actions as a kit Menu
+ * (`menu`): at the cursor, or beside the row (or the toolbar's More). One model serves both: the Menu has Add
+ * reaction (the emoji picker) where the Sheet has its quick reactions, and dividers between the model's groups.
  */
 import { messageCopyText } from '../../../../data/chat/messageActionModel';
 import { useCallback, useEffect, useState, type JSX } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { userControllerGetUserByIdOptions } from '../../../../api-client/@tanstack/react-query.gen';
-import { Button, Icon, IconButton, ListRow, Sheet, Stack, useAnnounce, useConfirmDestructive, useToasts, type IconName } from '../../../../kit';
+import {
+  Button,
+  Icon,
+  IconButton,
+  ListRow,
+  Menu,
+  Sheet,
+  Stack,
+  useAnnounce,
+  useConfirmDestructive,
+  useToasts,
+  type IconName,
+  type MenuEntry,
+} from '../../../../kit';
 import { copyToClipboard } from '../../../../utils/clipboard';
 import { getMessageActionModel, type MessageActionId } from '../../../../data/chat/messageActionModel';
 import { useMessageActions } from '../../../../data/chat/useMessageActions';
@@ -37,6 +54,7 @@ const ICON: Partial<Record<MessageActionId, IconName>> = {
   reply: 'Reply',
   'reply-in-thread': 'MessageSquare',
   edit: 'Pencil',
+  'add-reaction': 'SmilePlus',
   pin: 'Pin',
   copy: 'Copy',
   delete: 'Trash2',
@@ -46,16 +64,25 @@ const ICON: Partial<Record<MessageActionId, IconName>> = {
 const LABEL: Partial<Record<MessageActionId, string>> = {
   reply: 'Reply',
   'reply-in-thread': 'Reply in thread',
+  'add-reaction': 'Add reaction',
   edit: 'Edit message',
   copy: 'Copy message content',
   delete: 'Delete message',
 };
+
+/** Where a Menu opens: beside `anchor` (the row, or the toolbar's More), or at `point` (a right-click). */
+export interface ActionsMenuPlacement {
+  anchor: HTMLElement | null;
+  point?: { x: number; y: number };
+}
 
 export interface MessageActionsSheetProps {
   /** The message whose actions are open, or null. */
   message: Message | null;
   me: string;
   communityId: string;
+  /** Show the actions as a Menu here (not touch-first); undefined: the Sheet. */
+  menu?: ActionsMenuPlacement;
   /** The actions are done with (the sheet closed, and a delete's question answered). */
   onDone: () => void;
   /** Quote reply; undefined in a thread (no Reply there). */
@@ -74,10 +101,22 @@ export function MessageActionsSheet({ message, ...rest }: MessageActionsSheetPro
   return <ActionsFor key={message.id} message={message} {...rest} />;
 }
 
+/** One action as both views show it. `after`: it opens another layer, so it runs once this one has closed. */
+interface ActionView {
+  id: string;
+  group: string;
+  label: string;
+  icon: IconName;
+  destructive: boolean;
+  after: boolean;
+  run: () => void;
+}
+
 function ActionsFor({
   message,
   me,
   communityId,
+  menu,
   onDone,
   onReply,
   onReplyInThread,
@@ -123,25 +162,6 @@ function ActionsFor({
   const hasReactions = message.reactions.some((r) => r.userIds.length > 0);
 
   const close = useCallback(() => setOpen(false), []);
-  const model = getMessageActionModel({
-    message,
-    channelName: (id) => findCachedChannel(queryClient, id)?.name,
-    canEdit: permissions.canEdit && !optimistic,
-    canDelete: permissions.canDelete && !optimistic,
-    canPin: permissions.canPin && !optimistic,
-    canReact,
-    canThread: onReplyInThread !== undefined && !optimistic,
-    isPinned,
-    handlers: {
-      onEdit: () => onEdit(message),
-      onDelete: () => confirm.request(),
-      onPin: () => void actions.handlePin(),
-      onUnpin: () => void actions.handleUnpin(),
-      onReplyInThread: () => onReplyInThread?.(message),
-      onQuoteReply: message.deletedAt || optimistic || onReply === undefined ? undefined : () => onReply(message),
-      onAddReaction: () => undefined,
-    },
-  }).filter((action) => action.group !== 'reaction');
 
   // Copy says whether it worked (a page served over plain http has no clipboard).
   const copy = async () => {
@@ -153,10 +173,84 @@ function ActionsFor({
     }
   };
 
+  const model = getMessageActionModel({
+    message,
+    channelName: (id) => findCachedChannel(queryClient, id)?.name,
+    canEdit: permissions.canEdit && !optimistic,
+    canDelete: permissions.canDelete && !optimistic,
+    canPin: permissions.canPin && !optimistic,
+    // The Menu's Add reaction is the emoji picker; the Sheet has its quick reactions and More reactions instead.
+    canReact: canReact && menu !== undefined && onMoreReactions !== undefined,
+    canThread: onReplyInThread !== undefined && !optimistic,
+    isPinned,
+    handlers: {
+      onEdit: () => onEdit(message),
+      onDelete: () => confirm.request(),
+      onPin: () => void actions.handlePin(),
+      onUnpin: () => void actions.handleUnpin(),
+      onReplyInThread: () => onReplyInThread?.(message),
+      onQuoteReply: message.deletedAt || optimistic || onReply === undefined ? undefined : () => onReply(message),
+      onAddReaction: () => onMoreReactions?.(message),
+    },
+  });
+  const views: ActionView[] = model.map((action) => ({
+    id: action.key,
+    group: action.group,
+    label: action.key === 'pin' ? (isPinned ? 'Unpin message' : 'Pin message') : (LABEL[action.key] ?? action.label),
+    icon: action.key === 'pin' && isPinned ? 'PinOff' : (ICON[action.key] ?? 'Pin'),
+    destructive: action.destructive === true,
+    // The thread and the emoji picker open once this layer has closed and focus is back on the row (their opener).
+    after: action.key === 'reply-in-thread' || action.key === 'add-reaction',
+    run: action.key === 'copy' ? () => void copy() : () => void action.run(),
+  }));
+  if (hasReactions) {
+    views.push({
+      id: 'see-reactions',
+      group: 'copy',
+      label: 'See reactions',
+      icon: 'Smile',
+      destructive: false,
+      after: true,
+      run: () => onShowReactions(message),
+    });
+  }
+  const choose = (view: ActionView) => {
+    if (view.after) {
+      setThen(() => view.run);
+      close();
+      return;
+    }
+    close();
+    view.run();
+  };
+
   const react = (emoji: string) => {
     void actions.handleReactionClick(emoji);
     close();
   };
+
+  if (menu !== undefined) {
+    const items: MenuEntry[] = [];
+    views.forEach((view, i) => {
+      // A divider between groups, and before a destructive action (as the old right-click menu).
+      if (i > 0 && (view.group !== views[i - 1].group || view.destructive)) items.push({ id: `divider-${view.id}`, divider: true });
+      items.push({ id: view.id, label: view.label, icon: view.icon, tone: view.destructive ? 'danger' : 'default', onSelect: () => choose(view) });
+    });
+    return (
+      <>
+        <Menu
+          open={open}
+          anchor={menu.anchor}
+          point={menu.point}
+          // The Menu calls this after an item's own `onSelect`, which has already closed it.
+          onClose={close}
+          label={authorName ? `Actions for ${authorName}'s message` : 'Message actions'}
+          items={items}
+        />
+        {confirm.dialog}
+      </>
+    );
+  }
 
   return (
     <>
@@ -186,40 +280,14 @@ function ActionsFor({
             </Stack>
           )}
           <Stack gap="xs">
-            {model.map((action) => (
+            {views.map((view) => (
               <ListRow
-                key={action.key}
-                primary={action.key === 'pin' ? (isPinned ? 'Unpin message' : 'Pin message') : (LABEL[action.key] ?? action.label)}
-                leading={
-                  <Icon
-                    name={action.key === 'pin' && isPinned ? 'PinOff' : (ICON[action.key] ?? 'Pin')}
-                    size="md"
-                    tone={action.destructive ? 'danger' : 'secondary'}
-                  />
-                }
-                onClick={() => {
-                  if (action.key === 'reply-in-thread') {
-                    // The thread opens once this sheet has closed and focus is back on the row (its opener).
-                    setThen(() => () => void action.run());
-                    close();
-                    return;
-                  }
-                  close();
-                  if (action.key === 'copy') void copy();
-                  else void action.run();
-                }}
+                key={view.id}
+                primary={view.label}
+                leading={<Icon name={view.icon} size="md" tone={view.destructive ? 'danger' : 'secondary'} />}
+                onClick={() => choose(view)}
               />
             ))}
-            {hasReactions && (
-              <ListRow
-                primary="See reactions"
-                leading={<Icon name="Smile" size="md" tone="secondary" />}
-                onClick={() => {
-                  setThen(() => () => onShowReactions(message));
-                  close();
-                }}
-              />
-            )}
           </Stack>
         </Stack>
       </Sheet>

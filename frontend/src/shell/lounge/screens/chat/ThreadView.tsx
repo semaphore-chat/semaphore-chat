@@ -198,7 +198,7 @@ export function ThreadView({
     requestAnimationFrame(() => listRef.current?.scrollToBottom());
   }, [newest, shared.me]);
 
-  const threadShared = useMemo<ChatRowShared>(() => ({ ...shared, editing, openThread: undefined }), [shared, editing]);
+  const threadShared = useMemo<ChatRowShared>(() => ({ ...shared, editing, openThread: undefined, reply: undefined }), [shared, editing]);
   // The thread's total (the parent's count), not the loaded replies: a long thread loads in pages.
   const replyCount = Math.max(parentMessage?.replyCount ?? 0, thread.replies.length);
   const renderRow = useCallback(

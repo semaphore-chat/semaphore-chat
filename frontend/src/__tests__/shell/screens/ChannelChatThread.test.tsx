@@ -640,13 +640,16 @@ describe('ChannelChat at compact and wide (PR 10e): the thread and the pins are 
     const threadRow = rows.find((el) => rightRegion().contains(el))!;
     channelRow.focus();
     fireEvent.keyDown(channelRow, { key: 'Enter' });
-    expect(await screen.findByRole('button', { name: 'Reply in thread' })).toBeInTheDocument();
+    // At wide with a mouse the actions are a Menu (the same actions as the Sheet).
+    expect(await screen.findByRole('menuitem', { name: 'Reply in thread' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Reply' })).toBeInTheDocument();
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
     threadRow.focus();
     fireEvent.keyDown(threadRow, { key: 'Enter' });
-    const sheet = await screen.findByRole('dialog');
-    expect(sheet).not.toHaveTextContent('Reply in thread');
+    const menu = await screen.findByRole('menu');
+    expect(menu).not.toHaveTextContent('Reply in thread');
+    expect(screen.queryByRole('menuitem', { name: 'Reply' })).toBeNull();
   });
 
   it('at wide the pins are the right panel; a pin jumps and the panel stays; Close hands focus back to More', async () => {

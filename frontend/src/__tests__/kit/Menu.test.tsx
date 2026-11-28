@@ -60,6 +60,19 @@ function Harness({ handlers, onClose, ...rest }: { handlers?: Record<string, () 
 const trigger = () => screen.getByRole('button', { name: 'Options' });
 
 describe('Menu', () => {
+  it('opens at a point (a right-click) and still returns focus to what had it', async () => {
+    const { user } = renderWithKit(<Harness point={{ x: 120, y: 80 }} />);
+    await user.click(trigger());
+    const menu = await screen.findByRole('menu');
+    // MUI places it from the point, not from the anchor's box.
+    const paper = menu.closest<HTMLElement>('.MuiPaper-root')!;
+    expect(paper.style.top).toBe('80px');
+    expect(paper.style.left).toBe('120px');
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    await waitFor(() => expect(trigger()).toHaveFocus());
+  });
+
   it('renders nothing while closed', () => {
     renderWithKit(<Harness />);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();

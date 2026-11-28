@@ -115,7 +115,9 @@ vi.mock('../../../hooks/useMessageFileUpload', () => ({ useMessageFileUpload: ()
 vi.mock('../../../hooks/useComposerAvailability', () => ({ useComposerAvailability: () => ({ state: 'ok', channelName: 'lobby', canAttach: true }) }));
 vi.mock('../../../hooks/useTypingEmitter', () => ({ useTypingEmitter: () => ({ handleKeyPress: vi.fn(), sendTypingStop: vi.fn() }) }));
 vi.mock('../../../hooks/useAllCommunityMembers', () => ({ useAllCommunityMembers: () => ({ data: [], isLoading: false }) }));
-vi.mock('../../../data/touchFirst', () => ({ useTouchFirst: () => false }));
+// Touch-first by default: a message's actions are the Sheet (the Menu has its own tests, `touch.current = false`).
+const touch = vi.hoisted(() => ({ current: true }));
+vi.mock('../../../data/touchFirst', () => ({ useTouchFirst: () => touch.current }));
 
 // Renders of kit rows, by author: typing in the composer must draw none.
 const rowRenders = vi.hoisted(() => new Map<string, number>());
@@ -157,6 +159,10 @@ const theirs = () => createMessage({ id: 'm-theirs', authorId: 'u-aiko', spans: 
 type ListState = 'TEXT' | 'VOICE' | 'missing' | 'pending' | 'error' | 'forbidden' | 'notFound';
 
 let activeClient: ReturnType<typeof createTestQueryClient> | undefined;
+beforeEach(() => {
+  touch.current = true;
+});
+
 // A request still in flight when the test ends would be aborted after MSW answered it (an unhandled InterceptorError).
 afterEach(async () => {
   await activeClient?.cancelQueries();
@@ -548,6 +554,7 @@ describe('ChannelChat write side', () => {
 
 describe('ChannelChat at wide (PR 10e)', () => {
   beforeEach(() => {
+    touch.current = false;
     mockViewport(WIDTH.wide);
     resetFactoryCounter();
     vi.clearAllMocks();
@@ -638,5 +645,128 @@ describe('ChannelChat at wide (PR 10e)', () => {
     const field = await screen.findByRole('textbox', { name: 'Message #lobby' });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(document.activeElement).not.toBe(field);
+  });
+});
+
+describe('ChannelChat desktop input (PR 10e: wide, with a mouse)', () => {
+  beforeEach(() => {
+    touch.current = false;
+    mockViewport(WIDTH.wide);
+    resetFactoryCounter();
+    vi.clearAllMocks();
+    perms.moderator = false;
+    perms.canReact = true;
+    clearComposerDrafts();
+  });
+
+  const menuItems = () => within(screen.getByRole('menu')).getAllByRole('menuitem').map((item) => item.textContent);
+  const openMenuWithEnter = async (text: string) => {
+    const row = rowOf(text);
+    act(() => row.focus());
+    fireEvent.keyDown(row, { key: 'Enter' });
+    await screen.findByRole('menu');
+    return row;
+  };
+
+  it('Enter on a row opens a Menu, not the Sheet, with the same actions; Escape closes it and focus is back on the row', async () => {
+    setup([mine()]);
+    const row = await openMenuWithEnter('my words');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('menu')).toHaveAccessibleName("Actions for Me's message");
+    expect(menuItems()).toEqual(['Reply', 'Reply in thread', 'Add reaction', 'Edit message', 'Copy message content', 'Delete message']);
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    await waitFor(() => expect(row).toHaveFocus());
+  });
+
+  it('someone else’s message: no Edit or Delete; a moderator may pin and delete it', async () => {
+    setup([theirs()]);
+    await openMenuWithEnter('their words');
+    expect(menuItems()).toEqual(['Reply', 'Reply in thread', 'Add reaction', 'Copy message content']);
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+
+    perms.moderator = true;
+    const { unmount } = setup([createMessage({ id: 'm-mod', authorId: 'u-aiko', spans: [{ type: SpanType.PLAINTEXT, text: 'moderated words' }] })]);
+    await openMenuWithEnter('moderated words');
+    expect(menuItems()).toEqual(['Reply', 'Reply in thread', 'Add reaction', 'Pin message', 'Copy message content', 'Delete message']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pin message' }));
+    expect(actions.pin).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it('Delete from the Menu still asks first', async () => {
+    setup([mine()]);
+    await openMenuWithEnter('my words');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete message' }));
+    const confirm = (await screen.findByText('Delete this message?')).closest<HTMLElement>('[role="dialog"], [role="alertdialog"]')!;
+    expect(actions.del).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete message' }));
+    await waitFor(() => expect(actions.del).toHaveBeenCalledTimes(1));
+  });
+
+  it('a right-click opens the Menu (at the pointer); a choice closes it and focus is back on the row', async () => {
+    setup([theirs()]);
+    const row = rowOf('their words');
+    fireEvent.pointerDown(row, { pointerType: 'mouse', button: 2 });
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 });
+    await screen.findByRole('menu');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reply' }));
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(await screen.findByText(/Replying to/)).toBeInTheDocument();
+  });
+
+  it('a touch device at wide keeps the Sheet', async () => {
+    touch.current = true;
+    setup([theirs()]);
+    const row = rowOf('their words');
+    act(() => row.focus());
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName('Message from Aiko');
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('rows have the toolbar: Add reaction, Reply, Reply in thread and More actions, which opens the Menu', async () => {
+    setup([theirs()]);
+    const row = rowOf('their words');
+    const toolbar = within(row).getByRole('toolbar', { hidden: true });
+    const names = within(toolbar)
+      .getAllByRole('button', { hidden: true })
+      .map((button) => button.getAttribute('aria-label'));
+    expect(names).toEqual(['Add reaction', 'Reply', 'Reply in thread', 'More actions']);
+    fireEvent.click(toolbar.querySelector<HTMLElement>('[aria-label="More actions"]')!);
+    await screen.findByRole('menu');
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    await waitFor(() => expect(row).toHaveFocus());
+  });
+
+  it('without the right to react the toolbar has no Add reaction', async () => {
+    perms.canReact = false;
+    setup([theirs()]);
+    const toolbar = within(rowOf('their words')).getByRole('toolbar', { hidden: true });
+    expect(toolbar.querySelector('[aria-label="Add reaction"]')).toBeNull();
+    expect(toolbar.querySelector('[aria-label="More actions"]')).not.toBeNull();
+  });
+
+  it('touch-first rows have no toolbar', async () => {
+    touch.current = true;
+    setup([theirs()]);
+    expect(within(rowOf('their words')).queryByRole('toolbar', { hidden: true })).toBeNull();
+  });
+
+  it('a reaction says who reacted on hover', async () => {
+    setup([
+      createMessage({
+        id: 'm-r2',
+        authorId: 'u-aiko',
+        spans: [{ type: SpanType.PLAINTEXT, text: 'their words' }],
+        reactions: [{ emoji: '👍', userIds: ['me', 'u-aiko'] }],
+      }),
+    ]);
+    const chip = within(rowOf('their words')).getByRole('button', { name: /reaction, 2/ });
+    fireEvent.pointerEnter(chip, { pointerType: 'mouse' });
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('You and Aiko reacted with 👍');
   });
 });
