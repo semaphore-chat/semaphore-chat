@@ -242,9 +242,10 @@ gradle_status=0
   -Pandroid.testInstrumentationRunnerArguments.trustedServer="$TRUSTED_SERVER" \
   || gradle_status=$?
 
-# DeviceChatTest's timing of a 1000-row reset crossing the FFI into the chat's state.
-echo "=== timings"
-"$ADB" logcat -d -s SemaphoreTiming:I 2>/dev/null | grep SemaphoreTiming || true
+# DeviceChatTest's timing of a 1000-row reset crossing the FFI into the chat's state, and
+# DeviceNotifyTest's report of whether a mention arrives under forced Doze.
+echo "=== timings and Doze"
+"$ADB" logcat -d -s SemaphoreTiming:I SemaphoreDoze:I 2>/dev/null | grep -E 'SemaphoreTiming|SemaphoreDoze' || true
 
 # A crash ends the instrumentation with no stack trace in the results: print the device's.
 if [ "$gradle_status" != 0 ]; then

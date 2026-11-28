@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -55,6 +56,13 @@ class DeviceFlowTest {
     /** A list row the kit marks unread (its spoken state, as the web's name carries ", unread"). */
     private val unread = SemanticsMatcher("is unread") {
         it.config.getOrNull(SemanticsProperties.StateDescription)?.split(", ")?.contains("unread") == true
+    }
+
+    /** The permission prompt would cover the screens this drives: it counts as asked already. */
+    @Before
+    fun noNotificationPrompt() {
+        context.getSharedPreferences(NotificationPermission.PREFS, android.content.Context.MODE_PRIVATE)
+            .edit().putBoolean(NotificationPermission.ASKED, true).commit()
     }
 
     private fun waitFor(matcher: SemanticsMatcher, timeoutMs: Long = 30_000) {

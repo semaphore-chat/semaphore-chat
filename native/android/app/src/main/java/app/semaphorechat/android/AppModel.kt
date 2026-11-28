@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import uniffi.semaphore.Conversation
 import uniffi.semaphore.CoreException
+import uniffi.semaphore.MessageLink
 import uniffi.semaphore.ProbeOutcome
 import uniffi.semaphore.RegistrationMode
 import uniffi.semaphore.RestoreOutcome
@@ -94,6 +95,12 @@ class AppModel(
         private set
 
     private var wasSignedIn = false
+
+    /** Guards [wasSignedIn] against [pendingLink], so a tap made while signing in is opened once. */
+    private val linkLock = Any()
+
+    /** A notification tapped before the session was signed in: opened once it is. */
+    private var pendingLink: MessageLink? = null
 
     private val networkLock = Any()
     private var networkHandle: AutoCloseable? = null
@@ -281,16 +288,23 @@ class AppModel(
     private fun onSession(session: SessionState) {
         when (session) {
             is SessionState.SignedIn -> if (!wasSignedIn) {
-                wasSignedIn = true
                 server = signInState.value?.server?.url ?: lastServer ?: connectState.value.url
                 signInState.value = null
                 startState.value = StartState.Starting
                 navigator.reset(Route.Community(null))
                 onCommunities(store.communities.value)
+                val tapped = synchronized(linkLock) {
+                    wasSignedIn = true
+                    pendingLink.also { pendingLink = null }
+                }
+                tapped?.let(::go)
             }
             SessionState.SignedOut -> if (wasSignedIn) {
                 // Revoked, expired, or signed out elsewhere: back to sign-in, saying so.
-                wasSignedIn = false
+                synchronized(linkLock) {
+                    wasSignedIn = false
+                    pendingLink = null
+                }
                 val url = server
                 server = null
                 allOpenState.value = false
@@ -351,6 +365,31 @@ class AppModel(
 
     fun onSheetQuery(query: String) {
         sheetQueryState.value = query
+    }
+
+    /**
+     * A tapped notification: its channel, over its community's home (Back goes there). A DM opens
+     * the Lounge's home (no DM screen before D10); a thread reply's link is its channel. Waits for
+     * the session when it isn't signed in yet (a tap that started the app).
+     */
+    fun openLink(link: MessageLink) {
+        val now = synchronized(linkLock) {
+            if (!wasSignedIn) pendingLink = link
+            wasSignedIn
+        }
+        if (now) go(link)
+    }
+
+    private fun go(link: MessageLink) {
+        val channel = link.conversation as? Conversation.Channel
+        val community = link.communityId
+        if (channel == null || community == null) {
+            if (navigator.top !is Route.Community) navigator.reset(Route.Community(navigator.community))
+            return
+        }
+        navigator.reset(Route.Community(community))
+        server?.let { lastCommunity.set(it, community) }
+        navigator.push(Route.Channel(community, channel.id))
     }
 
     /** The system Back with no overlay open: one screen back, or `false` for the platform's. */

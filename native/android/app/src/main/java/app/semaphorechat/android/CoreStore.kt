@@ -35,6 +35,7 @@ import uniffi.semaphore.Conversation
 import uniffi.semaphore.CoreEvent
 import uniffi.semaphore.CoreListener
 import uniffi.semaphore.LoadState
+import uniffi.semaphore.NotificationKind
 import uniffi.semaphore.RemovalCause
 import uniffi.semaphore.SemaphoreCore
 import uniffi.semaphore.SessionState
@@ -79,6 +80,8 @@ class CoreStore(
     private val core: SemaphoreCore,
     private val scope: CoroutineScope,
     events: ReceiveChannel<CoreEvent>,
+    /** Where core's notifications are shown and withdrawn (AndroidNotifier in the app). */
+    private val notifier: Notifier = Notifier.None,
     /** A session ended: what the app keeps for it besides the lists (pictures, opened files) goes too. */
     private val onSessionEnded: () -> Unit = {},
 ) {
@@ -206,15 +209,29 @@ class CoreStore(
                 is CoreEvent.MessagesChanged ->
                     synchronized(conversations) { conversations.entries.firstOrNull { it.key == event.conversation }?.value }
                         ?.apply(event.ops)
+                // Core decided it is due (notify.rs::decide); the kind is its own when its list has
+                // the row (primed below at sign-in), else the plan infers it.
+                is CoreEvent.Notify -> notifier.show(event.notification, knownKind(event.notification.id))
+                is CoreEvent.WithdrawNotifications -> notifier.withdraw(event.tag)
                 else -> Unit
             }
         }
         val session = core.session()
         // A new session starts with no lists: the old one's rows are another account's.
         if (session !is SessionState.SignedIn) {
-            if (sessionState.value is SessionState.SignedIn) onSessionEnded()
+            primed = false
+            if (sessionState.value is SessionState.SignedIn) {
+                notifier.clearAll()
+                onSessionEnded()
+            }
             synchronized(conversations) { conversations.clear() }
             synchronized(composers) { composers.values.toList().also { composers.clear() } }.forEach { it.close() }
+        }
+        // Core's notification list, loaded once a session: a new notification's row lands in it
+        // before core raises it, which is how [knownKind] tells a mention from a channel message.
+        if (session is SessionState.SignedIn && !primed) {
+            primed = true
+            core.notifications()
         }
         sessionState.value = session
         val connection = core.connection()
@@ -236,6 +253,11 @@ class CoreStore(
         val ids = if (everything) channelStates.keys.toSet() else only.filterNotNull().toSet()
         ids.forEach { id -> channelStates[id]?.let { it.value = readChannels(id) } }
     }
+
+    /** Whether this session's notification list was asked for (only on the collector). */
+    private var primed = false
+
+    private fun knownKind(id: String): NotificationKind? = core.notifications().rows.firstOrNull { it.id == id }?.kind
 
     private fun readCommunities(): Load<List<CommunitySummary>> {
         if (core.session() !is SessionState.SignedIn) return Load.Loading

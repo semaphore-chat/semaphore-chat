@@ -21,6 +21,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import uniffi.semaphore.MessageLink
 import uniffi.semaphore.NetworkState
 import uniffi.semaphore.SemaphoreCore
 import uniffi.semaphore.WallClock
@@ -70,8 +71,26 @@ object SemaphoreHost {
      */
     private var backgrounded = false
 
+    /** Whether core was suspended by going to the background (or a Disconnect there). */
+    private var suspended = false
+
+    /** [ConnectionService] is running: going to the background leaves core connected. */
+    private var connectedKept = false
+
     /** Started already, or null. */
     fun current(): Session? = session
+
+    /** A notification tapped before the core had started: opened once it has. */
+    private var pendingTap: MessageLink? = null
+
+    /** A notification was tapped (MainActivity's intent): opens its conversation, now or once started. */
+    fun openTapped(link: MessageLink) {
+        val started = synchronized(lifecycle) {
+            if (session == null) pendingTap = link
+            session
+        } ?: return
+        started.model.openLink(link)
+    }
 
     /**
      * The core and the app model, started on first call.
@@ -93,8 +112,9 @@ object SemaphoreHost {
     /** The app came to the foreground (`onStart`): resumes the core if it was suspended. */
     fun foregrounded() {
         val resume = synchronized(lifecycle) {
-            val was = backgrounded
+            val was = suspended
             backgrounded = false
+            suspended = false
             session.takeIf { was }
         } ?: return
         resume.host.core().resume()
@@ -109,13 +129,40 @@ object SemaphoreHost {
      * before the process becomes one the OS may end at once.
      */
     fun backgroundedNow() {
+        var suspend = false
         val started = synchronized(lifecycle) {
             backgrounded = true
+            suspend = session != null && !connectedKept && !suspended
+            if (suspend) suspended = true
             session
         } ?: return
-        started.host.core().suspend()
+        val core = started.host.core()
+        // No conversation is on screen now, so its messages notify again.
+        core.setFocused(false)
+        // While ConnectionService runs, the socket stays open and core's notifications arrive.
+        if (suspend) core.suspend()
         runBlocking(Dispatchers.IO) { started.host.flush(FLUSH_BOUND_MS) }
     }
+
+    /**
+     * [ConnectionService] started or stopped. Stopped in the background (its Disconnect action),
+     * core is suspended as `backgroundedNow` would have.
+     */
+    fun keepConnected(on: Boolean) {
+        val suspendNow = synchronized(lifecycle) {
+            connectedKept = on
+            if (!on && backgrounded && !suspended && session != null) {
+                suspended = true
+                session
+            } else {
+                null
+            }
+        }
+        suspendNow?.host?.core()?.suspend()
+    }
+
+    /** Whether going to the background leaves core connected now (for the device test). */
+    val keepsConnected: Boolean get() = synchronized(lifecycle) { connectedKept }
 
     /** Short: `onStop` runs on the main thread. */
     private val FLUSH_BOUND_MS = 300u
@@ -132,6 +179,7 @@ object SemaphoreHost {
                     it.close()
                 }
                 session = null
+                suspended = false
             }
         }
     }
@@ -159,9 +207,11 @@ object SemaphoreHost {
         // Opened files left by an earlier run (another session's, maybe) go first.
         val files = FileOpener(app, core).also { runCatching { it.clear() } }
         val images = AttachmentLoader({ fileId, thumbnail -> core.file(fileId, thumbnail) }, modelScope, maxSide = imageSide(app))
-        val store = CoreStore(core, modelScope, events.events) {
+        val store = CoreStore(core, modelScope, events.events, notifier = AndroidNotifier(app)) {
             images.clear()
             runCatching { files.clear() }
+            // Signed out: nothing to stay connected for.
+            ConnectionService.stop(app)
         }
         val model = AppModel(
             core = core,
@@ -174,11 +224,15 @@ object SemaphoreHost {
         // Published with whatever the activity recorded meanwhile: a start that finished in the
         // background is suspended now, and `foregrounded` resumes it.
         val startedSession = Session(started, model, modelScope, events, network, connectivity, images, files)
+        var tapped: MessageLink? = null
         val suspend = synchronized(lifecycle) {
             session = startedSession
-            backgrounded
+            tapped = pendingTap
+            pendingTap = null
+            (backgrounded && !connectedKept).also { if (it) suspended = true }
         }
         if (suspend) core.suspend()
+        tapped?.let(model::openLink)
         return startedSession
     }
 

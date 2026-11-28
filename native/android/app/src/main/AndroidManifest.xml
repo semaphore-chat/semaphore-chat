@@ -1,13 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Semaphore Chat's Android client. SPDX-License-Identifier: AGPL-3.0-only. See LICENSE.md.
-     Two permissions, both normal (granted at install, no prompt): INTERNET for the server, and
-     ACCESS_NETWORK_STATE for the connectivity callback that tells the core when the network
-     comes and goes. Files are picked through the system's photo picker and document picker, which
+     INTERNET for the server, and ACCESS_NETWORK_STATE for the connectivity callback that tells the
+     core when the network comes and goes: both normal (granted at install, no prompt).
+     POST_NOTIFICATIONS (API 33+, asked once after sign-in) for core's notifications, and
+     FOREGROUND_SERVICE with its specialUse type for ConnectionService, which keeps the chat
+     connection open in the background (no Play Services push: F-Droid only). Files are picked through the system's photo picker and document picker, which
      need no storage permission; an opened file is shared read-only through the FileProvider. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:name=".SemaphoreApp"
@@ -19,12 +24,24 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Keeps the socket open while the app is in the background, so notifications arrive.
+             Started only from the visible activity, never at boot; its notification can stop it. -->
+        <service
+            android:name=".ConnectionService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps a persistent connection to the user's self-hosted chat server so that messages and mentions arrive as notifications without Google Play Services push." />
+        </service>
 
         <!-- Serves only cache/open (res/xml/file_paths.xml), read-only, to the app an attachment
              is opened in: FileOpener grants each URI per Intent. -->
