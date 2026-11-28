@@ -875,6 +875,7 @@ impl AppRoot {
             div()
                 .id("image-viewer")
                 .test_support()
+                .occlude()
                 .track_focus(&self.viewer_focus)
                 .role(Role::Dialog)
                 .aria_label(attachment.filename.clone())

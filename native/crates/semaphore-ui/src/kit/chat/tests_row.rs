@@ -855,6 +855,75 @@ fn files_dropped_on_the_conversation_reach_the_screen(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_drag_over_the_image_viewer_is_not_over_the_conversation(cx: &mut TestAppContext) {
+    // The viewer (`Root::viewer_overlay`) is a layer in front of the whole window and occludes.
+    // The drag's moves still reach the conversation's handler, so the point is hit-tested: over
+    // the picture is off the conversation, and a file let go on the picture is dropped nowhere.
+    let viewer = Rc::new(std::cell::Cell::new(false));
+    let flag = viewer.clone();
+    let (rig, log) = host(cx, move |log, _, _, _| {
+        let (drop_log, over_log) = (log.clone(), log.clone());
+        let mut frame = div().relative().w(px(390.)).h(px(640.)).child(
+            ChatPane::new("pane")
+                .list(div().flex_1())
+                .on_drop_files(move |paths, _, _| {
+                    drop_log.borrow_mut().push(format!("drop {}", paths.len()))
+                })
+                .on_files_over(move |over, _, _| {
+                    over_log.borrow_mut().push(format!("over {over}"))
+                }),
+        );
+        if flag.get() {
+            frame = frame.child(
+                div()
+                    .id("image-viewer")
+                    .test_support()
+                    .occlude()
+                    .absolute()
+                    .inset_0(),
+            );
+        }
+        frame.into_any_element()
+    });
+    let inside = point(px(100.), px(100.));
+    let files = || ExternalPaths(vec![PathBuf::from("/tmp/a.png")].into());
+    let mut cx = VisualTestContext::from_window(rig.window, cx);
+    cx.simulate_event(FileDropEvent::Entered {
+        position: inside,
+        paths: files(),
+    });
+    cx.simulate_event(FileDropEvent::Pending { position: inside });
+    assert_eq!(logged(&log), ["over true"]);
+
+    // The picture opens over it while the files are still carried: the look goes.
+    log.borrow_mut().clear();
+    viewer.set(true);
+    rig.with(&mut cx, |view, _, cx| view.update(cx, |_, cx| cx.notify()));
+    cx.simulate_event(FileDropEvent::Pending { position: inside });
+    assert_eq!(
+        logged(&log),
+        ["over false"],
+        "the conversation is out of reach under the picture"
+    );
+
+    // And files carried over the picture from the start are dropped on nothing.
+    cx.simulate_event(FileDropEvent::Exited);
+    cx.run_until_parked();
+    log.borrow_mut().clear();
+    cx.simulate_event(FileDropEvent::Entered {
+        position: inside,
+        paths: files(),
+    });
+    cx.simulate_event(FileDropEvent::Submit { position: inside });
+    cx.run_until_parked();
+    let lines = logged(&log);
+    assert!(
+        lines.is_empty(),
+        "neither looked at nor dropped on: {lines:?}"
+    );
+}
+
+#[gpui_kit::test]
 fn a_drag_that_never_exits_is_cleared_by_the_next_plain_move_or_release(cx: &mut TestAppContext) {
     let (rig, log) = host(cx, |log, _, _, _| {
         let over_log = log.clone();

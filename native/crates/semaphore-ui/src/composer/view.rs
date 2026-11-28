@@ -21,10 +21,10 @@ use super::rules::{
 };
 use crate::kit::overlays::type_text;
 use crate::kit::{
-    AttachmentKind, AttachmentTile, BannerKind, Composer as KitComposer, ComposerBanner,
+    Alert, AttachmentKind, AttachmentTile, BannerKind, Composer as KitComposer, ComposerBanner,
     ComposerCap, ComposerKey, ComposerMode as KitMode, ComposerNotice, Icon, IconButton,
-    IconButtonVariant, IconSize, PastedFile, Politeness, Suggestion, SuggestionList, ToastRequest,
-    Toasts, WidthRange, announce,
+    IconButtonVariant, IconSize, PastedFile, Politeness, Severity, Suggestion, SuggestionList,
+    ToastRequest, Toasts, WidthRange, announce,
 };
 use crate::theme::SemTheme;
 use gpui_kit::component::input::{InputEvent as FieldEvent, TextareaState};
@@ -45,6 +45,9 @@ const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_SUGGESTIONS: usize = 10;
 /// The toast a failed send or a refused file shows (one at a time: a new one replaces it).
 const ERROR_TOAST: &str = "composer-error";
+/// The same words, drawn above the field of a thread reply or an inline edit, which can sit far
+/// from the window's toast (a different id from the toast's: both can be on screen at once).
+const ERROR_ALERT: &str = "composer-error-alert";
 /// What the thread's composer says when files are dragged over it, or dropped on it.
 const THREAD_NO_FILES: &str = "Files can't be attached to a thread reply";
 const SEND_FAILED: &str = "Failed to send message. Please try again.";
@@ -387,7 +390,9 @@ impl Composer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if files.is_empty() {
+        // Nothing can be typed here (the notice says why), so a drop adds nothing and says
+        // nothing: it is not about attaching.
+        if files.is_empty() || !self.can_compose() {
             return;
         }
         match self.attachment_problem(&files) {
@@ -417,7 +422,12 @@ impl Composer {
     /// The error as a danger toast (`ChatComposer`'s `onError`); kept until the text changes.
     fn show_error(&mut self, error: String, window: &mut Window, cx: &mut Context<Self>) {
         self.error = Some(error.clone().into());
-        if let Some(toasts) = Toasts::of(window, cx) {
+        // The window's toast floats at the foot of the conversation. A thread's composer is a
+        // narrow panel and an inline edit sits inside the list, so those draw their error above
+        // the field instead (`render`): one notice, where the message would go.
+        if self.mode == ComposerMode::Send
+            && let Some(toasts) = Toasts::of(window, cx)
+        {
             toasts.show(ToastRequest::new(error).id(ERROR_TOAST).danger(), cx);
         }
         cx.notify();
@@ -1187,8 +1197,18 @@ impl Render for Composer {
             } else {
                 ComposerCap::Desktop
             });
+        // A thread reply and an inline edit sit away from the window's toast anchor: they show
+        // the error where the message would go (`show_error` sends the rest to a toast).
+        let error = (self.mode != ComposerMode::Send)
+            .then(|| self.error.clone())
+            .flatten()
+            .map(|error| {
+                div()
+                    .pb(px(SPACE_SM))
+                    .child(Alert::new(ERROR_ALERT, Severity::Danger, error))
+            });
         if !self.can_compose() {
-            return root.child(composer.notice(self.notice(cx)));
+            return root.children(error).child(composer.notice(self.notice(cx)));
         }
         let editing = self.is_editing();
         let sendable = if editing {
@@ -1198,7 +1218,6 @@ impl Render for Composer {
         };
         let keys = this.clone();
         let submit = this.clone();
-        let paste = this.clone();
         let mut composer = composer
             .can_send(sendable)
             .sending(self.in_flight.is_some())
@@ -1211,6 +1230,17 @@ impl Render for Composer {
             })
             .emoji(self.slot(cx))
             .attachments(self.tray(cx));
+        // A thread reply has no attach button, so a paste there is the only way to hear why its
+        // files go nowhere. An inline edit takes no new files at all and keeps the field's own
+        // paste (its text, and nothing for a file alone).
+        if !matches!(self.mode, ComposerMode::Edit { .. }) {
+            let paste = this.clone();
+            composer = composer.on_paste_files(move |files, window, cx| {
+                paste
+                    .update(cx, |this, cx| this.add_pasted(files, window, cx))
+                    .ok();
+            });
+        }
         if editing {
             let cancel = this.clone();
             composer = composer
@@ -1230,11 +1260,6 @@ impl Render for Composer {
                 .attach_unavailable(!self.can_attach())
                 .on_attach_unavailable_press(move |window, cx| {
                     announce(hint.clone(), Politeness::Polite, window, cx)
-                })
-                .on_paste_files(move |files, window, cx| {
-                    paste
-                        .update(cx, |this, cx| this.add_pasted(files, window, cx))
-                        .ok();
                 });
             if let Some(reply) = &self.reply {
                 let cancel = this.clone();
@@ -1266,7 +1291,9 @@ impl Render for Composer {
         let root = self
             .thread_drop(root, cx)
             .on_key_down(cx.listener(Self::on_key_down));
-        root.children(self.slowmode_line(cx)).child(composer)
+        root.children(self.slowmode_line(cx))
+            .children(error)
+            .child(composer)
     }
 }
 

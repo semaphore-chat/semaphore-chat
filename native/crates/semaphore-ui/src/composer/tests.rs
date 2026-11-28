@@ -9,8 +9,9 @@ use gpui_kit::component::input::TextareaState;
 use gpui_kit::test::{TestInput, TestQueryExt, TestWindowExt};
 use gpui_kit::{
     AnyWindowHandle, App, AppContext, Bounds, ClipboardEntry, ClipboardItem, Context, ElementId,
-    ElementInputHandler, Entity, Image, ImageFormat, IntoElement, ParentElement, Point, Render,
-    Role, Size, Styled, TestAppContext, Window, WindowBounds, WindowOptions, div, px, size,
+    ElementInputHandler, Entity, ExternalPaths, Image, ImageFormat, IntoElement, ParentElement,
+    Point, Render, Role, Size, Styled, TestAppContext, Window, WindowBounds, WindowOptions, div,
+    px, size,
 };
 use semaphore_core::model::{Conversation, MentionCandidate, MentionKind, MessageDraft};
 use std::cell::RefCell;
@@ -334,6 +335,15 @@ fn toast(rig: &Rig, cx: &mut TestAppContext) -> Option<String> {
     })
 }
 
+/// The error above the field of a thread reply or an inline edit, while one shows.
+fn alert(rig: &Rig, cx: &mut TestAppContext) -> Option<String> {
+    rig.with(cx, |_, window, _| {
+        window
+            .try_find("composer-error-alert")
+            .and_then(|alert| alert.label().map(str::to_owned))
+    })
+}
+
 /// A press does nothing and the control says why it can't act.
 fn unavailable(rig: &Rig, cx: &mut TestAppContext, label: &str) -> bool {
     rig.with(cx, |_, window, _| {
@@ -417,6 +427,28 @@ fn one_send_at_a_time_and_a_failure_puts_the_message_back(cx: &mut TestAppContex
         toast(&rig, cx).as_deref(),
         Some("Failed to send message. Please try again.")
     );
+}
+
+#[gpui_kit::test]
+fn a_thread_reply_shows_a_failed_send_above_its_field_not_in_the_window(cx: &mut TestAppContext) {
+    let rig = rig_mode(cx, ComposerMode::Thread);
+    rig.typed(cx, "a reply");
+    rig.press(cx, "enter");
+    rig.settle(cx, Err(String::new()));
+    assert_eq!(
+        alert(&rig, cx).as_deref(),
+        Some("Failed to send message. Please try again."),
+        "where the reply goes, in the panel"
+    );
+    assert_eq!(rig.value(cx), "a reply", "and the reply comes back");
+    assert_eq!(
+        toast(&rig, cx),
+        None,
+        "no toast: it would float at the foot of the channel behind"
+    );
+    // Typing again takes the error away with it.
+    rig.typed(cx, "x");
+    assert_eq!(alert(&rig, cx), None);
 }
 
 #[gpui_kit::test]
@@ -837,6 +869,34 @@ fn attaching_can_be_turned_off(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_channel_where_nothing_can_be_written_takes_no_files_and_says_nothing(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    rig.availability(
+        cx,
+        Availability::ReadOnly {
+            channel_name: Some("general".into()),
+            posting_roles: vec!["Member".into()],
+        },
+    );
+    rig.with(cx, |composer, window, cx| {
+        composer.update(cx, |composer, cx| {
+            composer.add_attachments(vec![file("a.txt")], window, cx)
+        });
+    });
+    assert!(
+        rig.with(cx, |_, window, _| window
+            .try_find_by_label("Remove a.txt")
+            .is_none()),
+        "no file queued where a message can never go"
+    );
+    assert_eq!(
+        toast(&rig, cx),
+        None,
+        "and nothing said about attaching: the notice above says why"
+    );
+}
+
+#[gpui_kit::test]
 fn pasting_text_inserts_it(cx: &mut TestAppContext) {
     let rig = rig(cx);
     cx.update(|cx| cx.write_to_clipboard(ClipboardItem::new_string("line one\nline two".into())));
@@ -859,6 +919,26 @@ fn pasting_an_image_adds_it_and_inserts_nothing(cx: &mut TestAppContext) {
     assert!(rig.with(cx, |_, window, _| {
         window.try_find_by_label("Remove image.png").is_some()
     }));
+}
+
+#[gpui_kit::test]
+fn pasting_files_alone_inserts_no_paths(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    cx.update(|cx| {
+        cx.write_to_clipboard(ClipboardItem {
+            entries: vec![ClipboardEntry::ExternalPaths(ExternalPaths(
+                vec![std::path::PathBuf::from("/tmp/a.png")].into(),
+            ))],
+        })
+    });
+    rig.press(cx, "ctrl-v");
+    assert_eq!(rig.value(cx), "", "not even the path");
+    assert!(
+        rig.with(cx, |_, window, _| {
+            window.try_find_by_label("Remove a.png").is_some()
+        }),
+        "the file itself is queued"
+    );
 }
 
 #[gpui_kit::test]
@@ -1547,6 +1627,31 @@ fn pasting_a_file_where_attaching_is_off_says_why(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn pasting_an_image_into_a_thread_reply_says_where_files_can_go(cx: &mut TestAppContext) {
+    let rig = rig_mode(cx, ComposerMode::Thread);
+    let image = Image::from_bytes(ImageFormat::Png, vec![1, 2, 3]);
+    cx.update(|cx| {
+        cx.write_to_clipboard(ClipboardItem {
+            entries: vec![ClipboardEntry::Image(image)],
+        })
+    });
+    rig.press(cx, "ctrl-v");
+    // A thread reply has no attach button, so this is the only way to hear why its files go
+    // nowhere: above the field, since the panel is away from the window's toast.
+    assert_eq!(
+        alert(&rig, cx).as_deref(),
+        Some("Files can't be attached to a thread reply")
+    );
+    assert_eq!(rig.value(cx), "", "no path text in the reply");
+    assert!(
+        rig.with(cx, |_, window, _| {
+            window.try_find_by_label("Remove image.png").is_none()
+        }),
+        "and nothing queued"
+    );
+}
+
+#[gpui_kit::test]
 fn ctrl_b_during_composition_belongs_to_the_input_method(cx: &mut TestAppContext) {
     let rig = rig(cx);
     rig.typed(cx, "ab");
@@ -1607,15 +1712,20 @@ fn a_thread_reply_takes_no_files_and_says_so(cx: &mut TestAppContext) {
         Some("Files can't be attached to a thread reply")
     );
     set_dropping(&rig, cx, false);
-    rig.with(cx, |composer, window, cx| {
-        composer.update(cx, |composer, cx| {
-            composer.add_attachments(vec![file("a.txt")], window, cx)
-        });
+    // The real way in: a thread reply has no attach button, so a picture pasted into it is what
+    // tells the reader where files can go.
+    let image = Image::from_bytes(ImageFormat::Png, vec![1, 2, 3]);
+    cx.update(|cx| {
+        cx.write_to_clipboard(ClipboardItem {
+            entries: vec![ClipboardEntry::Image(image)],
+        })
     });
+    rig.press(cx, "ctrl-v");
     assert_eq!(
-        toast(&rig, cx).as_deref(),
+        alert(&rig, cx).as_deref(),
         Some("Files can't be attached to a thread reply")
     );
+    assert_eq!(toast(&rig, cx), None, "not in the channel's toast");
 }
 
 #[gpui_kit::test]

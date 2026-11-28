@@ -70,6 +70,16 @@ pub fn pasted_files(item: &ClipboardItem) -> Vec<PastedFile> {
         .collect()
 }
 
+/// Whether the paste brings text of its own, which pastes as usual beside the files.
+///
+/// `ClipboardItem::text()` falls back to the concatenated paths of a file-only paste, so it can't
+/// answer this: a paste of files alone has no text, and the field must insert nothing.
+fn pasted_text(item: &ClipboardItem) -> bool {
+    item.entries().iter().any(
+        |entry| matches!(entry, ClipboardEntry::String(string) if !string.text.trim().is_empty()),
+    )
+}
+
 /// What the composer does to a message other than writing a new one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BannerKind {
@@ -281,7 +291,8 @@ impl Composer {
     }
 
     /// Files were pasted into the field (a picture, copied files): they go to the screen, and
-    /// whatever text came with them pastes as usual. A paste of files alone inserts nothing.
+    /// whatever text came with them pastes as usual. A paste is taken whole: files alone insert
+    /// no text, not even their paths.
     pub fn on_paste_files(
         mut self,
         handler: impl Fn(Vec<PastedFile>, &mut Window, &mut App) + 'static,
@@ -623,7 +634,7 @@ impl RenderOnce for Composer {
                             if files.is_empty() {
                                 return false;
                             }
-                            let text = item.text().is_some();
+                            let text = pasted_text(item);
                             on_paste_files(files, window, cx);
                             // Text that came with the files still pastes.
                             !text
@@ -809,13 +820,18 @@ impl RenderOnce for Composer {
                 .children(self.attachments)
         });
 
+        // Deferred: above the composer and its own popovers (the emoji picker), which paint later
+        // in the tree; laid out in place, so `bottom(relative(1.))` still puts it on the field.
         let above = self.suggestions.map(|list| {
-            div()
-                .absolute()
-                .bottom(relative(1.))
-                .left(px(if self.inline { 0. } else { SPACE_MD }))
-                .right(px(if self.inline { 0. } else { SPACE_MD }))
-                .child(list)
+            deferred(
+                div()
+                    .absolute()
+                    .bottom(relative(1.))
+                    .left(px(if self.inline { 0. } else { SPACE_MD }))
+                    .right(px(if self.inline { 0. } else { SPACE_MD }))
+                    .child(list),
+            )
+            .with_priority(1)
         });
 
         let drop = self.drop_target.map(|label| {

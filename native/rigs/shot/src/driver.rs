@@ -206,3 +206,27 @@ pub fn element_id(name: &str) -> ElementId {
         ElementId::NamedChild(std::sync::Arc::new(parent), child.to_owned().into())
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::element_id;
+    use core::prelude::v1::test;
+    use gpui_kit::ElementId;
+
+    #[test]
+    fn a_steps_element_name_splits_on_every_slash_into_named_children() {
+        assert_eq!(element_id("composer"), ElementId::Name("composer".into()));
+        assert_eq!(
+            element_id("composer/submit"),
+            ElementId::NamedChild(
+                std::sync::Arc::new(ElementId::Name("composer".into())),
+                "submit".into()
+            )
+        );
+        assert_eq!(
+            element_id("a/b/c"),
+            ElementId::NamedChild(std::sync::Arc::new(element_id("a/b")), "c".into()),
+            "each later part nests under the one before"
+        );
+    }
+}

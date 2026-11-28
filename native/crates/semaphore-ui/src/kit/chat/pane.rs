@@ -6,7 +6,7 @@ use gpui_kit::accesskit::Live;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_design::lounge::{SPACE_LG, SPACE_SM, SPACE_XS};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -122,7 +122,8 @@ impl ChatPane {
     }
 
     /// Files are dragged over the conversation (true) or have left it (false): the composer's
-    /// drop look.
+    /// drop look. A drag that is over something in front of the pane (a dialog, the image viewer)
+    /// counts as off it, so the look goes rather than stays while the files are over that.
     pub fn on_files_over(
         mut self,
         handler: impl Fn(bool, &mut Window, &mut App) + 'static,
@@ -140,6 +141,14 @@ impl RenderOnce for ChatPane {
         let over_now = window
             .use_keyed_state(child_id(&self.id, "files-over"), cx, |_, _| {
                 Rc::new(Cell::new(false))
+            })
+            .read(cx)
+            .clone();
+        // The pane's own hitbox of the last frame, so a drag's position can be hit-tested: a
+        // point over something that occludes the pane is not over the pane.
+        let probe = window
+            .use_keyed_state(child_id(&self.id, "drag-probe"), cx, |_, _| {
+                Rc::new(RefCell::new(None::<Hitbox>))
             })
             .read(cx)
             .clone();
@@ -244,8 +253,15 @@ impl RenderOnce for ChatPane {
                 .on_mouse_up(MouseButton::Left, move |_, window, cx| on_up(window, cx))
             })
             .when_some(over, |base, over| {
+                let probe = probe.clone();
                 base.on_drag_move(move |event: &DragMoveEvent<ExternalPaths>, window, cx| {
-                    let inside = event.bounds.contains(&event.event.position);
+                    let position = event.event.position;
+                    let inside = match probe.borrow().as_ref() {
+                        Some(pane) => pane.is_hovered_at(position, window),
+                        // No probe yet (the frame that drew the pane is not the last one): the
+                        // pane's box is the best answer, as before.
+                        None => event.bounds.contains(&position),
+                    };
                     if over_now.replace(inside) != inside {
                         over(inside, window, cx);
                     }
@@ -260,6 +276,10 @@ impl RenderOnce for ChatPane {
             .min_h_0()
             .min_w_0()
             .overflow_hidden()
+            .child(DragProbe {
+                slot: probe,
+                body: div().absolute().inset_0(),
+            })
             .child(Inert {
                 inert: covered,
                 child: base.into_any_element(),
@@ -275,6 +295,78 @@ impl RenderOnce for ChatPane {
                     .min_w_0()
                     .child(cover)
             }))
+    }
+}
+
+/// A layer over the whole pane that inserts a hitbox and keeps it, so a drag's position can be
+/// hit-tested against the pane ([`Hitbox::is_hovered_at`]). A normal hitbox neither blocks nor
+/// handles anything: it is hovered only where the pane is at the front of the window, so a point
+/// over something that occludes the pane (`occlude`, as a dialog and the image viewer do) is not
+/// on it. The hitbox is a frame old while an event is dispatched, which is the frame the drag is
+/// over.
+struct DragProbe {
+    slot: Rc<RefCell<Option<Hitbox>>>,
+    body: Div,
+}
+
+impl IntoElement for DragProbe {
+    type Element = Self;
+    fn into_element(self) -> Self {
+        self
+    }
+}
+
+impl Element for DragProbe {
+    type RequestLayoutState = <Div as Element>::RequestLayoutState;
+    type PrepaintState = Option<Hitbox>;
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        inspector: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        self.body.request_layout(id, inspector, window, cx)
+    }
+
+    fn prepaint(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        inspector: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        layout: &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self::PrepaintState {
+        let hitbox = self
+            .body
+            .prepaint(id, inspector, bounds, layout, window, cx);
+        self.slot
+            .replace(Some(window.insert_hitbox(bounds, HitboxBehavior::Normal)));
+        hitbox
+    }
+
+    fn paint(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        inspector: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        layout: &mut Self::RequestLayoutState,
+        hitbox: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.body
+            .paint(id, inspector, bounds, layout, hitbox, window, cx);
     }
 }
 
