@@ -15,6 +15,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -31,8 +32,8 @@ import uniffi.semaphore.OsNotification
  * focused conversation, and the sound); this only shows, withdraws and clears.
  */
 interface Notifier {
-    /** [kind] is core's, when its notification list knows the id; else [NotificationPlan] infers it. */
-    fun show(notification: OsNotification, kind: NotificationKind?)
+    /** [OsNotification.kind] says what it is: the channel, the lock-screen text. */
+    fun show(notification: OsNotification)
 
     /** The conversation was read, here or elsewhere: its notification goes. */
     fun withdraw(tag: String)
@@ -41,7 +42,7 @@ interface Notifier {
     fun clearAll()
 
     object None : Notifier {
-        override fun show(notification: OsNotification, kind: NotificationKind?) = Unit
+        override fun show(notification: OsNotification) = Unit
         override fun withdraw(tag: String) = Unit
         override fun clearAll() = Unit
     }
@@ -55,12 +56,14 @@ object NotifyChannels {
     const val CONNECTION = "connection"
 }
 
-/** What the lock screen may show of a message notification: the app's name and the kind. */
+/** What the lock screen may show: the app's name, the kind of a message, and the connection's state. */
 object NotifyText {
     const val APP = "Semaphore"
     const val NEW_MESSAGE = "New message"
     const val NEW_MENTION = "New mention"
     const val NEW_REPLY = "New reply"
+    const val CONNECTED = "Connected"
+    const val STAYS_CONNECTED = "Semaphore stays connected to receive notifications"
 }
 
 /**
@@ -78,6 +81,9 @@ object TapExtras {
     private const val DM = "dm"
     private const val THREAD = "thread"
 
+    /** The shape of every id core makes (a server's rows are UUIDs). */
+    private val UUID = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
     fun of(link: MessageLink, parentMessageId: String?): Map<String, String> = buildMap {
         link.communityId?.let { put(COMMUNITY, it) }
         when (val conversation = link.conversation) {
@@ -89,16 +95,24 @@ object TapExtras {
         parentMessageId?.let { put(PARENT, it) }
     }
 
-    /** The link back out of [of]'s extras, or null when they aren't a tap's. */
+    /**
+     * The link back out of [of]'s extras, or null when they aren't a tap's. Every id present must
+     * be a UUID: the app's activity is exported, so an intent another app starts it with could
+     * carry any extras, and an id goes on into a route, the last-community file and a request.
+     */
     fun linkOf(get: (String) -> String?): MessageLink? {
+        val community = get(COMMUNITY)
+        val message = get(MESSAGE)
+        val parent = get(PARENT)
         val id = get(ID) ?: return null
+        if (!listOf(community, id, message, parent).all { it == null || UUID.matches(it) }) return null
         val conversation = when (get(KIND)) {
             CHANNEL -> Conversation.Channel(id)
             DM -> Conversation.DirectMessage(id)
             THREAD -> Conversation.Thread(id)
             else -> return null
         }
-        return MessageLink(communityId = get(COMMUNITY), conversation = conversation, messageId = get(MESSAGE))
+        return MessageLink(communityId = community, conversation = conversation, messageId = message)
     }
 
     fun put(intent: Intent, extras: Map<String, String>): Intent = intent.apply { extras.forEach { (k, v) -> putExtra(k, v) } }
@@ -125,45 +139,33 @@ data class NotificationPlan(
     val extras: Map<String, String>,
 ) {
     companion object {
-        /**
-         * Core's [OsNotification] carries no kind, so it is core's own (from its notification
-         * list) when known; otherwise a DM's conversation says DM, a thread parent says reply, and
-         * anything else is a mention (a channel notifies only mentions unless set to All).
-         */
-        fun kindOf(notification: OsNotification, known: NotificationKind?): NotificationKind = when {
-            notification.link.conversation is Conversation.DirectMessage -> NotificationKind.DIRECT_MESSAGE
-            known != null -> known
-            notification.parentMessageId != null -> NotificationKind.THREAD_REPLY
-            else -> NotificationKind.MENTION
-        }
-
         fun channelOf(kind: NotificationKind): String = when (kind) {
             NotificationKind.DIRECT_MESSAGE -> NotifyChannels.DIRECT_MESSAGES
             NotificationKind.MENTION, NotificationKind.THREAD_REPLY -> NotifyChannels.MENTIONS
             NotificationKind.CHANNEL_MESSAGE -> NotifyChannels.CHANNEL_MESSAGES
+            // Never planned: `CoreStore` drops a call before it reaches the notifier.
+            NotificationKind.INCOMING_CALL -> NotifyChannels.MENTIONS
         }
 
         fun publicTextOf(kind: NotificationKind): String = when (kind) {
             NotificationKind.MENTION -> NotifyText.NEW_MENTION
             NotificationKind.THREAD_REPLY -> NotifyText.NEW_REPLY
-            NotificationKind.DIRECT_MESSAGE, NotificationKind.CHANNEL_MESSAGE -> NotifyText.NEW_MESSAGE
+            NotificationKind.DIRECT_MESSAGE, NotificationKind.CHANNEL_MESSAGE, NotificationKind.INCOMING_CALL ->
+                NotifyText.NEW_MESSAGE
         }
 
-        fun of(notification: OsNotification, known: NotificationKind? = null): NotificationPlan {
-            val kind = kindOf(notification, known)
-            return NotificationPlan(
-                tag = notification.tag,
-                kind = kind,
-                channel = channelOf(kind),
-                title = notification.title,
-                body = notification.body,
-                silent = notification.sound == null,
-                visibility = NotificationCompat.VISIBILITY_PRIVATE,
-                publicTitle = NotifyText.APP,
-                publicText = publicTextOf(kind),
-                extras = TapExtras.of(notification.link, notification.parentMessageId),
-            )
-        }
+        fun of(notification: OsNotification): NotificationPlan = NotificationPlan(
+            tag = notification.tag,
+            kind = notification.kind,
+            channel = channelOf(notification.kind),
+            title = notification.title,
+            body = notification.body,
+            silent = notification.sound == null,
+            visibility = NotificationCompat.VISIBILITY_PRIVATE,
+            publicTitle = NotifyText.APP,
+            publicText = publicTextOf(notification.kind),
+            extras = TapExtras.of(notification.link, notification.parentMessageId),
+        )
     }
 }
 
@@ -209,16 +211,25 @@ class AndroidNotifier(private val context: Context) : Notifier {
         createChannels(context)
     }
 
-    override fun show(notification: OsNotification, kind: NotificationKind?) {
-        val plan = NotificationPlan.of(notification, kind)
+    override fun show(notification: OsNotification) {
+        val plan = NotificationPlan.of(notification)
         if (!manager.areNotificationsEnabled()) {
+            // Nothing can be shown, so there is nothing to stay connected for either.
             Log.i(TAG, "not posting ${notification.id} (${plan.kind}): notifications are off")
+            ConnectionService.stop(context)
             return
         }
         val tap = PendingIntent.getActivity(
             context,
             plan.tag.hashCode(),
-            TapExtras.put(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), plan.extras),
+            TapExtras.put(
+                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    // `Intent.filterEquals` ignores extras, so every tap's intent would otherwise be
+                    // the one PendingIntent (the last conversation's link, for all of them): a data
+                    // Uri of the conversation's own makes them distinct.
+                    .setData(Uri.Builder().scheme("semaphore-notify").path(plan.tag).build()),
+                plan.extras,
+            ),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val public = NotificationCompat.Builder(context, plan.channel)

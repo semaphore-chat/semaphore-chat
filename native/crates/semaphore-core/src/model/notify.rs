@@ -14,6 +14,8 @@ pub enum NotificationKind {
     ChannelMessage,
     /// A reply in a thread this user follows.
     ThreadReply,
+    /// Someone is calling: raised by `w4_ring`, never a row of the centre.
+    IncomingCall,
 }
 
 /// One row of the notification centre.
@@ -142,6 +144,8 @@ pub struct OsNotification {
     /// One per conversation: `dm:<id>` or `channel:<id>` (a thread uses its channel's or DM's).
     /// A newer notification replaces the older one with the same tag, and a click maps back by it.
     pub tag: String,
+    /// What it is for: the client's channel, lock-screen text and whether it posts at all.
+    pub kind: NotificationKind,
     pub title: String,
     pub body: String,
     /// What a click opens.

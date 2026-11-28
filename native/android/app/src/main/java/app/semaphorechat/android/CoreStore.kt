@@ -209,9 +209,12 @@ class CoreStore(
                 is CoreEvent.MessagesChanged ->
                     synchronized(conversations) { conversations.entries.firstOrNull { it.key == event.conversation }?.value }
                         ?.apply(event.ops)
-                // Core decided it is due (notify.rs::decide); the kind is its own when its list has
-                // the row (primed below at sign-in), else the plan infers it.
-                is CoreEvent.Notify -> notifier.show(event.notification, knownKind(event.notification.id))
+                // Core decided it is due (notify.rs::decide) and says what it is. An incoming call
+                // is dropped: Android has no call screen yet, so posting it would be a notification
+                // that opens nothing (the ring and the in-app call banner still come from core).
+                is CoreEvent.Notify -> if (event.notification.kind != NotificationKind.INCOMING_CALL) {
+                    notifier.show(event.notification)
+                }
                 is CoreEvent.WithdrawNotifications -> notifier.withdraw(event.tag)
                 else -> Unit
             }
@@ -219,19 +222,17 @@ class CoreStore(
         val session = core.session()
         // A new session starts with no lists: the old one's rows are another account's.
         if (session !is SessionState.SignedIn) {
-            primed = false
-            if (sessionState.value is SessionState.SignedIn) {
+            // Also for a cold start that restores no session: whatever the previous session posted
+            // (and whatever it cached) goes now, once per signed-out stretch.
+            if (!ended) {
+                ended = true
                 notifier.clearAll()
                 onSessionEnded()
             }
             synchronized(conversations) { conversations.clear() }
             synchronized(composers) { composers.values.toList().also { composers.clear() } }.forEach { it.close() }
-        }
-        // Core's notification list, loaded once a session: a new notification's row lands in it
-        // before core raises it, which is how [knownKind] tells a mention from a channel message.
-        if (session is SessionState.SignedIn && !primed) {
-            primed = true
-            core.notifications()
+        } else {
+            ended = false
         }
         sessionState.value = session
         val connection = core.connection()
@@ -254,10 +255,8 @@ class CoreStore(
         ids.forEach { id -> channelStates[id]?.let { it.value = readChannels(id) } }
     }
 
-    /** Whether this session's notification list was asked for (only on the collector). */
-    private var primed = false
-
-    private fun knownKind(id: String): NotificationKind? = core.notifications().rows.firstOrNull { it.id == id }?.kind
+    /** Whether this signed-out stretch's notifications and kept files were already cleared. */
+    private var ended = false
 
     private fun readCommunities(): Load<List<CommunitySummary>> {
         if (core.session() !is SessionState.SignedIn) return Load.Loading

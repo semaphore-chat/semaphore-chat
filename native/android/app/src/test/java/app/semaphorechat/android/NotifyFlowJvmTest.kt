@@ -23,7 +23,6 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import uniffi.semaphore.ConnectionState
 import uniffi.semaphore.Conversation
-import uniffi.semaphore.LoadState
 import uniffi.semaphore.NotificationKind
 import uniffi.semaphore.NotifyLevel
 import uniffi.semaphore.OsNotification
@@ -60,12 +59,12 @@ class NotifyFlowJvmTest {
 
     /** What CoreStore handed on, in order. */
     private class FakeNotifier : Notifier {
-        val shown = CopyOnWriteArrayList<Pair<OsNotification, NotificationKind?>>()
+        val shown = CopyOnWriteArrayList<OsNotification>()
         val withdrawn = CopyOnWriteArrayList<String>()
         @Volatile var cleared = 0
 
-        override fun show(notification: OsNotification, kind: NotificationKind?) {
-            shown += notification to kind
+        override fun show(notification: OsNotification) {
+            shown += notification
         }
         override fun withdraw(tag: String) {
             withdrawn += tag
@@ -102,6 +101,7 @@ class NotifyFlowJvmTest {
         )
     }
 
+    /** Another member posts in [channel], mentioning no one. */
     @Test
     fun aMentionNotifiesUnlessShownOrMutedAndAReadElsewhereWithdrawsIt() {
         assumeTrue("android.sh passes the fake server", server != null && channelId != null && authorId != null)
@@ -129,13 +129,11 @@ class NotifyFlowJvmTest {
                 core.session() is SessionState.SignedIn && core.connection() == ConnectionState.CONNECTED
             }
             val me = (core.session() as SessionState.SignedIn).me.id
-            // CoreStore asks for the notification list at sign-in, so core's rows name each kind.
-            until("the notification list") { core.notifications().state == LoadState.Ready }
             until("the channels listed") { core.communities().any { c -> core.channels(c.id).any { it.id == channelId } } }
             val community = core.communities().first { c -> core.channels(c.id).any { it.id == channelId } }.id
             val memes = core.channels(community).first { it.name == "memes" }.id
             val general = channelId!!
-            fun tags() = notifier.shown.map { it.first.tag }
+            fun tags() = notifier.shown.map { it.tag }
 
             // On screen: #general's mention raises nothing. #memes's, after it, does: so the first
             // was decided (and refused) by then, the socket's events being in order.
@@ -151,14 +149,14 @@ class NotifyFlowJvmTest {
             chat.leave()
             mention(general, me, "are you around")
             until("the mention's notification") { "channel:$general" in tags() }
-            val (raised, kind) = notifier.shown.last()
+            val raised = notifier.shown.last()
             assertEquals("channel:$general", raised.tag)
-            assertEquals(NotificationKind.MENTION, kind)
+            assertEquals(NotificationKind.MENTION, raised.kind)
             assertEquals(Conversation.Channel(general), raised.link.conversation)
             assertEquals(community, raised.link.communityId)
             assertTrue(raised.title, raised.title.contains("mentioned you"))
             assertTrue(raised.body.startsWith("are you around"))
-            assertEquals(NotifyChannels.MENTIONS, NotificationPlan.of(raised, kind).channel)
+            assertEquals(NotifyChannels.MENTIONS, NotificationPlan.of(raised).channel)
 
             // Read on another device: the server says so, and core withdraws it.
             control(
@@ -177,9 +175,10 @@ class NotifyFlowJvmTest {
             assertEquals("nothing from the muted channel", listOf("channel:$general"), tags().drop(before))
             runBlocking { core.setChannelNotifyLevel(memes, null) }
 
-            // Signing out clears what was shown.
+            // Signing out clears what was shown (the cold start's own clear is the first, if any).
+            val clearedBefore = notifier.cleared
             runBlocking { core.signOut() }
-            until("the sign-out cleared them") { notifier.cleared == 1 }
+            until("the sign-out cleared them") { notifier.cleared > clearedBefore }
         } finally {
             scope.cancel()
             pipe.close()

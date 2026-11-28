@@ -94,7 +94,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openTapped(intent: Intent?) {
-        TapExtras.linkOf(intent?.extras)?.let(SemaphoreHost::openTapped)
+        // From the recents list Android replays the intent that launched the app, whatever the user
+        // was doing since: its extras are the tap of that launch, not a new one.
+        if (intent == null || intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return
+        TapExtras.linkOf(intent.extras)?.let(SemaphoreHost::openTapped)
     }
 
     override fun onStart() {

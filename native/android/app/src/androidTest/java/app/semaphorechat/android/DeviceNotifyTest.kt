@@ -164,6 +164,11 @@ class DeviceNotifyTest {
             // Signed in with notifications allowed: the service runs, with its ongoing notification.
             until("the connection service") { ConnectionService.running && SemaphoreHost.keepsConnected }
             until("its notification") { manager.activeNotifications.any { it.id == ConnectionService.NOTIFICATION_ID } }
+            // The host of this phone is on the unlocked device only, not on the lock screen.
+            val ongoing = checkNotNull(
+                manager.activeNotifications.firstOrNull { it.id == ConnectionService.NOTIFICATION_ID },
+            ).notification
+            assertEquals("Semaphore", ongoing.publicVersion.extras.getString(android.app.Notification.EXTRA_TITLE))
             val session = checkNotNull(SemaphoreHost.current())
             val core = session.host.core()
             val me = (core.session() as SessionState.SignedIn).me.id

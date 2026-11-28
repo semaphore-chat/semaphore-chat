@@ -767,9 +767,15 @@ impl Core {
     }
 
     /// Whether the app window has focus. A message arriving in the conversation on screen doesn't
-    /// count as unread while it does.
+    /// count as unread while it does, and no conversation reads its notifications on its own while
+    /// it doesn't: coming back to the window reads the one on screen (`w2_auto_read`).
     pub fn set_focused(&self, focused: bool) {
-        self.write(|state, _| state.focused = focused);
+        self.write(|state, _| {
+            state.focused = focused;
+            if focused && let Some(conversation) = state.main_conversation.clone() {
+                state.w2_auto_read(&conversation);
+            }
+        });
     }
 
     /// Whether a query is cached, and stale. For tests and diagnostics: a UI reads view models.

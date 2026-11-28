@@ -106,13 +106,14 @@ mod tests {
     use super::*;
     use core::prelude::v1::test;
     use gpui_kit::{SystemNotificationResponse, TestAppContext};
-    use semaphore_core::model::{Conversation, MessageLink};
+    use semaphore_core::model::{Conversation, MessageLink, NotificationKind};
     use std::sync::Mutex;
 
     fn notification(tag: &str, body: &str) -> OsNotification {
         OsNotification {
             id: "n".into(),
             tag: tag.into(),
+            kind: NotificationKind::DirectMessage,
             title: "Ava".into(),
             body: body.into(),
             link: MessageLink {

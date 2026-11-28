@@ -139,8 +139,16 @@ class AppModel(
             }
             when (outcome) {
                 RestoreOutcome.SignedIn -> Unit // onSession opens the Lounge.
-                RestoreOutcome.NoSession -> toConnect(server, notice = null)
-                RestoreOutcome.Refused -> refused(server)
+                // No session came back: a tap from before it (a notification of the session that
+                // ended) is not for the next one, and the sign-in screen is not a place to keep it.
+                RestoreOutcome.NoSession -> {
+                    dropPendingLink()
+                    toConnect(server, notice = null)
+                }
+                RestoreOutcome.Refused -> {
+                    dropPendingLink()
+                    refused(server)
+                }
                 is RestoreOutcome.Unreachable -> startState.value = StartState.Unreachable(
                     server,
                     outcome.error.code,
@@ -369,16 +377,19 @@ class AppModel(
 
     /**
      * A tapped notification: its channel, over its community's home (Back goes there). A DM opens
-     * the Lounge's home (no DM screen before D10); a thread reply's link is its channel. Waits for
-     * the session when it isn't signed in yet (a tap that started the app).
+     * the Lounge's home (no DM screen before D10); a thread reply's link is its channel. A tap that
+     * started the app waits for the restore it started — and only that one: signed out, or on the
+     * sign-in screen, there is no session for it (it is a notification of an ended one).
      */
     fun openLink(link: MessageLink) {
         val now = synchronized(linkLock) {
-            if (!wasSignedIn) pendingLink = link
+            if (!wasSignedIn && startState.value is StartState.Restoring) pendingLink = link
             wasSignedIn
         }
         if (now) go(link)
     }
+
+    private fun dropPendingLink() = synchronized(linkLock) { pendingLink = null }
 
     private fun go(link: MessageLink) {
         val channel = link.conversation as? Conversation.Channel

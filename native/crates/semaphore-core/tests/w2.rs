@@ -790,6 +790,7 @@ async fn a_new_notification_joins_the_centre_and_raises_once() {
     assert_eq!(raised.len(), 1, "once per id");
     let shown = &raised[0];
     assert_eq!(shown.tag, format!("dm:{GROUP}"));
+    assert_eq!(shown.kind, NotificationKind::DirectMessage);
     assert_eq!(shown.body, "hello there");
     assert_eq!(shown.sound, Some(NotifySound::Dm));
     assert_eq!(
@@ -807,7 +808,44 @@ async fn a_new_notification_joins_the_centre_and_raises_once() {
     ));
     let raised = notifies(&rig.events.take());
     assert_eq!(raised[0].title, "Alice mentioned you in #general");
+    assert_eq!(raised[0].kind, NotificationKind::Mention);
     assert_eq!(raised[0].tag, format!("channel:{CHANNEL}"));
+}
+
+#[tokio::test]
+async fn a_notification_for_the_open_conversation_waits_for_the_window() {
+    // On the conversation's screen but in the background: the OS notification stands, and the row
+    // stays unread until the window comes back to it.
+    let rig = w2_rig().await.open_channel(vec![]).await;
+    rig.core.run_until_idle().await;
+    rig.core.set_focused(false);
+    rig.events.take();
+    rig.core.ingest(new_notification(
+        "n-1",
+        "USER_MENTION",
+        Some(CHANNEL),
+        None,
+        ALICE,
+    ));
+    assert_eq!(
+        notifies(&rig.events.take()).len(),
+        1,
+        "raised in the background"
+    );
+    assert!(
+        rig.core.notifications().rows.iter().all(|row| !row.read),
+        "left unread"
+    );
+    assert_eq!(rig.backend.w2.count("mark_read"), 0, "nothing read");
+
+    rig.backend.w2.answer(
+        "mark_read",
+        notification("n-1", "USER_MENTION", Some(CHANNEL), None, true),
+    );
+    rig.core.set_focused(true);
+    rig.core.run_until_idle().await;
+    assert_eq!(rig.backend.w2.count("mark_read"), 1, "read on return");
+    assert!(rig.core.notifications().rows.iter().all(|row| row.read));
 }
 
 #[tokio::test]

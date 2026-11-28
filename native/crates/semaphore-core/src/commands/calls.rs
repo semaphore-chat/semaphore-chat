@@ -25,8 +25,9 @@ use crate::cache::keys;
 use crate::client::{Core, Effect, State};
 use crate::model::{
     Conversation, ErrorView, IncomingCallView, JoinFailure, LoadState, LocalShare,
-    MediaDiagnostics, MessageLink, OsNotification, REPLAY_AUDIO_WAIT_MS, RING_MS, ReplayState,
-    SoundCue, UserView, ViewKey, VoiceDiagnosticEvent, VoiceJoinOptions, VoiceRoom, VoiceStatus,
+    MediaDiagnostics, MessageLink, NotificationKind, OsNotification, REPLAY_AUDIO_WAIT_MS, RING_MS,
+    ReplayState, SoundCue, UserView, ViewKey, VoiceDiagnosticEvent, VoiceJoinOptions, VoiceRoom,
+    VoiceStatus,
 };
 use crate::platform::{CoreError, CoreEvent, KeepAwake};
 use crate::resync::unavailable;
@@ -299,6 +300,7 @@ impl State {
             notification: OsNotification {
                 id: tag.clone(),
                 tag,
+                kind: NotificationKind::IncomingCall,
                 title: format!("{caller_name} is calling"),
                 body: "Incoming voice call".into(),
                 link: MessageLink {

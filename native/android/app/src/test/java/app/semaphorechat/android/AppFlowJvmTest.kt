@@ -41,6 +41,8 @@ import uniffi.semaphore.ChannelPermissions
 import uniffi.semaphore.ChannelPreset
 import uniffi.semaphore.ChannelRow
 import uniffi.semaphore.CommunityRow
+import uniffi.semaphore.Conversation
+import uniffi.semaphore.MessageLink
 import uniffi.semaphore.RemovalCause
 import uniffi.semaphore.SessionState
 import uniffi.semaphore.UserView
@@ -495,6 +497,48 @@ class AppFlowJvmTest {
             }
         }
         return "http://127.0.0.1:${socket.localPort}"
+    }
+
+    @Test
+    fun aLinkTappedBeforeSignInIsNotOpenedAfterIt() {
+        assumeTrue("android.sh passes the fake server", server != null)
+        val url = server!!
+        val run = launch(
+            Files.createTempDirectory("semaphore-flow-link").toFile(),
+            MemorySecrets(),
+            MemoryLastCommunity(),
+        )
+        val model = run.model
+        try {
+            assertEquals(Route.Connect, model.navigator.top)
+            // A notification of a session that has ended (signed out, the tap arrived late): its
+            // channel is of another account's session, so signing in must not open it.
+            model.openLink(
+                MessageLink(
+                    "0f6f0c1e-2f4a-4b31-9d6e-3c1a2b4c5d11",
+                    Conversation.Channel("0f6f0c1e-2f4a-4b31-9d6e-3c1a2b4c5d12"),
+                    null,
+                ),
+            )
+            signInThroughModel(model, url)
+            until("the signed-in Lounge") { (model.navigator.top as? Route.Community)?.id != null }
+            assertTrue(
+                "the link did not survive sign-in: ${model.navigator.stack.value}",
+                model.navigator.stack.value.none { it is Route.Channel },
+            )
+
+            // Signed in, a tap opens its channel at once.
+            val store = model.store
+            until("the communities") { store.communities.value is Load.Ready }
+            val lumen = (store.communities.value as Load.Ready).value.first { it.name == "Lumen Studio" }
+            val channels = store.watch(lumen.id)
+            until("Lumen's channels") { channels.value is Load.Ready }
+            val design = (channels.value as Load.Ready).value.text.first { it.name == "design" }
+            model.openLink(MessageLink(lumen.id, Conversation.Channel(design.id), null))
+            until("the tapped channel") { model.navigator.top == Route.Channel(lumen.id, design.id) }
+        } finally {
+            run.close()
+        }
     }
 
     @Test

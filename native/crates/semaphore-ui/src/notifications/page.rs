@@ -466,6 +466,7 @@ fn kind_icon(kind: NotificationKind) -> DesignIcon {
         NotificationKind::DirectMessage => DesignIcon::Chat,
         NotificationKind::ChannelMessage => DesignIcon::Tag,
         NotificationKind::ThreadReply => DesignIcon::Forum,
+        NotificationKind::IncomingCall => DesignIcon::Phone,
     }
 }
 

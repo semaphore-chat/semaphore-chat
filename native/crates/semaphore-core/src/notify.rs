@@ -113,7 +113,9 @@ pub fn decide(input: &NotifyInput<'_>) -> Verdict {
         NotifySound::Default => match input.kind {
             NotificationKind::DirectMessage => NotifySound::Dm,
             NotificationKind::Mention | NotificationKind::ThreadReply => NotifySound::Mention,
-            NotificationKind::ChannelMessage => NotifySound::Default,
+            NotificationKind::ChannelMessage | NotificationKind::IncomingCall => {
+                NotifySound::Default
+            }
         },
         chosen => chosen,
     });

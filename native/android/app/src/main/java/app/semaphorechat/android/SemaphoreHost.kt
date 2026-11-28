@@ -61,21 +61,15 @@ object SemaphoreHost {
     @Volatile
     private var session: Session? = null
 
-    /** Guards [backgrounded] together with [session] being set, so a change is applied exactly once. */
+    /** Guards [state] together with [session] being set, so a change is applied exactly once. */
     private val lifecycle = Any()
 
     /**
-     * Whether the app is in the background. Recorded whether or not the session exists yet, so a
-     * core that finishes starting in the background starts suspended, and is resumed on return.
-     * Process-wide, so an activity recreated while in the background still resumes it.
+     * Whether the app is in the background, whether core is suspended for it, and whether
+     * [ConnectionService] keeps it connected. Process-wide, so an activity recreated while in the
+     * background still resumes core; see [HostLifecycle] for the transitions.
      */
-    private var backgrounded = false
-
-    /** Whether core was suspended by going to the background (or a Disconnect there). */
-    private var suspended = false
-
-    /** [ConnectionService] is running: going to the background leaves core connected. */
-    private var connectedKept = false
+    private val state = HostLifecycle()
 
     /** Started already, or null. */
     fun current(): Session? = session
@@ -112,10 +106,7 @@ object SemaphoreHost {
     /** The app came to the foreground (`onStart`): resumes the core if it was suspended. */
     fun foregrounded() {
         val resume = synchronized(lifecycle) {
-            val was = suspended
-            backgrounded = false
-            suspended = false
-            session.takeIf { was }
+            if (state.foregrounded() == HostLifecycle.Action.Resume) session else null
         } ?: return
         resume.host.core().resume()
         // The views went stale while the socket was closed; read them again.
@@ -131,9 +122,7 @@ object SemaphoreHost {
     fun backgroundedNow() {
         var suspend = false
         val started = synchronized(lifecycle) {
-            backgrounded = true
-            suspend = session != null && !connectedKept && !suspended
-            if (suspend) suspended = true
+            suspend = state.backgrounded() == HostLifecycle.Action.Suspend
             session
         } ?: return
         val core = started.host.core()
@@ -146,23 +135,28 @@ object SemaphoreHost {
 
     /**
      * [ConnectionService] started or stopped. Stopped in the background (its Disconnect action),
-     * core is suspended as `backgroundedNow` would have.
+     * core is suspended as `backgroundedNow` would have; started again while the app is there, it
+     * resumes (the service is what keeps the connection then).
      */
     fun keepConnected(on: Boolean) {
-        val suspendNow = synchronized(lifecycle) {
-            connectedKept = on
-            if (!on && backgrounded && !suspended && session != null) {
-                suspended = true
-                session
-            } else {
-                null
+        var action = HostLifecycle.Action.None
+        val started = synchronized(lifecycle) {
+            action = state.keepConnected(on)
+            session
+        } ?: return
+        when (action) {
+            HostLifecycle.Action.Suspend -> started.host.core().suspend()
+            HostLifecycle.Action.Resume -> {
+                started.host.core().resume()
+                // The views went stale while the socket was closed; read them again.
+                started.model.store.refresh()
             }
+            HostLifecycle.Action.None -> Unit
         }
-        suspendNow?.host?.core()?.suspend()
     }
 
     /** Whether going to the background leaves core connected now (for the device test). */
-    val keepsConnected: Boolean get() = synchronized(lifecycle) { connectedKept }
+    val keepsConnected: Boolean get() = synchronized(lifecycle) { state.keepsConnected }
 
     /** Short: `onStop` runs on the main thread. */
     private val FLUSH_BOUND_MS = 300u
@@ -179,7 +173,7 @@ object SemaphoreHost {
                     it.close()
                 }
                 session = null
-                suspended = false
+                state.ended()
             }
         }
     }
@@ -210,7 +204,10 @@ object SemaphoreHost {
         val store = CoreStore(core, modelScope, events.events, notifier = AndroidNotifier(app)) {
             images.clear()
             runCatching { files.clear() }
-            // Signed out: nothing to stay connected for.
+            // Signed out: there is nothing to stay connected for. A tap is not dropped here: this
+            // runs once for the signed-out read every start makes before its restore, which is
+            // when the tap that started the app is still pending. AppModel.openLink decides (a tap
+            // belongs to a restore, and a restore that comes back signed out drops it).
             ConnectionService.stop(app)
         }
         val model = AppModel(
@@ -229,7 +226,7 @@ object SemaphoreHost {
             session = startedSession
             tapped = pendingTap
             pendingTap = null
-            (backgrounded && !connectedKept).also { if (it) suspended = true }
+            state.started() == HostLifecycle.Action.Suspend
         }
         if (suspend) core.suspend()
         tapped?.let(model::openLink)
