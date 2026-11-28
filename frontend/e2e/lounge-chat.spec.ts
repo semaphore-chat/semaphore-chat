@@ -415,10 +415,13 @@ test.describe('The Lounge chat (390 px)', () => {
     try {
       await openChat(page, world.c1.id, world.c1.lobbyId);
       await expect(numbered(page, 40)).toBeInViewport(EVENTUAL);
+      // The list's laid-out height per viewport width, so the "scrolled up" loop below can wait for a resize.
+      const heightAt = new Map<number, number>();
       for (const viewport of [TABLET, PHONE, TABLET, PHONE]) {
         await page.setViewportSize(viewport);
         await expect(page.locator('[data-shell="lounge"]'), `${viewport.width}px`).toBeAttached();
         await expect(numbered(page, 40), `${viewport.width}px`).toBeInViewport(EVENTUAL);
+        heightAt.set(viewport.width, await messages(page).evaluate((el) => el.clientHeight));
       }
 
       // Scroll back to an older message: the newest leaves the view.
@@ -431,6 +434,10 @@ test.describe('The Lounge chat (390 px)', () => {
       await expect(numbered(page, 40)).not.toBeInViewport();
       for (const viewport of [TABLET, PHONE]) {
         await page.setViewportSize(viewport);
+        // The list's height is what changes (the rows are one line at both widths): wait for it before asserting.
+        await expect
+          .poll(() => messages(page).evaluate((el) => el.clientHeight), { ...EVENTUAL, message: `${viewport.width}px` })
+          .toBe(heightAt.get(viewport.width));
         await expect(older, `${viewport.width}px`).toBeInViewport(EVENTUAL);
       }
       await expect(numbered(page, 40)).not.toBeInViewport();

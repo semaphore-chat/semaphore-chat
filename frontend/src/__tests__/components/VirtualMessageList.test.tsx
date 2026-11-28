@@ -1384,6 +1384,76 @@ describe('VirtualMessageList', () => {
       expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
     });
 
+    it('counts sub-pixel steps against the last stored height, so a run of them still re-pins', () => {
+      renderMeasured();
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      // Twenty pixels of growth in 0.4 px steps: each step alone is layout noise.
+      for (let h = 1028.4; h <= 1048; h += 0.4) resizeViewport(h);
+
+      expect(bottomScrolls().length).toBeGreaterThan(0);
+    });
+
+    it('does not scroll when the list is opened at the start with a newer page to load (a thread)', () => {
+      renderMeasured({ startAt: 'start', hasNewer: true });
+      act(() => capturedProps.onScroll?.(600)); // at the loaded end → pinned
+      fakeHandle.scrollToIndex.mockClear();
+      resizeRows({ 'msg-4': 60 }); // first measurement of the rows
+
+      resizeViewport(616);
+      expect(bottomScrolls()).toHaveLength(0);
+
+      resizeRows({ 'msg-4': 96 }); // a reply's row grows
+      expect(bottomScrolls()).toHaveLength(0);
+    });
+
+    it('restores the place of a reader whose pin came from the clamp when the viewport grew', () => {
+      renderMeasured();
+      // 2000 px of content in the 1028 px viewport, the reader 150 px above the bottom.
+      fakeHandle.scrollSize = 2000;
+      fakeHandle.viewportSize = 1028;
+      fakeHandle.scrollOffset = 822;
+      act(() => capturedProps.onScroll?.(822));
+      fakeHandle.scrollToIndex.mockClear();
+
+      // Growing past their distance from the bottom lowers the end of the range under their offset, so the
+      // browser clamps it: the scroll event that follows is not the reader's pin.
+      resizeViewport(1180);
+      fakeHandle.viewportSize = 1180;
+      fakeHandle.scrollOffset = 820;
+      act(() => capturedProps.onScroll?.(820));
+
+      fakeHandle.viewportSize = 616;
+      resizeViewport(616);
+
+      expect(bottomScrolls()).toHaveLength(0);
+      expect(fakeHandle.scrollTo).toHaveBeenCalledWith(822);
+    });
+
+    it('also restores it when the clamp scroll event runs before the observer sees the growth', () => {
+      renderMeasured();
+      fakeHandle.scrollSize = 2000;
+      fakeHandle.viewportSize = 1028;
+      fakeHandle.scrollOffset = 822;
+      act(() => capturedProps.onScroll?.(822));
+      fakeHandle.scrollToIndex.mockClear();
+
+      // The browser clamps the offset to the new end before the observer's notification: the scroll event
+      // reports it while virtua still holds the old viewport size, so it pins nothing.
+      fakeHandle.scrollOffset = 820;
+      act(() => capturedProps.onScroll?.(820));
+
+      fakeHandle.viewportSize = 1180;
+      resizeViewport(1180);
+
+      fakeHandle.viewportSize = 616;
+      resizeViewport(616);
+
+      expect(bottomScrolls()).toHaveLength(0);
+      expect(fakeHandle.scrollTo).toHaveBeenCalledWith(822);
+    });
+
     it('does nothing while hidden (0 px) and returns to the bottom when shown again', () => {
       renderMeasured();
       act(() => capturedProps.onScroll?.(600));
