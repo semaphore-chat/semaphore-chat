@@ -250,14 +250,19 @@ test.describe('The Lounge chat at tablet and desktop (real routes)', () => {
       await expect(row(page, 'something to answer')).toBeVisible(EVENTUAL);
       const composer = page.getByRole('textbox', { name: 'Message #lobby' });
       await composer.fill('half a thought');
+      await expect(membersIsland(page)).toBeVisible(EVENTUAL);
       for (const width of [1000, 500, 1440]) {
         await page.setViewportSize({ width, height: 900 });
+        // The layout for this width is on screen before anything else is read: the members island at wide only, Back to
+        // the community on a phone only (tablet and desktop show the community's list instead).
+        if (width >= 1200) await expect(membersIsland(page), `${width}px`).toBeVisible(EVENTUAL);
+        else await expect(membersIsland(page), `${width}px`).toHaveCount(0, EVENTUAL);
+        await expect(page.getByRole('button', { name: 'Back to the community' }), `${width}px`).toHaveCount(width < 600 ? 1 : 0, EVENTUAL);
         await expect(lounge(page), `${width}px`).toBeAttached();
         await expect(chatHeading(page, 'lobby'), `${width}px`).toBeVisible(EVENTUAL);
         await expect(page, `${width}px`).toHaveURL(hashUrl(real));
+        await expect(row(page, 'something to answer'), `${width}px`).toBeInViewport(EVENTUAL);
         await expect(composer, `${width}px`).toHaveValue('half a thought', EVENTUAL);
-        // A phone has Back to the community; tablet and desktop show the list instead.
-        await expect(page.getByRole('button', { name: 'Back to the community' }), `${width}px`).toHaveCount(width < 600 ? 1 : 0);
         expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), `${width}px`).toBe(false);
       }
     } finally {

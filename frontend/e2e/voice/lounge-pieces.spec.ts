@@ -598,6 +598,8 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
       await waitForAudioFlow(a, b);
       await expectCallUntouched(b, onB, `${step} (on B)`);
     }
+    // After the last width settles, the call is still the one tagged before the first resize.
+    await expectCallUntouched(a, before, 'after every width');
   });
 
   test('V8: a card joiner publishes the soundboard track once; opening the classic shell adds no <audio> element on B', async () => {

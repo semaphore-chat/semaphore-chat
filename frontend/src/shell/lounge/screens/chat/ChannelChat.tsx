@@ -504,10 +504,13 @@ function ChannelChatBody({ communityId, channelId, search }: { communityId: stri
     },
     [searchMemory],
   );
-  // Both shells open this channel next time the community is opened with none chosen.
+  // Both shells open this channel next time the community is opened with none chosen. Only once its messages have loaded:
+  // a channel that is listed but cannot be read (403) or is gone must not be remembered, or the home at compact and wide
+  // (CommunityRedirect) would send "Go to the community" straight back to it.
+  const readable = !conversation.isLoading && !conversation.error;
   useEffect(() => {
-    if (writable) setLastChannelId(conversation.me || undefined, communityId, channelId);
-  }, [writable, conversation.me, communityId, channelId]);
+    if (writable && readable) setLastChannelId(conversation.me || undefined, communityId, channelId);
+  }, [writable, readable, conversation.me, communityId, channelId]);
   // One sender for the whole list's Retry (not one socket hook per row), read through a ref so the rows' shared
   // context stays the same when the connection changes.
   const { sendMessage: rawSend } = useSendMessage(VoiceSessionType.Channel);
