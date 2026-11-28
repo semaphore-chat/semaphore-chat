@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -15,9 +16,11 @@ import { DatabaseService } from '@/database/database.service';
 import { SubscribePushDto } from './dto/subscribe.dto';
 import { PushSubscription } from '@prisma/client';
 import {
+  guardedLookup,
   isPublicUrl,
-  publicOnlyLookup,
+  resolvesToPublicOrPrivateNetwork,
 } from '@/common/utils/public-address.util';
+import { PUSH_PRIVATE_HOSTS, PushPrivateHosts } from './push-private-hosts';
 
 /**
  * Domain-separation string used when deriving the push action-token signing
@@ -46,11 +49,14 @@ const SEND_CHUNK_SIZE = 5;
 
 /**
  * What a push endpoint must look like (RFC 8030: an HTTPS URL of a push
- * service): https on the default port, a host name rather than an IP address,
- * no credentials. Returns the host name, or null. Whether that name is public
- * is a separate, DNS-dependent check.
+ * service): https, a host name rather than an IP address, no credentials.
+ * Returns the lower-case host name and the port (443 when none is given), or
+ * null. Whether that port is allowed, and whether the name is public, are
+ * separate checks.
  */
-function pushEndpointHost(endpoint: string): string | null {
+function parsePushEndpoint(
+  endpoint: string,
+): { host: string; port: number } | null {
   if (endpoint.length > MAX_ENDPOINT_LENGTH) return null;
   let url: URL;
   try {
@@ -60,11 +66,17 @@ function pushEndpointHost(endpoint: string): string | null {
   }
   if (url.protocol !== 'https:') return null;
   if (url.username || url.password) return null;
-  if (url.port !== '' && url.port !== '443') return null;
   // URL keeps the brackets of an IPv6 literal
   if (isIP(url.hostname.replace(/^\[|\]$/g, '')) !== 0) return null;
-  return url.hostname;
+  // URL drops a default port, so '' is 443
+  return {
+    host: url.hostname.toLowerCase(),
+    port: url.port === '' ? 443 : Number(url.port),
+  };
 }
+
+/** Push urgency (RFC 8030 section 5.3). */
+export type PushUrgency = 'very-low' | 'low' | 'normal' | 'high';
 
 interface ActionTokenPayload {
   u: string;
@@ -86,13 +98,25 @@ export class PushNotificationsService implements OnModuleInit {
   private readonly logger = new Logger(PushNotificationsService.name);
   private isConfigured = false;
   private vapidPublicKey: string | null = null;
-  /** Re-checks at connection time what a push endpoint's name resolves to. */
-  private readonly pushAgent = new Agent({ lookup: publicOnlyLookup });
+  /**
+   * Re-checks at connection time what a push endpoint's name resolves to:
+   * public addresses only, or also private networks for a host the operator
+   * listed in PUSH_PRIVATE_HOSTS.
+   */
+  private readonly pushAgent: Agent;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
-  ) {}
+    @Inject(PUSH_PRIVATE_HOSTS)
+    private readonly privateHosts: PushPrivateHosts,
+  ) {
+    this.pushAgent = new Agent({
+      lookup: guardedLookup((hostname) =>
+        this.privateHosts.allowsHost(hostname),
+      ),
+    });
+  }
 
   async onModuleInit() {
     const envPublicKey = this.configService.get<string>('VAPID_PUBLIC_KEY');
@@ -262,10 +286,30 @@ export class PushNotificationsService implements OnModuleInit {
    * be a real push service URL and never an address inside the network.
    */
   private async assertValidEndpoint(endpoint: string): Promise<void> {
-    const host = pushEndpointHost(endpoint);
-    if (!host || !(await isPublicUrl(host))) {
+    const parsed = this.allowedEndpoint(endpoint);
+    const reachable =
+      parsed !== null &&
+      (this.privateHosts.allowsHost(parsed.host)
+        ? await resolvesToPublicOrPrivateNetwork(parsed.host)
+        : await isPublicUrl(parsed.host));
+    if (!reachable) {
       throw new BadRequestException('That is not a valid push endpoint');
     }
+  }
+
+  /**
+   * The endpoint's host and port when its shape is allowed: a well-formed
+   * push URL (see parsePushEndpoint) on 443, or on a port PUSH_PRIVATE_HOSTS
+   * names for that host.
+   */
+  private allowedEndpoint(
+    endpoint: string,
+  ): { host: string; port: number } | null {
+    const parsed = parsePushEndpoint(endpoint);
+    if (!parsed || !this.privateHosts.allowsPort(parsed.host, parsed.port)) {
+      return null;
+    }
+    return parsed;
   }
 
   /**
@@ -302,7 +346,7 @@ export class PushNotificationsService implements OnModuleInit {
     const subscriptions = await this.getUserSubscriptions(userId);
     return subscriptions.map((subscription) => ({
       id: subscription.id,
-      endpointHost: pushEndpointHost(subscription.endpoint),
+      endpointHost: parsePushEndpoint(subscription.endpoint)?.host ?? null,
       userAgent: subscription.userAgent,
       createdAt: subscription.createdAt,
       updatedAt: subscription.updatedAt,
@@ -325,6 +369,7 @@ export class PushNotificationsService implements OnModuleInit {
   async sendToUser(
     userId: string,
     payload: PushNotificationPayload,
+    options: { urgency?: PushUrgency } = {},
   ): Promise<{ sent: number; failed: number }> {
     if (!this.isConfigured) {
       this.logger.debug('Push notifications not configured, skipping');
@@ -348,7 +393,9 @@ export class PushNotificationsService implements OnModuleInit {
     ) {
       const chunk = subscriptions.slice(start, start + SEND_CHUNK_SIZE);
       const results = await Promise.allSettled(
-        chunk.map((sub) => this.sendToSubscription(sub, payload)),
+        chunk.map((sub) =>
+          this.sendToSubscription(sub, payload, options.urgency ?? 'normal'),
+        ),
       );
 
       for (let i = 0; i < results.length; i++) {
@@ -381,10 +428,14 @@ export class PushNotificationsService implements OnModuleInit {
   private async sendToSubscription(
     subscription: PushSubscription,
     payload: PushNotificationPayload,
+    urgency: PushUrgency,
   ): Promise<void> {
-    // Rows from before endpoints were validated: drop them like a dead
-    // subscription (sendToUser removes on 410) instead of connecting
-    if (!pushEndpointHost(subscription.endpoint)) {
+    // Rows from before endpoints were validated, or on a port no longer
+    // listed in PUSH_PRIVATE_HOSTS: drop them like a dead subscription
+    // (sendToUser removes on 410) instead of connecting. Where the host
+    // resolves is checked at connection time by pushAgent's lookup, and a
+    // refusal there is a plain failure (DNS can change back).
+    if (!this.allowedEndpoint(subscription.endpoint)) {
       throw Object.assign(new Error('Invalid push endpoint'), {
         statusCode: 410,
       });
@@ -403,7 +454,10 @@ export class PushNotificationsService implements OnModuleInit {
       JSON.stringify(payload),
       {
         TTL: 60 * 60 * 24, // 24 hours
-        urgency: 'normal',
+        urgency,
+        // RFC 8291, which every current push service and UnifiedPush's
+        // connector decrypt. Explicit rather than the library's default.
+        contentEncoding: 'aes128gcm',
         agent: this.pushAgent,
         timeout: PUSH_REQUEST_TIMEOUT_MS,
       },

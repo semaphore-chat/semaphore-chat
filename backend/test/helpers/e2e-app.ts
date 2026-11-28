@@ -17,7 +17,7 @@ import {
   LoggerService,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Test } from '@nestjs/testing';
+import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import { AppValidationPipe } from '@/common/pipes/app-validation.pipe';
 import { pinClientAddress } from '@/common/http/pin-client-address';
 import { configureBodyParsers } from '@/common/http/body-parsers';
@@ -56,10 +56,18 @@ export async function createE2eApp(options?: {
   trustProxy?: boolean | number | string;
   /** Apply src/main.ts's CORS policy, for a suite that tests preflights. */
   corsOrigin?: string;
+  /**
+   * Override providers before compiling, for configuration read once at boot
+   * (e.g. `.overrideProvider(PUSH_PRIVATE_HOSTS).useValue(...)`).
+   */
+  overrides?: (builder: TestingModuleBuilder) => TestingModuleBuilder;
 }): Promise<E2eApp> {
-  const moduleFixture = await Test.createTestingModule({
+  const builder = Test.createTestingModule({
     imports: [AppModule],
-  }).compile();
+  });
+  const moduleFixture = await (
+    options?.overrides ? options.overrides(builder) : builder
+  ).compile();
 
   const app: E2eApp = moduleFixture.createNestApplication({
     logger: options?.logger ?? false,
