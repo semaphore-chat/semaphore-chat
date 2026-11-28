@@ -7,6 +7,10 @@
  * it); the shared thread model is `data/chat/useThreadConversation`. Nothing is marked read here (the old thread
  * panel tracks no read state for threads) and nobody's typing is shown (threads have none).
  *
+ * At compact and wide (PR 10e, B8) the thread is the screen's right panel instead (`placement="panel"`): the right
+ * island beside the channel at wide, the right Sheet at compact. Its header then has Close in place of Back, and its
+ * heading is an `h2` (the channel's `h1` stays the screen's).
+ *
  * Focus: the heading takes focus and is announced when the thread opens; the screen gives focus back to the opener
  * when it closes.
  */
@@ -48,7 +52,12 @@ export interface ThreadViewProps {
   editing: EditingStore;
   inputRef: RefObject<HTMLTextAreaElement | null>;
   onClose: () => void;
+  /** Full screen over the channel (a phone, the default), or the screen's right panel (compact and wide). */
+  placement?: 'cover' | 'panel';
 }
+
+/** Marks a thread's rows, so the screen can tell a thread row's actions from a channel row's (both on screen at wide). */
+export const THREAD_VIEW_ATTRIBUTE = 'data-chat-thread';
 
 function LoadingThread(): JSX.Element {
   return (
@@ -86,17 +95,20 @@ function ThreadHeader({
   backLabel,
   onBack,
   follow,
+  panel,
 }: {
   backLabel: string;
   onBack: () => void;
   follow?: { following: boolean; onToggle: () => void };
+  /** The right panel: Close at the end in place of Back, and an `h2`. */
+  panel: boolean;
 }): JSX.Element {
-  const back = useRef<HTMLButtonElement>(null);
+  const row = useRef<HTMLDivElement>(null);
   const announce = useAnnounce();
   // The heading takes focus once, when the thread opens (a script focus: no ring, as RouteFocus does it), and the
   // thread is announced.
   useEffect(() => {
-    const heading = back.current?.parentElement?.querySelector('h1');
+    const heading = row.current?.querySelector('h1, h2');
     if (heading instanceof HTMLElement) {
       if (!heading.hasAttribute('tabindex')) {
         heading.setAttribute('tabindex', '-1');
@@ -108,10 +120,11 @@ function ThreadHeader({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the thread opens
   }, []);
   return (
+    <div ref={row} style={{ display: 'contents' }}>
     <Stack direction="row" gap="sm">
-      <IconButton ref={back} icon="ArrowLeft" label={backLabel} variant="ghost" onClick={onBack} />
+      {!panel && <IconButton icon="ArrowLeft" label={backLabel} variant="ghost" onClick={onBack} />}
       <Stack direction="row" gap="xs" fill>
-        <Text variant="title" as="h1" truncate>
+        <Text variant="title" as={panel ? 'h2' : 'h1'} truncate>
           Thread
         </Text>
       </Stack>
@@ -124,7 +137,9 @@ function ThreadHeader({
           onClick={follow.onToggle}
         />
       )}
+      {panel && <IconButton icon="X" label="Close thread" variant="ghost" onClick={onBack} />}
     </Stack>
+    </div>
   );
 }
 
@@ -139,6 +154,7 @@ export function ThreadView({
   editing,
   inputRef,
   onClose,
+  placement = 'cover',
 }: ThreadViewProps): JSX.Element {
   const thread = useThreadConversation({ parentMessageId, parent });
   const parentMessage = thread.parent;
@@ -234,9 +250,11 @@ export function ThreadView({
 
   return (
     <ChatRowContext value={threadShared}>
+      <div {...{ [THREAD_VIEW_ATTRIBUTE]: '' }} style={{ display: 'contents' }}>
       <ChatPane
         header={
           <ThreadHeader
+            panel={placement === 'panel'}
             backLabel={backLabel}
             onBack={onClose}
             follow={interactive ? { following: thread.isSubscribed, onToggle: () => void thread.toggleSubscription() } : undefined}
@@ -280,6 +298,7 @@ export function ThreadView({
           ) : undefined
         }
       />
+      </div>
     </ChatRowContext>
   );
 }

@@ -3,10 +3,15 @@
  * call bar, the "All communities" sheet) around the screen's centre. This component stays mounted while
  * the user moves between two screens of this template, so every piece keeps its state, scroll and focus;
  * only the centre changes.
+ *
+ * The right region shows the screen's default right content (the members) or, while the screen has one open, its own
+ * panel (a thread, the pinned messages; `ScreenChrome.panel`). The default content stays mounted under the panel,
+ * `hidden` and `inert`, so its scroll and data survive and nothing in it can be reached; the screen portals the
+ * panel's content into the frame's slot (`panelTarget`).
  */
-import { memo, Suspense, useMemo, useState, type JSX } from 'react';
+import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react';
 import { ESCAPE_PRIORITY, ThreeIslands, useScreenEscape, useWidthRange } from '../../../kit';
-import type { LoungeParams, ScreenChrome, ThreeIslandsScreen } from '../screen';
+import type { LoungeParams, RightPanel, ScreenChrome, ThreeIslandsScreen } from '../screen';
 import { ScreenChromeContext } from '../screen';
 import { APP_LINKS, LoungeLinksContext } from '../links';
 import { SignOutConfirmHost } from '../pieces/signOutConfirm';
@@ -28,6 +33,39 @@ export interface ThreeIslandsFrameProps {
   /** The path: a crashed centre is cleared on the next path (another channel too). */
   resetKey: string;
   title: string | null;
+}
+
+/**
+ * The right region: the default content (the members), and while the screen has a panel open, the panel's slot
+ * beside it with the default content `hidden` and `inert`. The same elements either way, so the default content is
+ * never remounted when a panel comes or goes.
+ */
+function RightRegion({
+  under,
+  panel,
+  onTarget,
+}: {
+  under: ReactNode;
+  panel: RightPanel | null;
+  onTarget: (element: HTMLElement | null) => void;
+}): JSX.Element {
+  const covered = panel !== null;
+  return (
+    <>
+      {under !== undefined && under !== null && (
+        <div hidden={covered} inert={covered} data-right-under="">
+          {under}
+        </div>
+      )}
+      {covered && (
+        <div
+          ref={onTarget}
+          data-right-panel=""
+          style={panel.fill === true ? { display: 'flex', flexDirection: 'column', flex: '1 1 auto', height: '100%', minHeight: 0 } : undefined}
+        />
+      )}
+    </>
+  );
 }
 
 function dockCurrent(screen: ThreeIslandsScreen, params: LoungeParams): DockCurrent {
@@ -55,23 +93,56 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
   // Null until the user (or the screen) chooses: the template's default (shown at wide, closed below).
   const [rightChoice, setRightChoice] = useState<boolean | null>(null);
   const [allOpen, setAllOpen] = useState(false);
+  const [panel, setPanel] = useState<RightPanel | null>(null);
+  const [panelTarget, setPanelTarget] = useState<HTMLElement | null>(null);
+  const panelRef = useRef(panel);
+  panelRef.current = panel;
+  const closePanel = useCallback(() => panelRef.current?.onClose(), []);
 
-  // The Escape chain's panel step: closes the right island the user opened. Below wide the right
-  // content is a Sheet, a layer that takes Escape itself before the screen sees it.
+  // The Escape chain's panel step: closes the screen's panel, else the right island the user opened. Below wide the
+  // right content is a Sheet, a layer that takes Escape itself before the screen sees it.
   useScreenEscape(() => {
+    if (panel !== null) {
+      panel.onClose();
+      return true;
+    }
     if (rightChoice !== true) return false;
     setRightChoice(false);
     return true;
   }, ESCAPE_PRIORITY.panel);
 
+  // "Show the right content, then focus it": the opener (a Members button) goes away once the island shows.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [focusRight, setFocusRight] = useState(0);
+  useEffect(() => {
+    if (focusRight === 0) return;
+    const handle = requestAnimationFrame(() => {
+      const aside = rootRef.current?.querySelector('aside');
+      const pane = aside?.closest<HTMLElement>('[tabindex="-1"]') ?? null;
+      pane?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [focusRight]);
+  const showRight = useCallback(() => {
+    setRightChoice(true);
+    setFocusRight((n) => n + 1);
+  }, []);
+
   const chrome = useMemo<ScreenChrome>(
-    () => ({ rightOpen: rightChoice ?? range === 'wide', setRightOpen: setRightChoice }),
-    [rightChoice, range],
+    () => ({
+      rightOpen: rightChoice ?? range === 'wide',
+      setRightOpen: setRightChoice,
+      showRight,
+      panel,
+      setPanel,
+      panelTarget: panel === null ? null : panelTarget,
+    }),
+    [rightChoice, range, showRight, panel, panelTarget],
   );
 
   const { Centre, right } = screen;
   const communityId = params.communityId ?? null;
-  const rightContent =
+  const defaultRight =
     right === 'members' ? (
       communityId === null ? undefined : <MembersIslandConnected communityId={communityId} />
     ) : right === null ? undefined : (
@@ -80,12 +151,18 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
         return <Right params={params} />;
       })()
     );
+  const rightContent =
+    panel === null && defaultRight === undefined ? undefined : (
+      <RightRegion under={defaultRight} panel={panel} onTarget={setPanelTarget} />
+    );
+  const defaultLabel = screen.rightLabel ?? (right === 'members' ? 'Members' : undefined);
 
   return (
     <ScreenChromeContext value={chrome}>
       <LoungeLinksContext value={screen.links ?? APP_LINKS}>
         {/* One sign-out question above the width switch: the controls that open it come and go with the width. */}
         <SignOutConfirmHost>
+          <div ref={rootRef} style={{ display: 'contents' }}>
           <ThreeIslands
             dock={<ShellDockConnected current={dockCurrent(screen, params)} onOpenAll={() => setAllOpen(true)} allOpen={allOpen} />}
             left={
@@ -109,12 +186,15 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
             }
             centreLabel={title ?? 'Conversation'}
             right={rightContent}
-            rightLabel={screen.rightLabel ?? (right === 'members' ? 'Members' : undefined)}
-            rightOpen={rightChoice ?? undefined}
-            onRightClose={() => setRightChoice(false)}
+            rightLabel={panel?.label ?? defaultLabel}
+            // A panel shows while it is open, at every width; closing it brings back what the user had.
+            rightOpen={panel !== null ? true : (rightChoice ?? undefined)}
+            onRightClose={panel !== null ? closePanel : () => setRightChoice(false)}
+            rightFill={panel?.fill === true}
             callBar={callShown ? <ShellCall /> : undefined}
             phonePane={screen.phonePane}
           />
+          </div>
           <AllCommunitiesSheetConnected open={allOpen} onClose={() => setAllOpen(false)} currentId={communityId} />
         </SignOutConfirmHost>
       </LoungeLinksContext>

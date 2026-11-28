@@ -316,6 +316,18 @@ closes, so do not keep important state only inside it: keep a reply draft or a
 scroll position in the screen's own state. If a screen has no right content
 (nothing, or an empty value), there is no right region at any width.
 
+**A screen's panel in the right region.** The right region holds one thing at
+a time: the members by default, or the screen's own panel, such as a thread or
+the pinned messages. While a panel is open it takes the members' place, as the
+right island at wide and as the right Sheet below. A panel that brings its own
+header, list and composer (a thread) fills the region: the island has no
+padding, and the Sheet has no title row of its own and takes the full height.
+The members stay mounted under the panel, hidden and inert, so they come back
+as they were. Closing the panel (its own Close, Escape at wide, or the Sheet's
+close request) brings back what the user had. In the web shell the screen sets
+the panel with `ScreenChrome.setPanel` and renders its content into
+`panelTarget`; the template's `rightFill` and the Sheet's `fill` draw it.
+
 **How the phone panes behave.** The screen chooses which pane a phone shows:
 the centre (the default) or the left. The pane that is not shown stays alive
 behind the scenes, so a half-typed message is still there when the user comes
@@ -495,8 +507,9 @@ make up an answer on your own screen.
   the dock, the left island and the members. Settings screens and the full stage
   are still the old shell's, so the call bar is not on them yet. "Open call view"
   goes to the old shell's call stage.
-- **A phone thread as a full pane.** Below wide the right content is a Sheet. A
-  thread with a composer may want to be a pane of its own on a phone.
+- **A phone thread as a full pane.** On a phone a thread covers the chat as a
+  pane of its own. At compact it is the right Sheet, and at wide the right
+  island.
 
 ## Registering a screen
 

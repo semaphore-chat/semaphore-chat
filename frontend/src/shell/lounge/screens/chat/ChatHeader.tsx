@@ -1,6 +1,7 @@
 /**
- * The chat's header (design §3 PR 10c, B6): Back to the community, the channel's name as the screen's heading (a
- * lock when it is private), Members (where they are not beside the list), and More with Search, which is the old
+ * The chat's header (design §3 PR 10c, B6): Back to the community (a phone only: at compact and wide the community's
+ * list is beside the chat), the channel's name as the screen's heading (a lock when it is private), Members (at wide a
+ * toggle for the members island beside the list, pressed while it shows), and More with Search, which is the old
  * shell's search screen (owner default: phone search stays classic), and Pinned messages with their count (PR 10d-B).
  */
 import { useRef, useState, type JSX } from 'react';
@@ -10,9 +11,12 @@ export interface ChatHeaderProps {
   /** "# lobby"; null while the channel loads. */
   title: string | null;
   isPrivate: boolean;
-  onBack: () => void;
-  /** Opens the members; undefined while they are shown beside the list (wide). */
+  /** Back to the community; undefined: no Back (compact and wide, where the community's list is on screen). */
+  onBack?: () => void;
+  /** Opens the members (or, with `membersShown`, hides the island); undefined: no Members button. */
   onShowMembers?: () => void;
+  /** The members island is shown beside the list (wide): the button is pressed and hides it. */
+  membersShown?: boolean;
   /** The More menu's Search; undefined: no More menu (a voice channel has nothing to search). */
   onSearch?: () => void;
   /** The More menu's Pinned messages; `opener` is the More button (focus returns there when the list closes). */
@@ -21,7 +25,16 @@ export interface ChatHeaderProps {
   pinnedCount?: number;
 }
 
-export function ChatHeader({ title, isPrivate, onBack, onShowMembers, onSearch, onShowPinned, pinnedCount }: ChatHeaderProps): JSX.Element {
+export function ChatHeader({
+  title,
+  isPrivate,
+  onBack,
+  onShowMembers,
+  membersShown,
+  onSearch,
+  onShowPinned,
+  pinnedCount,
+}: ChatHeaderProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const more = useRef<HTMLButtonElement>(null);
   const items: MenuEntry[] = [
@@ -50,7 +63,7 @@ export function ChatHeader({ title, isPrivate, onBack, onShowMembers, onSearch, 
   ];
   return (
     <Stack direction="row" gap="sm">
-      <IconButton icon="ArrowLeft" label="Back to the community" variant="ghost" onClick={onBack} />
+      {onBack !== undefined && <IconButton icon="ArrowLeft" label="Back to the community" variant="ghost" onClick={onBack} />}
       <Stack direction="row" gap="xs" fill>
         {title === null ? (
           <Skeleton shape="text" />
@@ -61,7 +74,15 @@ export function ChatHeader({ title, isPrivate, onBack, onShowMembers, onSearch, 
         )}
         {isPrivate && <Icon name="Lock" size="sm" tone="secondary" label="Private channel" />}
       </Stack>
-      {onShowMembers !== undefined && <IconButton icon="Users" label="Members" variant="ghost" onClick={onShowMembers} />}
+      {onShowMembers !== undefined && (
+        <IconButton
+          icon="Users"
+          label="Members"
+          variant="ghost"
+          selected={membersShown === undefined ? undefined : membersShown}
+          onClick={onShowMembers}
+        />
+      )}
       {onSearch !== undefined && (
         <>
           <IconButton

@@ -54,19 +54,53 @@ export interface BareScreen {
 
 export type LoungeScreen = ThreeIslandsScreen | BareScreen;
 
+/**
+ * A screen's own panel in the right region (design §3 PR 10e, B9): a thread or the pinned messages, shown in place
+ * of the region's default content (the members) at compact and wide. At wide it is the right island; below wide it is
+ * the right Sheet. The screen renders the panel's content itself, into `ScreenChrome.panelTarget` with a portal, so the
+ * content keeps the screen's own state and context; the frame owns where it shows.
+ */
+export interface RightPanel {
+  /** Names the right island and its Sheet ("Thread", "Pinned messages"). */
+  readonly label: string;
+  /** The content brings its own header, scrolling and padding (a thread: its list and composer). */
+  readonly fill?: boolean;
+  /** The frame asks the screen to close the panel: Escape at wide, or the Sheet's Escape, scrim or Close below. */
+  readonly onClose: () => void;
+}
+
 /** Screen-to-frame state. */
 export interface ScreenChrome {
   /**
    * Whether the right content shows. Until the user (or the screen) sets it, the template's default
-   * holds: shown at wide, closed below.
+   * holds: shown at wide, closed below. A screen's panel shows whatever this says.
    */
   readonly rightOpen: boolean;
   setRightOpen(open: boolean): void;
+  /**
+   * Opens the right content and moves focus into it once shown (a Members button that goes away as the island
+   * appears hands focus to the island, never to the page).
+   */
+  showRight(): void;
+  /** The screen's panel in the right region, or null for the region's default content. */
+  readonly panel: RightPanel | null;
+  /** Sets or clears the screen's panel. A screen clears its own when it goes (an effect's cleanup). */
+  setPanel(panel: RightPanel | null): void;
+  /** Where the screen portals the open panel's content; null while no panel is shown. */
+  readonly panelTarget: HTMLElement | null;
 }
 
-const NO_CHROME: ScreenChrome = { rightOpen: false, setRightOpen: () => undefined };
+/** What a part sees outside a frame (and the base a test spreads its own state over). */
+export const NO_SCREEN_CHROME: ScreenChrome = {
+  rightOpen: false,
+  setRightOpen: () => undefined,
+  showRight: () => undefined,
+  panel: null,
+  setPanel: () => undefined,
+  panelTarget: null,
+};
 
-export const ScreenChromeContext = createContext<ScreenChrome>(NO_CHROME);
+export const ScreenChromeContext = createContext<ScreenChrome>(NO_SCREEN_CHROME);
 
 /** For a screen's parts: the frame's state they may change (a Members button in the centre header). */
 export function useScreenChrome(): ScreenChrome {

@@ -22,6 +22,8 @@ interface Fake {
  * query form cannot slip through unchecked.
  */
 export function matches(query: string, width: number): boolean {
+  // The touch-device query (`data/touchFirst`): the fake is a mouse-and-keyboard device.
+  if (query === '(hover: none) and (pointer: coarse)') return false;
   const px = '(\\d+(?:\\.\\d+)?)px';
   const below = new RegExp(`^not all and \\(min-width: ${px}\\)$`).exec(query);
   if (below) {

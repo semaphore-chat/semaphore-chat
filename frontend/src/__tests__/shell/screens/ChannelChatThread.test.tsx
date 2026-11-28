@@ -13,7 +13,8 @@ import { FileCacheProvider } from '../../../contexts/AvatarCacheContext';
 import { ChannelChat } from '../../../shell/lounge/screens/chat/ChannelChat';
 import { LoungeLinksContext, type LoungeLinks } from '../../../shell/lounge/links';
 import { FIXTURE_LINKS } from '../../../shell/lounge/screens/fixtureLinks';
-import { ScreenChromeContext } from '../../../shell/lounge/screen';
+import { NO_SCREEN_CHROME, ScreenChromeContext, type RightPanel } from '../../../shell/lounge/screen';
+import { mockViewport, WIDTH } from '../../kit/layout/matchMedia';
 import { forgetRouteMemory } from '../../../shell/routeMemory';
 import type { Conversation } from '../../../data/chat/useConversation';
 import {
@@ -143,12 +144,37 @@ function Where() {
   return <output data-testid="where">{location.pathname + location.search}</output>;
 }
 
+/**
+ * A stand-in for the frame's right region (ThreeIslandsFrame has its own tests): the screen's panel goes in a real
+ * slot inside an `aside` named after it, with the frame's own close request as a button; without a panel, members.
+ */
+const lastPanel = vi.hoisted(() => ({ current: null as RightPanel | null }));
+function PanelChrome({ children }: { children: React.ReactNode }) {
+  const [panel, setPanel] = React.useState<RightPanel | null>(null);
+  const [target, setTarget] = React.useState<HTMLElement | null>(null);
+  lastPanel.current = panel;
+  const showRight = React.useCallback(() => undefined, []);
+  const chrome = React.useMemo(
+    () => ({ ...NO_SCREEN_CHROME, rightOpen: true, showRight, panel, setPanel, panelTarget: panel === null ? null : target }),
+    [panel, target, showRight],
+  );
+  return (
+    <ScreenChromeContext value={chrome}>
+      {children}
+      <aside aria-label={panel?.label ?? 'Members'}>
+        {panel === null ? <span>the members</span> : <div ref={setTarget} />}
+      </aside>
+    </ScreenChromeContext>
+  );
+}
+
 function setup({
   isPrivate = false,
   entries = [FIXTURE_CHAT],
   rightOpen = false,
   links = FIXTURE_LINKS as LoungeLinks,
   type = 'TEXT' as 'TEXT' | 'VOICE',
+  panelChrome = false,
 } = {}) {
   const queryClient = createTestQueryClient();
   queryClient.setQueryData(channelsControllerFindAllForCommunityQueryKey({ path: { communityId: 'c-1' } }), [
@@ -167,10 +193,17 @@ function setup({
     <FileCacheProvider>
     <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
       <LoungeLinksContext value={links}>
-        <ScreenChromeContext value={{ rightOpen, setRightOpen }}>
-          <ChannelChat params={{ communityId: 'c-1', channelId: 'ch-1' }} />
-          <Where />
-        </ScreenChromeContext>
+        {panelChrome ? (
+          <PanelChrome>
+            <ChannelChat params={{ communityId: 'c-1', channelId: 'ch-1' }} />
+            <Where />
+          </PanelChrome>
+        ) : (
+          <ScreenChromeContext value={{ ...NO_SCREEN_CHROME, rightOpen, setRightOpen }}>
+            <ChannelChat params={{ communityId: 'c-1', channelId: 'ch-1' }} />
+            <Where />
+          </ScreenChromeContext>
+        )}
       </LoungeLinksContext>
     </KitProvider>
     </FileCacheProvider>
@@ -211,6 +244,8 @@ const frames = () =>
 
 describe('ChannelChat threads', () => {
   beforeEach(() => {
+    // Built for a phone (Back, the thread over the channel); the wider widths have their own cases.
+    mockViewport(WIDTH.phone);
     resetFactoryCounter();
     forgetRouteMemory();
     navCalls.length = 0;
@@ -438,6 +473,8 @@ const pin = (id: string, text: string, parentMessageId: string | null = null) =>
 
 describe('ChannelChat pinned messages', () => {
   beforeEach(() => {
+    // Built for a phone (Back, the thread over the channel); the wider widths have their own cases.
+    mockViewport(WIDTH.phone);
     resetFactoryCounter();
     forgetRouteMemory();
     navCalls.length = 0;
@@ -517,5 +554,114 @@ describe('ChannelChat pinned messages', () => {
     await openPinned(third.user, third.queryClient);
     await third.user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(pinned.current.refetch).toHaveBeenCalled();
+  });
+});
+
+describe('ChannelChat at compact and wide (PR 10e): the thread and the pins are the right panel', () => {
+  beforeEach(() => {
+    mockViewport(WIDTH.wide);
+    resetFactoryCounter();
+    forgetRouteMemory();
+    navCalls.length = 0;
+    conversation.current = makeConversation({ orderedMessages: [parent()] });
+    conversationCalls.length = 0;
+    threadModel.calls.length = 0;
+    vsize.scroll = 0;
+    vsize.viewport = 0;
+    lastPanel.current = null;
+    thread();
+    pinned.current = {
+      pins: [pin('m-5', 'pinned words'), pin('r-7', 'a pinned reply', 'm-1')],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+      canUnpin: false,
+      unpin: vi.fn(async () => true),
+    };
+  });
+
+  const rightRegion = () => screen.getByRole('complementary');
+
+  it('no Back: the community\'s list is beside the chat', () => {
+    setup({ panelChrome: true });
+    expect(screen.queryByRole('button', { name: 'Back to the community' })).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: '# lobby' })).toBeInTheDocument();
+  });
+
+  it('at wide a thread opens in the right panel beside the live channel; Close closes it', async () => {
+    setup({ panelChrome: true, entries: [FIXTURE_CHAT, `${FIXTURE_CHAT}?thread=m-1`] });
+    const heading = await screen.findByRole('heading', { level: 2, name: 'Thread' });
+    expect(rightRegion()).toHaveAccessibleName('Thread');
+    expect(rightRegion()).toContainElement(heading);
+    expect(lastPanel.current).toMatchObject({ label: 'Thread', fill: true });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    // The channel is not covered: it stays live (reads and announces) and reachable.
+    expect(conversationCalls[conversationCalls.length - 1]).toMatchObject({ covered: false });
+    expect(screen.getAllByText('the parent').some((node) => node.closest('[inert]') === null && !rightRegion().contains(node))).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Back to # lobby' })).toBeNull();
+    // Not opened from here (a link): Close replaces the entry with the channel's.
+    fireEvent.click(screen.getByRole('button', { name: 'Close thread' }));
+    expect(navCalls[navCalls.length - 1]).toEqual([FIXTURE_CHAT, { replace: true }]);
+  });
+
+  it("the frame's close request (Escape at wide, the Sheet's close below) closes the thread", async () => {
+    setup({ panelChrome: true, entries: [`${FIXTURE_CHAT}?thread=m-1`] });
+    await screen.findByRole('heading', { level: 2, name: 'Thread' });
+    act(() => lastPanel.current!.onClose());
+    await waitFor(() => expect(where()).toBe(FIXTURE_CHAT));
+    await waitFor(() => expect(lastPanel.current).toBeNull());
+    expect(rightRegion()).toHaveAccessibleName('Members');
+  });
+
+  it('at compact the thread is the panel too (the right Sheet), and the channel underneath is covered', async () => {
+    mockViewport(WIDTH.compact);
+    setup({ panelChrome: true, entries: [`${FIXTURE_CHAT}?thread=m-1`] });
+    expect(await screen.findByRole('heading', { level: 2, name: 'Thread' })).toBeInTheDocument();
+    expect(conversationCalls[conversationCalls.length - 1]).toMatchObject({ covered: true });
+  });
+
+  it("with the thread beside the channel, a channel row's actions offer Reply and a thread; a thread row's do not", async () => {
+    setup({ panelChrome: true, entries: [`${FIXTURE_CHAT}?thread=m-1`] });
+    await screen.findByRole('heading', { level: 2, name: 'Thread' });
+    const rows = screen.getAllByText('the parent').map((node) => node.closest('[data-row-focus-target]') as HTMLElement);
+    const channelRow = rows.find((el) => !rightRegion().contains(el))!;
+    const threadRow = rows.find((el) => rightRegion().contains(el))!;
+    channelRow.focus();
+    fireEvent.keyDown(channelRow, { key: 'Enter' });
+    expect(await screen.findByRole('button', { name: 'Reply in thread' })).toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    threadRow.focus();
+    fireEvent.keyDown(threadRow, { key: 'Enter' });
+    const sheet = await screen.findByRole('dialog');
+    expect(sheet).not.toHaveTextContent('Reply in thread');
+  });
+
+  it('at wide the pins are the right panel; a pin jumps and the panel stays; Close hands focus back to More', async () => {
+    const { user, queryClient } = setup({ panelChrome: true });
+    queryClient.setQueryData(moderationControllerGetPinnedMessagesQueryKey({ path: { channelId: 'ch-1' } }), pinned.current.pins);
+    const more = screen.getByRole('button', { name: 'More' });
+    await user.click(more);
+    await user.click(await screen.findByRole('menuitem', { name: /Pinned messages/ }));
+    const heading = await screen.findByRole('heading', { level: 2, name: 'Pinned messages (2)' });
+    expect(rightRegion()).toHaveAccessibleName('Pinned messages');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    await user.click(screen.getByRole('button', { name: /Show the message from Aiko: pinned words/ }));
+    await waitFor(() => expect(where()).toBe(`${FIXTURE_CHAT}?highlight=m-5`));
+    expect(screen.getByRole('heading', { level: 2, name: 'Pinned messages (2)' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Close pinned messages' }));
+    await waitFor(() => expect(lastPanel.current).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'More' })));
+  });
+
+  it('at compact the pins stay a Sheet', async () => {
+    mockViewport(WIDTH.compact);
+    const { user, queryClient } = setup({ panelChrome: true });
+    queryClient.setQueryData(moderationControllerGetPinnedMessagesQueryKey({ path: { channelId: 'ch-1' } }), pinned.current.pins);
+    await user.click(screen.getByRole('button', { name: 'More' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Pinned messages/ }));
+    expect(await screen.findByRole('dialog', { name: 'Pinned messages (2)' })).toBeInTheDocument();
+    expect(lastPanel.current).toBeNull();
   });
 });

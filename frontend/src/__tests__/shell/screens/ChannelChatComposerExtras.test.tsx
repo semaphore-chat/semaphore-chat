@@ -15,7 +15,7 @@ import { FileCacheProvider } from '../../../contexts/AvatarCacheContext';
 import { ChannelChat } from '../../../shell/lounge/screens/chat/ChannelChat';
 import { LoungeLinksContext } from '../../../shell/lounge/links';
 import { FIXTURE_LINKS } from '../../../shell/lounge/screens/fixtureLinks';
-import { ScreenChromeContext } from '../../../shell/lounge/screen';
+import { NO_SCREEN_CHROME, ScreenChromeContext } from '../../../shell/lounge/screen';
 import type { Conversation } from '../../../data/chat/useConversation';
 import {
   aliasGroupsControllerGetCommunityAliasGroupsQueryKey,
@@ -201,7 +201,7 @@ function setup(messages: Message[], list: ListState = 'TEXT', isPrivate = false,
     <FileCacheProvider>
       <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
         <LoungeLinksContext value={FIXTURE_LINKS}>
-          <ScreenChromeContext value={{ rightOpen: false, setRightOpen: () => undefined }}>
+          <ScreenChromeContext value={{ ...NO_SCREEN_CHROME, rightOpen: false, setRightOpen: () => undefined }}>
             <ChannelChat params={{ communityId: 'c-1', channelId: 'ch-1' }} />
           </ScreenChromeContext>
         </LoungeLinksContext>

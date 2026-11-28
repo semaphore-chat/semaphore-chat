@@ -33,6 +33,12 @@ export interface SheetProps {
    * layer that closes at the same moment (focus would otherwise return into the gone layer). Default: what had focus.
    */
   opener?: HTMLElement | null;
+  /**
+   * The content brings its own header (with a Close that calls `onClose`), its own scrolling and its own padding: a
+   * thread with its list and composer. No title row (the title still names the sheet for screen readers), no
+   * padded body, and the panel takes the full height it is allowed. `top` and `actions` are not drawn.
+   */
+  fill?: boolean;
 }
 
 const WIDTH = { md: tokens.layout.dialogMd, lg: 2 * tokens.layout.dialogSm } as const;
@@ -57,6 +63,28 @@ const Body = styled('div', { shouldForwardProp: transientProps })<{ $last: boole
   // With no actions row the body is the last row: it clears the home indicator on a phone.
   ...($last && { [PHONE]: { paddingBottom: `calc(${tokens.space.xl}px + ${SAFE_BOTTOM})` } }),
 }));
+
+/** A filling sheet's body: the content sizes itself to the panel and scrolls itself. */
+const FillBody = styled('div')({
+  flex: '1 1 auto',
+  minHeight: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  [PHONE]: { paddingBottom: SAFE_BOTTOM },
+});
+
+/** Names a filling sheet, which has no visible title row. */
+const HiddenTitle = styled('h2')({
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  margin: -1,
+  padding: 0,
+  overflow: 'hidden',
+  clipPath: 'inset(50%)',
+  whiteSpace: 'nowrap',
+  border: 0,
+});
 
 const Top = styled('div')({
   flex: '0 0 auto',
@@ -103,7 +131,7 @@ function Head({ titleId, title, onClose, focusClose }: { titleId: string; title:
  * Above the phone breakpoint it is a centred panel; at or below it, a bottom sheet
  * that is full width, rounded on top, and slides up.
  */
-export function Sheet({ open, onClose, title, children, top, actions, size = 'md', opener }: SheetProps): JSX.Element {
+export function Sheet({ open, onClose, title, children, top, actions, size = 'md', opener, fill = false }: SheetProps): JSX.Element {
   const titleId = `${useId()}-title`;
   return (
     <Modal
@@ -124,6 +152,7 @@ export function Sheet({ open, onClose, title, children, top, actions, size = 'md
           flexDirection: 'column',
           overflow: 'hidden',
           maxWidth: `${WIDTH[size]}px`,
+          ...(fill && { height: '100%' }),
           [PHONE]: {
             maxWidth: '100%',
             // The room the dock takes stays free below the bar's top edge.
@@ -136,12 +165,21 @@ export function Sheet({ open, onClose, title, children, top, actions, size = 'md
         };
       }}
     >
-      <Head titleId={titleId} title={title} onClose={onClose} focusClose={actions === undefined} />
-      {top !== undefined && <Top>{top}</Top>}
-      <Body $last={actions === undefined} data-kit-sheet-body="">
-        {children}
-      </Body>
-      {actions !== undefined && <Actions>{actions}</Actions>}
+      {fill ? (
+        <>
+          <HiddenTitle id={titleId}>{title}</HiddenTitle>
+          <FillBody data-kit-sheet-body="">{children}</FillBody>
+        </>
+      ) : (
+        <>
+          <Head titleId={titleId} title={title} onClose={onClose} focusClose={actions === undefined} />
+          {top !== undefined && <Top>{top}</Top>}
+          <Body $last={actions === undefined} data-kit-sheet-body="">
+            {children}
+          </Body>
+          {actions !== undefined && <Actions>{actions}</Actions>}
+        </>
+      )}
     </Modal>
   );
 }

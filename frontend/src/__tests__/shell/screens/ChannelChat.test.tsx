@@ -12,7 +12,8 @@ import { FileCacheProvider } from '../../../contexts/AvatarCacheContext';
 import { ChannelChat } from '../../../shell/lounge/screens/chat/ChannelChat';
 import { APP_LINKS, LoungeLinksContext, type LoungeLinks } from '../../../shell/lounge/links';
 import { FIXTURE_LINKS } from '../../../shell/lounge/screens/fixtureLinks';
-import { ScreenChromeContext } from '../../../shell/lounge/screen';
+import { NO_SCREEN_CHROME, ScreenChromeContext } from '../../../shell/lounge/screen';
+import { mockViewport, WIDTH } from '../../kit/layout/matchMedia';
 import { forgetRouteMemory, notePathname } from '../../../shell/routeMemory';
 import type { Conversation } from '../../../data/chat/useConversation';
 import {
@@ -140,11 +141,12 @@ function setup({
     { id: 'e-1', name: 'partyparrot', fileId: 'f-9', communityId: 'c-1' },
   ]);
   const setRightOpen = vi.fn();
+  const showRight = vi.fn();
   const ui = () => (
     <FileCacheProvider>
     <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
       <LoungeLinksContext value={links}>
-        <ScreenChromeContext value={{ rightOpen, setRightOpen }}>
+        <ScreenChromeContext value={{ ...NO_SCREEN_CHROME, rightOpen, setRightOpen, showRight }}>
           <ChannelChat params={{ communityId: 'c-1', channelId: 'ch-1' }} />
           <Where />
         </ScreenChromeContext>
@@ -156,13 +158,15 @@ function setup({
     queryClient,
     routerProps: { initialEntries: entries, initialIndex: entries.length - 1 },
   });
-  return { ...view, setRightOpen, rerenderSame: () => view.rerender(ui()) };
+  return { ...view, setRightOpen, showRight, rerenderSame: () => view.rerender(ui()) };
 }
 
 const where = () => screen.getByTestId('where').textContent;
 
 describe('ChannelChat (the new shell’s chat, read side)', () => {
   beforeEach(() => {
+    // Built for a phone (Back, the thread over the channel); the wider widths have their own cases.
+    mockViewport(WIDTH.phone);
     resetFactoryCounter();
     forgetRouteMemory();
     navCalls.length = 0;
@@ -427,10 +431,29 @@ describe('ChannelChat (the new shell’s chat, read side)', () => {
     expect(counts.segments).toBe(1);
   });
 
+  it('at wide Members is a toggle: pressed while the island shows, and pressing it hides the island', () => {
+    mockViewport(WIDTH.wide);
+    const { setRightOpen, showRight } = setup({ rightOpen: true });
+    const members = screen.getByRole('button', { name: 'Members' });
+    expect(members).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(members);
+    expect(setRightOpen).toHaveBeenCalledWith(false);
+    expect(showRight).not.toHaveBeenCalled();
+  });
+
+  it('at wide with the island closed, Members shows it (and the frame moves focus into it)', () => {
+    mockViewport(WIDTH.wide);
+    const { showRight } = setup({ rightOpen: false });
+    const members = screen.getByRole('button', { name: 'Members' });
+    expect(members).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(members);
+    expect(showRight).toHaveBeenCalledTimes(1);
+  });
+
   it('Members opens the right content; Search is the old shell’s search screen', () => {
-    const { setRightOpen } = setup();
+    const { showRight } = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Members' }));
-    expect(setRightOpen).toHaveBeenCalledWith(true);
+    expect(showRight).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Search messages' }));
     expect(where()).toBe('/community/c-1/channel/ch-1/search');

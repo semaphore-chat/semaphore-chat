@@ -94,8 +94,8 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
   const { text, voice, status, error, query } = useCommunityChannels(communityId);
   const unread = useUnreadSummary();
   const range = useWidthRange();
-  const { rightOpen, setRightOpen } = useScreenChrome();
-  const onShowMembers = useCallback(() => setRightOpen(true), [setRightOpen]);
+  // At wide the button gives way to the island as it shows: `showRight` moves focus into the island.
+  const { rightOpen, showRight: onShowMembers } = useScreenChrome();
   const { blobUrl } = useAuthenticatedImage(community?.avatarFileId ?? null);
   // Loaded channels stay through a failed refetch (a toast says so); the error face only with nothing to show.
   const channelsState = useQueryLoadState(query, { notifyId: 'lounge-channels', resetKey: communityId, isEmpty: noTextChannels });

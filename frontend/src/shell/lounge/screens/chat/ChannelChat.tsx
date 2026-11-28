@@ -5,10 +5,16 @@
  * (`ChatComposer`), a message's actions (`MessageActionsSheet`), editing in place, and Retry or Delete on a failed
  * send. The real channel route's at phone width (PR 10c-2b, `ChannelChatScreen`), and the hidden chat fixture's.
  *
+ * At compact and wide (PR 10e) the community's list is beside the chat, so there is no Back; a thread and (at wide)
+ * the pinned messages are the frame's right panel (`ScreenChrome.setPanel`), portalled into its slot, in place of the
+ * members; at wide the composer takes focus on entry (B4); the channel is remembered as the community's last at every
+ * width (both shells open it next).
+ *
  * Typing in the composer and opening a message's actions re-render no row: the composer keeps its own state, and
  * what rows share (`ChatRowContext`) holds only stable values.
  */
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { moderationControllerGetPinnedMessagesOptions } from '../../../../api-client/@tanstack/react-query.gen';
@@ -55,14 +61,15 @@ import { ChatComposer } from './ChatComposer';
 import { MessageActionsSheet } from './MessageActionsSheet';
 import { MessageMediaViewer, type ViewerRequest } from './MessageMediaViewer';
 import { ReactionPeopleSheet, type ReactionPeopleRequest } from './ReactionPeopleSheet';
-import { ThreadView } from './ThreadView';
-import { PinnedSheet } from './PinnedSheet';
+import { THREAD_VIEW_ATTRIBUTE, ThreadView } from './ThreadView';
+import { PinnedPanel, PinnedSheet } from './PinnedSheet';
 import { ReactionPickerSheet, type ReactionPickerRequest } from './ReactionPickerSheet';
 import { useComposerDrop } from './composerDrop';
 import { findLastEditableMessage } from '../../../../data/chat/lastEditable';
 import { useTouchFirst } from '../../../../data/touchFirst';
 import type { OpenActionsVia } from '../../../../kit';
 import { channelTitle, useRouteChannel } from './channelTitle';
+import { setLastChannelId } from '../../../../utils/lastChannel';
 
 const NO_MESSAGES: Message[] = [];
 const noSend = () => undefined;
@@ -120,15 +127,17 @@ function StateMessage({ title, line, action }: { title: string; line?: string; a
  * (The app's hash history keeps no index in history.state, so the frame's own record of the Lounge path shown
  * before this one decides; it is cleared whenever the old shell shows in between.) `goHome` always replaces.
  */
-function useChatBack(communityId: string): { onBack: () => void; goHome: () => void } {
+function useChatBack(communityId: string): { onBack: (() => void) | undefined; goHome: () => void } {
   const navigate = useNavigate();
+  // Back is a phone's: at compact and wide the community's list is on screen beside the chat.
+  const phone = useWidthRange() === 'phone';
   const homePath = pathOf(useLoungeLinks().community(communityId));
   const onBack = useCallback(() => {
     if (previousPathname() === homePath) navigate(-1);
     else navigate(homePath, { replace: true });
   }, [homePath, navigate]);
   const goHome = useCallback(() => navigate(homePath, { replace: true }), [homePath, navigate]);
-  return { onBack, goHome };
+  return { onBack: phone ? onBack : undefined, goHome };
 }
 
 /** The history entry a thread was opened into from this chat (Back then closes it with a step back). */
@@ -179,11 +188,14 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   // Only a channel the list confirms is a text channel may be written to (I1): a channel missing from the list
   // (no access, deleted) reads without a composer, reactions or actions.
   const writable = channel?.type === ChannelType.TEXT;
-  // The open thread (`?thread=`): it covers the channel, which then marks nothing read and announces nothing.
+  // The open thread (`?thread=`). On a phone it covers the channel; at compact it is a Sheet over it; in both the
+  // channel then marks nothing read and announces nothing. At wide it is beside the channel, which stays live.
   const threadId = readThreadParam(searchParams);
-  const conversation = useConversation({ communityId, channelId, chatPath, covered: threadId !== null });
   const range = useWidthRange();
-  const { rightOpen, setRightOpen } = useScreenChrome();
+  const conversation = useConversation({ communityId, channelId, chatPath, covered: threadId !== null && range !== 'wide' });
+  const { rightOpen, setRightOpen, showRight, panel: shownPanel, setPanel, panelTarget } = useScreenChrome();
+  // Where a thread goes: over the channel on a phone, the frame's right panel at compact and wide.
+  const threadInPanel = threadId !== null && range !== 'phone';
   const openProfile = useContext(UserProfileContext)?.openProfile;
   const toasts = useToasts();
   const reportOpenError = useCallback((message: string) => void toasts.show({ tone: 'danger', message }), [toasts]);
@@ -203,10 +215,13 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   writableRef.current = writable;
   // The row whose actions are open (it has focus as they open): where "See reactions" returns focus.
   const actionsRow = useRef<HTMLElement | null>(null);
+  // Whether the open actions are a thread row's: at wide the thread and its channel are both on screen.
+  const [actionsInThread, setActionsInThread] = useState(false);
   const openActions = useCallback((message: Message, via: OpenActionsVia) => {
     if (!writableRef.current) return;
     const active = document.activeElement;
     actionsRow.current = active instanceof HTMLElement ? active : null;
+    setActionsInThread(actionsRow.current?.closest(`[${THREAD_VIEW_ATTRIBUTE}]`) != null);
     if (via === 'touch') hapticsRef.current.longPress();
     setActionsFor(message);
   }, []);
@@ -253,10 +268,9 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     },
     [handleQuoteReply, focusComposer],
   );
-  const threadOpen = threadId !== null;
   const onEdit = useCallback(
-    (message: Message) => (threadOpen ? threadEditing : editing).start(message.id),
-    [editing, threadEditing, threadOpen],
+    (message: Message) => (actionsInThread ? threadEditing : editing).start(message.id),
+    [editing, threadEditing, actionsInThread],
   );
   // ↑ in the empty composer: the reader's newest message that can be edited opens in place, scrolled into view.
   const orderedRef = useRef(conversation.orderedMessages);
@@ -337,6 +351,37 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
     () => (threadId === null ? null : (conversation.orderedMessages.find((m) => m.id === threadId) ?? null)),
     [threadId, conversation.orderedMessages],
   );
+
+  // --- The right panel (compact and wide): the thread, else (wide only) the pinned messages, in the members' place.
+  // A thread opened from a pin takes the panel; closing it brings the pins back. ---
+  const pinsInPanel = pinnedOpen && range === 'wide' && !threadInPanel;
+  const closePinnedPanel = useCallback(() => {
+    setPinnedOpen(false);
+    // The More button that opened them (its menu has closed); it stays in the header.
+    requestAnimationFrame(() => {
+      if (pinnedOpener?.isConnected) pinnedOpener.focus({ preventScroll: true });
+    });
+  }, [pinnedOpener]);
+  const closeThreadRef = useRef(closeThread);
+  closeThreadRef.current = closeThread;
+  const closePinnedRef = useRef(closePinnedPanel);
+  closePinnedRef.current = closePinnedPanel;
+  const panelKind = threadInPanel ? 'thread' : pinsInPanel ? 'pins' : null;
+  useEffect(() => {
+    setPanel(
+      panelKind === 'thread'
+        ? { label: 'Thread', fill: true, onClose: () => closeThreadRef.current() }
+        : panelKind === 'pins'
+          ? { label: 'Pinned messages', onClose: () => closePinnedRef.current() }
+          : null,
+    );
+  }, [panelKind, setPanel]);
+  // The panel goes with the chat (another channel, another screen).
+  useEffect(() => () => setPanel(null), [setPanel]);
+  // Both shells open this channel next time the community is opened with none chosen.
+  useEffect(() => {
+    if (writable) setLastChannelId(conversation.me || undefined, communityId, channelId);
+  }, [writable, conversation.me, communityId, channelId]);
   // One sender for the whole list's Retry (not one socket hook per row), read through a ref so the rows' shared
   // context stays the same when the connection changes.
   const { sendMessage: rawSend } = useSendMessage(VoiceSessionType.Channel);
@@ -427,6 +472,36 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   });
 
   const face = faceOf(conversation);
+
+  // Members: at wide a toggle for the island (pressed while it shows, not while a panel has its place); below wide it
+  // opens the Sheet. Showing them closes a panel (one thing at a time in the right region).
+  const membersShown = range === 'wide' ? rightOpen && shownPanel === null : undefined;
+  const onMembers = useCallback(() => {
+    if (membersShown === true) {
+      setRightOpen(false);
+      return;
+    }
+    shownPanel?.onClose();
+    showRight();
+  }, [membersShown, setRightOpen, shownPanel, showRight]);
+
+  // B4: at wide, on a pointer-first device, the composer takes focus once on entry, unless the user is moving through
+  // a list (the dock, the channels) or is in a layer, or a thread opened with the chat (its heading has focus).
+  const composerShown = writable && (face === 'list' || face === 'empty');
+  const entryFocused = useRef(false);
+  useEffect(() => {
+    if (touch || range !== 'wide' || !composerShown || entryFocused.current) return;
+    const handle = requestAnimationFrame(() => {
+      entryFocused.current = true;
+      if (threadId !== null) return;
+      const active = document.activeElement;
+      if (active?.closest('nav, [role="dialog"], [aria-modal="true"]')) return;
+      inputRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(handle);
+    // `threadId` is read for the entry only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [touch, range, composerShown]);
   const retry = useCallback(() => {
     // As the old chat: refetch whatever active query failed (the messages query lives in the shared hook).
     void queryClient.refetchQueries({ type: 'active', predicate: (query) => query.state.status === 'error' });
@@ -454,11 +529,8 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
             isPrivate={channel?.isPrivate === true}
             onBack={onBack}
             // Only for a channel the reader can see: never a member list for one they have no access to.
-            onShowMembers={
-              channel === null || face === 'noAccess' || face === 'gone' || (range === 'wide' && rightOpen)
-                ? undefined
-                : () => setRightOpen(true)
-            }
+            onShowMembers={channel === null || face === 'noAccess' || face === 'gone' ? undefined : onMembers}
+            membersShown={membersShown}
             onSearch={() => navigate(`/community/${communityId}/channel/${channelId}/search`)}
             onShowPinned={face === 'gone' || face === 'noAccess' ? undefined : showPinned}
             pinnedCount={pins.length}
@@ -475,7 +547,7 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
         announcement={conversation.announcement}
         dropZone={drop.dropZone}
         cover={
-          threadId !== null ? (
+          threadId !== null && !threadInPanel ? (
             <ThreadView
               key={threadId}
               communityId={communityId}
@@ -513,13 +585,39 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
         communityId={communityId}
         onDone={closeActions}
         // Inside a thread: no quote reply and no thread of a thread (as the old thread panel).
-        onReply={threadOpen ? undefined : onReply}
-        onReplyInThread={threadOpen ? undefined : openThreadFromActions}
+        onReply={actionsInThread ? undefined : onReply}
+        onReplyInThread={actionsInThread ? undefined : openThreadFromActions}
         onEdit={onEdit}
         onShowReactions={showReactionsFromActions}
         onMoreReactions={moreReactions}
       />
-      {pinnedOpen && (
+      {threadInPanel &&
+        threadId !== null &&
+        panelTarget !== null &&
+        createPortal(
+          <ThreadView
+            key={threadId}
+            placement="panel"
+            communityId={communityId}
+            channelId={channelId}
+            channelTitle={channel === null ? null : channelTitle(channel)}
+            parentMessageId={threadId}
+            parent={threadParent}
+            writable={writable}
+            shared={shared}
+            editing={threadEditing}
+            inputRef={threadInputRef}
+            onClose={closeThread}
+          />,
+          panelTarget,
+        )}
+      {pinsInPanel &&
+        panelTarget !== null &&
+        createPortal(
+          <PinnedPanel communityId={communityId} channelId={channelId} writable={writable} onClose={closePinnedPanel} onJump={jumpToPin} />,
+          panelTarget,
+        )}
+      {pinnedOpen && range !== 'wide' && (
         <PinnedSheet
           communityId={communityId}
           channelId={channelId}

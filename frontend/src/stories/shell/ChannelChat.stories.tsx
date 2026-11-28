@@ -1,7 +1,9 @@
 /**
  * The new shell's text channel chat, read side (PR 10c-1, shell/lounge/screens/chat): the chat fixture's real
  * descriptor in the real frame, on the mock-ups' community (`fixtures/loungeCommunityHandlers.ts`) with a
- * conversation in #general. Only the hidden fixture reaches it in the app; it is built for phone width.
+ * conversation in #general. Only the hidden fixture reaches it in the app. At phone width a thread covers the chat;
+ * at tablet width (compact) it is the right Sheet; at desktop width (wide) it is the right island beside the chat,
+ * as are the pinned messages, and the header has no Back (PR 10e).
  *
  * States: a conversation (day and unread separators, a reply quote, an image and a file, reactions, a replies count,
  * a mention of the reader, a long unbroken word, a code block), light, a private channel, empty, loading, no
@@ -698,6 +700,12 @@ export const ThreadComposerDraft = story({
   draftKey: `thread:${THREAD_PARENT}`,
   steps: [openRepliesButton],
 });
+
+/**
+ * Members pressed (PR 10e): at wide the header's Members is a toggle and this hides the island (the button is then
+ * unpressed); at tablet and phone widths it opens the members Sheet.
+ */
+export const MembersPressed = story({ steps: [press('Members')] });
 
 /** No right to reply in threads: the notice in the composer's place. */
 export const ThreadComposerNoPermission = story({

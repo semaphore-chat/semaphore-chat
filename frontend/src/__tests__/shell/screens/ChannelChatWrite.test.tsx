@@ -14,7 +14,9 @@ import { FileCacheProvider } from '../../../contexts/AvatarCacheContext';
 import { ChannelChat } from '../../../shell/lounge/screens/chat/ChannelChat';
 import { LoungeLinksContext } from '../../../shell/lounge/links';
 import { FIXTURE_LINKS } from '../../../shell/lounge/screens/fixtureLinks';
-import { ScreenChromeContext } from '../../../shell/lounge/screen';
+import { mockViewport, WIDTH } from '../../kit/layout/matchMedia';
+import { getLastChannelId } from '../../../utils/lastChannel';
+import { NO_SCREEN_CHROME, ScreenChromeContext } from '../../../shell/lounge/screen';
 import type { Conversation } from '../../../data/chat/useConversation';
 import {
   aliasGroupsControllerGetCommunityAliasGroupsQueryKey,
@@ -196,7 +198,7 @@ function setup(messages: Message[], list: ListState = 'TEXT', isPrivate = false)
     <FileCacheProvider>
       <KitProvider base="#8E75FF" mode="dark" intensity="minimal">
         <LoungeLinksContext value={FIXTURE_LINKS}>
-          <ScreenChromeContext value={{ rightOpen: false, setRightOpen: () => undefined }}>
+          <ScreenChromeContext value={{ ...NO_SCREEN_CHROME, rightOpen: false, setRightOpen: () => undefined }}>
             <ChannelChat params={{ communityId: 'c-1', channelId: 'ch-1' }} />
           </ScreenChromeContext>
         </LoungeLinksContext>
@@ -229,6 +231,9 @@ async function openActionsWithEnter(text: string) {
 }
 
 describe('ChannelChat writes only to a channel known to be a text channel (I1)', () => {
+  // Built for a phone (Back).
+  beforeEach(() => mockViewport(WIDTH.phone));
+
   afterEach(() => forgetVoiceChannels());
 
   it('TEXT: the composer, reactions and the actions sheet', async () => {
@@ -326,6 +331,8 @@ describe('ChannelChat writes only to a channel known to be a text channel (I1)',
 
 describe('ChannelChat write side', () => {
   beforeEach(() => {
+    // Built for a phone (Back); the wider widths have their own cases.
+    mockViewport(WIDTH.phone);
     resetFactoryCounter();
     vi.clearAllMocks();
     perms.moderator = false;
@@ -521,5 +528,39 @@ describe('ChannelChat write side', () => {
     rowRenders.clear();
     await user.type(composerField(), 'hello there');
     expect(Object.fromEntries(rowRenders)).toEqual({});
+  });
+});
+
+describe('ChannelChat at wide (PR 10e)', () => {
+  beforeEach(() => {
+    mockViewport(WIDTH.wide);
+    resetFactoryCounter();
+    vi.clearAllMocks();
+    perms.moderator = false;
+    perms.canReact = true;
+    rowRenders.clear();
+    clearComposerDrafts();
+    localStorage.clear();
+  });
+
+  it('the composer takes focus on entry (B4), and there is no Back', async () => {
+    setup([mine()]);
+    const field = await screen.findByRole('textbox', { name: 'Message #lobby' });
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    expect(screen.queryByRole('button', { name: 'Back to the community' })).toBeNull();
+  });
+
+  it('the channel becomes the community’s last, so either shell opens it next', async () => {
+    setup([mine()]);
+    await screen.findByRole('textbox', { name: 'Message #lobby' });
+    await waitFor(() => expect(getLastChannelId('me', 'c-1')).toBe('ch-1'));
+  });
+
+  it('on a phone the composer does not take focus (no keyboard raised on navigation)', async () => {
+    mockViewport(WIDTH.phone);
+    setup([mine()]);
+    const field = await screen.findByRole('textbox', { name: 'Message #lobby' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(document.activeElement).not.toBe(field);
   });
 });
