@@ -128,6 +128,20 @@ describe('useSessions', () => {
     });
   });
 
+  it('revokeOthers resolves as soon as the sessions are revoked, even if keeping push never settles', async () => {
+    // `navigator.serviceWorker.ready` that never resolves: the re-subscribe hangs for good.
+    push.getCurrentPushSubscription.mockReturnValue(new Promise(() => {}));
+    const { result } = render();
+    await waitFor(() => expect(result.current.sessions).toHaveLength(3));
+    let message = '';
+    await act(async () => {
+      message = await result.current.revokeOthers();
+    });
+    expect(message).toBe('Signed out of 2 sessions');
+    expect(calls).toContain('DELETE others');
+    expect(push.getCurrentPushSubscription).toHaveBeenCalled();
+  });
+
   it('revokeOthers rejects when the server refuses, and keeps nothing', async () => {
     fail = true;
     push.getCurrentPushSubscription.mockResolvedValue({ endpoint: 'https://push.example/this' });

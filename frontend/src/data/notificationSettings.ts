@@ -91,7 +91,10 @@ export function useNotificationSettingsForm(): NotificationSettingsForm {
   const { data, isLoading, isError } = useQuery(notificationsControllerGetSettingsOptions());
   const { mutateAsync: update, isPending: saving } = useMutation({
     ...notificationsControllerUpdateSettingsMutation(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [{ _id: 'notificationsControllerGetSettings' }] }),
+    // Not awaited: `saving` (the Save button and its row) must end with the request, not the refetch.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [{ _id: 'notificationsControllerGetSettings' }] });
+    },
   });
   const [values, setValues] = useState<NotificationSettingsValues>(DEFAULT_NOTIFICATION_SETTINGS);
   const [saved, setSaved] = useState<NotificationSettingsValues | null>(null);

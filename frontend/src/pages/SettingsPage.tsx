@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Card,
@@ -37,7 +37,7 @@ import { accentColors } from '../theme/constants';
 import { isElectron, hasElectronFeature, getElectronAPI } from '../utils/platform';
 import { getActiveServer, updateServer } from '../utils/serverStorage';
 import { clearTokens } from '../utils/tokenService';
-import { useQueryClient } from '@tanstack/react-query';
+import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { usePrivacySettings } from '../data/privacySettings';
 import { clearShellSessionState } from '../shell/sessionState';
@@ -52,6 +52,38 @@ interface HealthResponse {
   version: string;
   timestamp: string;
 }
+
+/** How many times the cards' late data may pull the page back to the section named in the URL. */
+const MAX_SECTION_RESCROLLS = 3;
+
+/** Presses that scroll the page: one of them means the reader has taken over. */
+const SCROLL_KEYS: Record<string, true> = {
+  ArrowUp: true,
+  ArrowDown: true,
+  PageUp: true,
+  PageDown: true,
+  Home: true,
+  End: true,
+  ' ': true,
+  Spacebar: true,
+};
+
+/**
+ * The queries the cards above the sections load. Each one turns a skeleton into content and moves the sections
+ * below it down the page, so the scroll to `/settings/:section` has to be repeated once they finish.
+ */
+const SETTINGS_CARD_QUERIES: Record<string, true> = {
+  notificationsControllerGetSettings: true,
+  pushNotificationsControllerGetVapidPublicKey: true,
+  pushNotificationsControllerGetStatus: true,
+  appearanceSettingsControllerGetSettings: true,
+  authControllerGetSessions: true,
+};
+
+const isSettingsCardQuery = (query: { queryKey: readonly unknown[] }): boolean => {
+  const id = (query.queryKey[0] as { _id?: string } | undefined)?._id;
+  return id !== undefined && SETTINGS_CARD_QUERIES[id] === true;
+};
 
 /**
  * Settings > Privacy: whether pictures from other sites load on their own (`usePrivacySettings`, shared with the new
@@ -248,6 +280,43 @@ const SettingsPage: React.FC = () => {
   useEffect(() => {
     if (sectionId) scrollToSection(sectionId);
   }, [sectionId, scrollToSection]);
+
+  // The sections sit below the cards, whose skeletons are shorter than their loaded content. Re-run the scroll
+  // to `/settings/:section` once those loads settle (a few times at most), and never after the reader has
+  // scrolled, wheeled, touched, pressed or pressed a scroll key themselves.
+  const pendingCardLoads = useIsFetching({ predicate: isSettingsCardQuery });
+  const sectionRescrolls = useRef(0);
+  const sawCardLoads = useRef(false);
+  const readerTookOver = useRef(false);
+  useEffect(() => {
+    const takeOver = (event: Event) => {
+      if (event.type === 'keydown' && SCROLL_KEYS[(event as KeyboardEvent).key] !== true) return;
+      readerTookOver.current = true;
+    };
+    const passive = { passive: true } as const;
+    window.addEventListener('wheel', takeOver, passive);
+    window.addEventListener('touchmove', takeOver, passive);
+    window.addEventListener('pointerdown', takeOver, passive);
+    window.addEventListener('keydown', takeOver);
+    return () => {
+      window.removeEventListener('wheel', takeOver);
+      window.removeEventListener('touchmove', takeOver);
+      window.removeEventListener('pointerdown', takeOver);
+      window.removeEventListener('keydown', takeOver);
+    };
+  }, []);
+  useEffect(() => {
+    if (!sectionId) return;
+    // The direct check matters on mount, when this render's count can still predate the cards' fetches.
+    if (pendingCardLoads > 0 || queryClient.isFetching({ predicate: isSettingsCardQuery }) > 0) {
+      sawCardLoads.current = true;
+      return;
+    }
+    if (!sawCardLoads.current || readerTookOver.current) return;
+    if (sectionRescrolls.current >= MAX_SECTION_RESCROLLS) return;
+    sectionRescrolls.current += 1;
+    scrollToSection(sectionId);
+  }, [sectionId, pendingCardLoads, queryClient, scrollToSection]);
   const [currentBackendUrl, setCurrentBackendUrl] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [backendVersion, setBackendVersion] = useState<string | null>(null);

@@ -16,13 +16,25 @@ import { privacyUnsupported, usePrivacySettings } from '../../data/privacySettin
 
 const URL = 'http://localhost:3000/api/appearance-settings';
 
-function serve(initial: Record<string, unknown>, { failWrites = false } = {}) {
+function serve(
+  initial: Record<string, unknown>,
+  { failWrites = false, holdRefetch = false } = {},
+) {
   const state = { stored: initial, patches: [] as unknown[] };
   // Each write is held until `release()`, so the optimistic value can be seen.
   let release: () => void = () => {};
   const held = () => new Promise<void>((resolve) => (release = resolve));
+  // With `holdRefetch`, the GET after a write is held until `releaseRefetch()`: nothing it answers can hide a
+  // rollback the mutation itself did.
+  let releaseRefetch: () => void = () => {};
+  const heldRefetch = () => new Promise<void>((resolve) => (releaseRefetch = resolve));
+  let gets = 0;
   server.use(
-    http.get(URL, () => HttpResponse.json(state.stored)),
+    http.get(URL, async () => {
+      gets += 1;
+      if (holdRefetch && gets > 1) await heldRefetch();
+      return HttpResponse.json(state.stored);
+    }),
     http.patch(URL, async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>;
       state.patches.push(body);
@@ -32,7 +44,7 @@ function serve(initial: Record<string, unknown>, { failWrites = false } = {}) {
       return HttpResponse.json(state.stored);
     }),
   );
-  return { state, release: () => release() };
+  return { state, release: () => release(), releaseRefetch: () => releaseRefetch(), gets: () => gets };
 }
 
 const render = () => renderHook(() => usePrivacySettings(), { wrapper: createTestWrapper({ queryClient: createTestQueryClient() }) });
@@ -84,15 +96,22 @@ describe('usePrivacySettings', () => {
     expect(result.current.saveFailed).toBe(false);
   });
 
-  it('goes back when the save fails', async () => {
-    const { state, release } = serve(createAppearanceSettings({ loadRemoteContent: true }), { failWrites: true });
+  it('goes back when the save fails, before the refetch could restore it', async () => {
+    const { state, release, releaseRefetch, gets } = serve(createAppearanceSettings({ loadRemoteContent: true }), {
+      failWrites: true,
+      holdRefetch: true,
+    });
     const { result } = render();
     await waitFor(() => expect(result.current.loadRemoteContent).toBe(true));
     act(() => result.current.setLoadRemoteContent(false));
     await waitFor(() => expect(result.current.loadRemoteContent).toBe(false));
     await waitFor(() => expect(state.patches).toHaveLength(1));
     act(() => release());
-    await waitFor(() => expect(result.current.saveFailed).toBe(true));
+    // The GET after the failed save is still held: only the rollback can have put the value back.
+    await waitFor(() => expect(result.current.loadRemoteContent).toBe(true));
+    await waitFor(() => expect(gets()).toBe(2));
+    act(() => releaseRefetch());
+    await waitFor(() => expect(result.current.saving).toBe(false));
     expect(result.current.loadRemoteContent).toBe(true);
   });
 });

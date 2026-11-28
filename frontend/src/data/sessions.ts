@@ -48,10 +48,18 @@ export function useSessions(): Sessions {
     () => queryClient.invalidateQueries({ queryKey: [{ _id: 'authControllerGetSessions' }] }),
     [queryClient],
   );
-  const { mutateAsync: revokeSession } = useMutation({ ...authControllerRevokeSessionMutation(), onSuccess: invalidate });
+  const { mutateAsync: revokeSession } = useMutation({
+    ...authControllerRevokeSessionMutation(),
+    // Not awaited: the request is gone, so the caller and its spinner must not wait for the list refetch.
+    onSuccess: () => {
+      void invalidate();
+    },
+  });
   const { mutateAsync: revokeAll, isPending: revokingOthers } = useMutation({
     ...authControllerRevokeAllOtherSessionsMutation(),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      void invalidate();
+    },
   });
   const { mutateAsync: subscribePush } = useMutation(pushNotificationsControllerSubscribeMutation());
 
@@ -64,15 +72,19 @@ export function useSessions(): Sessions {
 
   const revokeOthers = useCallback(async () => {
     const result = await revokeAll({});
-    // The server ended every push subscription with them; this device stays.
-    try {
-      if (isPushSupported() && hasNotificationPermission()) {
-        const subscription = await getCurrentPushSubscription();
-        if (subscription) await subscribePush({ body: extractSubscriptionData(subscription) });
+    // The server ended every push subscription with them; this device stays. Re-subscribe without being
+    // awaited: the answer is the server's message, so the dialog must close even if the service worker's
+    // `ready` never settles. The request order stays DELETE then subscribe.
+    void (async () => {
+      try {
+        if (isPushSupported() && hasNotificationPermission()) {
+          const subscription = await getCurrentPushSubscription();
+          if (subscription) await subscribePush({ body: extractSubscriptionData(subscription) });
+        }
+      } catch (err) {
+        logger.warn('Could not keep push on this device:', err);
       }
-    } catch (err) {
-      logger.warn('Could not keep push on this device:', err);
-    }
+    })();
     return result.message;
   }, [revokeAll, subscribePush]);
 

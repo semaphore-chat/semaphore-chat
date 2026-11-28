@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Route, Routes } from 'react-router-dom';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
 import { createAppearanceSettings, renderWithProviders } from '../test-utils';
@@ -86,5 +86,45 @@ describe('SettingsPage — /settings/:section', () => {
     renderAt('/settings/nope');
     await screen.findByRole('navigation', { name: 'Settings sections' });
     expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('scrolls to the section again once the cards above have loaded', async () => {
+    let releasePrivacy!: () => void;
+    const privacyLoad = new Promise<void>((resolve) => (releasePrivacy = resolve));
+    server.use(
+      http.get(URL, async () => {
+        await privacyLoad;
+        return HttpResponse.json(createAppearanceSettings({ loadRemoteContent: true }));
+      }),
+    );
+    const scrolled: string[] = [];
+    Element.prototype.scrollIntoView = vi.fn(function (this: HTMLElement) {
+      scrolled.push(this.id);
+    });
+    renderAt('/settings/sessions');
+    // The privacy card is still a skeleton: the session section sits higher than it will once it loads.
+    expect(screen.getByLabelText('Loading privacy settings')).toBeInTheDocument();
+    expect(scrolled).toEqual(['settings-sessions']);
+    act(() => releasePrivacy());
+    await waitFor(() => expect(scrolled).toEqual(['settings-sessions', 'settings-sessions']));
+  });
+
+  it('does not scroll back once the reader has scrolled', async () => {
+    let releasePrivacy!: () => void;
+    const privacyLoad = new Promise<void>((resolve) => (releasePrivacy = resolve));
+    server.use(
+      http.get(URL, async () => {
+        await privacyLoad;
+        return HttpResponse.json(createAppearanceSettings({ loadRemoteContent: true }));
+      }),
+    );
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    renderAt('/settings/sessions');
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    fireEvent.wheel(window);
+    act(() => releasePrivacy());
+    await screen.findByRole('switch', { name: PRIVACY_CARD });
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 });
