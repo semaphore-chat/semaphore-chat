@@ -20,8 +20,8 @@ sealed interface MessageState {
     data object Sent : MessageState
     /** On its way: dimmed, "Sending…". */
     data object Pending : MessageState
-    /** Not sent: [reason] is the line to show, already through [errorText]. */
-    data class Failed(val reason: String) : MessageState
+    /** Not sent: [reason] is the line to show, already through [errorText]. [retrying] while Retry runs. */
+    data class Failed(val reason: String, val retrying: Boolean = false) : MessageState
 }
 
 /** The message a reply answers, shown above its words. */
@@ -48,6 +48,8 @@ data class ChatMessage(
      * so nothing in a message is silently missing.
      */
     val extras: List<String> = emptyList(),
+    /** A send from this device (core's `client_nonce`): what Retry and Delete of a failed one name. */
+    val clientNonce: String? = null,
 )
 
 /** The words and the accessible name of the "Jump to latest" control (the FFI's `jump_text`). */
@@ -83,3 +85,54 @@ data class ChatModel(
 
 /** The channel screen's header. */
 data class ChatHeaderModel(val name: String, val icon: ChannelIcon = ChannelIcon.Hash, val community: String = "")
+
+/** The composer's shared numbers: `semaphore_design::chat` (the app's tests check they agree). */
+object ComposerCaps {
+    /** Lines the field grows to on a phone, then it scrolls (`cap_rows(Phone)`). */
+    const val PHONE_ROWS = 4
+    /** The same with the on-screen keyboard up (`cap_rows(Keyboard)`). */
+    const val KEYBOARD_ROWS = 2
+    /** Suggestion rows shown before the list scrolls (`SUGGESTIONS_SHOWN`). */
+    const val SUGGESTIONS_SHOWN = 6
+}
+
+/** Why the reader can't post: which picture goes with the line. */
+enum class BlockedKind { NoPermission, ReadOnly, TimedOut }
+
+/** Whether the composer shows, or the line that stands in for it. */
+sealed interface ComposerAccess {
+    data object Open : ComposerAccess
+    /** [text] says why ("You can't send messages in #design"); [reason] is a moderator's. */
+    data class Blocked(val text: String, val kind: BlockedKind, val reason: String? = null) : ComposerAccess
+}
+
+/** What a mention suggestion names (core's `MentionKind`). */
+enum class SuggestionKind { User, Special, Alias, Channel, Community, Emoji }
+
+/** One of core's `mention_candidates`: [insertText] carries its own `@` or `#`. */
+data class MentionSuggestion(
+    val kind: SuggestionKind,
+    val id: String,
+    val label: String,
+    val insertText: String,
+)
+
+/** The composer beside its text: who may post, and the suggestions for the mention being typed. */
+data class ComposerModel(
+    val access: ComposerAccess = ComposerAccess.Open,
+    val suggestions: List<MentionSuggestion> = emptyList(),
+)
+
+/** The suggestion list's heading (`MentionDropdown`): what all of them are, or "Suggestions". */
+fun suggestionHeading(suggestions: List<MentionSuggestion>): String {
+    val kind = suggestions.firstOrNull()?.kind ?: return "Suggestions"
+    if (suggestions.any { it.kind != kind }) return "Suggestions"
+    return when (kind) {
+        SuggestionKind.User -> "Members"
+        SuggestionKind.Alias -> "Mention Groups"
+        SuggestionKind.Special -> "Special Mentions"
+        SuggestionKind.Channel -> "Channels"
+        SuggestionKind.Community -> "Communities"
+        SuggestionKind.Emoji -> "Emoji"
+    }
+}

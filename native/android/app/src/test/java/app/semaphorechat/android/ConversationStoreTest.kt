@@ -6,7 +6,7 @@ import app.semaphorechat.android.kit.chat.MentionTarget
 import app.semaphorechat.android.kit.chat.PieceKind
 import app.semaphorechat.android.screens.JumpLabel
 import app.semaphorechat.android.screens.MessageState
-import app.semaphorechat.android.screens.SERVER_ERROR_FALLBACK
+import app.semaphorechat.android.kit.chat.ChatKitText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -148,7 +148,7 @@ class ConversationStoreTest {
         val failed = chatMessage(row(1, sendState = SendState.Failed(ErrorView("RATE_LIMITED", "Slow down.", true, null))), null, FakeRules)
         assertEquals(MessageState.Failed("Slow down."), failed.state)
         val opaque = chatMessage(row(1, sendState = SendState.Failed(ErrorView("CLIENT_HTTP", "<html>502</html>", true, null))), null, FakeRules)
-        assertEquals(MessageState.Failed(SERVER_ERROR_FALLBACK), opaque.state)
+        assertEquals("a reason with nothing to say reads \"Not sent\"", MessageState.Failed(ChatKitText.NOT_SENT), opaque.state)
         val hook = chatMessage(row(1).copy(webhook = WebhookView("w1", "Deploy bot", null)), null, FakeRules)
         assertEquals("Deploy bot", hook.author)
         assertEquals("w1", hook.authorId)

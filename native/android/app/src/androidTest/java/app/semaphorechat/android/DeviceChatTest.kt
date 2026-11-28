@@ -12,9 +12,11 @@ import android.view.View
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -23,6 +25,8 @@ import androidx.compose.ui.test.swipeDown
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import app.semaphorechat.android.kit.chat.ChatKitText
+import app.semaphorechat.android.kit.chat.ComposerText
 import app.semaphorechat.android.screens.ChatText
 import app.semaphorechat.android.screens.ConnectText
 import app.semaphorechat.android.screens.INSECURE_WARNING
@@ -174,6 +178,62 @@ class DeviceChatTest {
             check(++swipes < 80) { "never reached the channel's start" }
         }
         waitFor(hasText("patch notes are up", substring = true))
+        closeAndAwaitDetach(scenario)
+        runBlocking { SemaphoreHost.shutdownForTest() }
+    }
+
+    @Test
+    fun aSentMessageIsConfirmedAndAFailedOneSaysNotSentAndRetrySendsIt() {
+        val server = argument("server")
+        runBlocking { SemaphoreHost.shutdownForTest() }
+        listOf("core", "secrets", "last-community").forEach { File(context.noBackupFilesDir, it).deleteRecursively() }
+
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        waitFor(hasText(ConnectText.TITLE))
+        compose.onNode(hasSetTextAction()).performTextInput(server)
+        compose.onNode(hasText(ConnectText.CONNECT) and hasClickAction()).performClick()
+        waitFor(hasText(INSECURE_WARNING))
+        compose.onNode(hasText(ConnectText.CONTINUE) and hasClickAction()).performClick()
+        waitFor(hasText(SignInText.USERNAME))
+        val fields = compose.onAllNodes(hasSetTextAction())
+        fields[0].performTextInput("me")
+        fields[1].performTextInput("pw")
+        compose.onNode(hasText(SignInText.SIGN_IN) and hasClickAction()).performClick()
+        waitFor(hasText("Couch Co-op"))
+        waitFor(hasText("general") and hasClickAction())
+        val field = hasTestTag(ComposerText.FIELD_TAG)
+        val send = hasContentDescription(ComposerText.SEND) and hasClickAction()
+        // Send stays disabled until the list's first page is there (no row could carry the text
+        // yet), and a tap on it then does nothing. The first page is held back a moment so the
+        // field is typed into while the list still loads, as on a slow device, every run.
+        control(server, "delay_route", """{"operationId":"MessagesController_findAllForChannel","ms":2000}""")
+        try {
+            compose.onNode(hasText("general") and hasClickAction()).performClick()
+            waitFor(field)
+            compose.onNode(field).performTextInput("sent from the device")
+            waitFor(send and isEnabled())
+        } finally {
+            control(server, "delay_route", """{"operationId":"MessagesController_findAllForChannel","ms":0}""")
+        }
+
+        // Sent: the field clears at once, and the row is confirmed (no longer "Sending…").
+        compose.onNode(send).performClick()
+        waitFor(hasText("sent from the device") and !field)
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasText(ChatKitText.SENDING)).fetchSemanticsNodes().isEmpty() &&
+                compose.onAllNodes(field and hasText("sent from the device")).fetchSemanticsNodes().isEmpty()
+        }
+
+        // Not sent: the row says so, and Retry sends it.
+        control(server, "fail_next_send", """{"code":"UNKNOWN"}""")
+        compose.onNode(field).performTextInput("retried from the device")
+        waitFor(send and isEnabled())
+        compose.onNode(send).performClick()
+        waitFor(hasText(ChatKitText.NOT_SENT))
+        compose.onNode(hasText(ChatKitText.RETRY) and hasClickAction()).performClick()
+        compose.waitUntilDoesNotExist(hasText(ChatKitText.NOT_SENT), 30_000)
+        compose.waitUntil(30_000) { compose.onAllNodes(hasText(ChatKitText.SENDING)).fetchSemanticsNodes().isEmpty() }
+        compose.waitUntilExactlyOneExists(hasText("retried from the device"), 30_000)
         closeAndAwaitDetach(scenario)
         runBlocking { SemaphoreHost.shutdownForTest() }
     }

@@ -265,7 +265,18 @@ impl Core {
         conversation: Conversation,
         draft: MessageDraft,
     ) -> Result<String, CoreError> {
-        self.begin_send(conversation, draft)
+        self.begin_send(conversation, draft, false)
+    }
+
+    /// As [`Self::send_message`], but only when the pending row can be shown at once: the
+    /// conversation is loaded at its newest messages. Otherwise nothing is sent and it fails, so
+    /// a client that clears its field on send can keep the text instead of losing it.
+    pub async fn send_message_with_row(
+        &self,
+        conversation: Conversation,
+        draft: MessageDraft,
+    ) -> Result<String, CoreError> {
+        self.begin_send(conversation, draft, true)
     }
 
     /// Retries with the same nonce, so the server can't create a second message.

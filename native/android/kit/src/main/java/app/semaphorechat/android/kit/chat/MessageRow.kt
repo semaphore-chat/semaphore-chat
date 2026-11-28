@@ -44,8 +44,8 @@ import app.semaphorechat.android.kit.tintBase
 sealed interface RowState {
     data object Sent : RowState
     data object Pending : RowState
-    /** Not sent; [reason] in place of "Not sent" when there is one. */
-    data class Failed(val reason: String?) : RowState
+    /** Not sent; [reason] in place of "Not sent" when there is one. [retrying] while Retry runs. */
+    data class Failed(val reason: String?, val retrying: Boolean = false) : RowState
 }
 
 /** The texts the chat pieces say, shared with the tests. */
@@ -54,6 +54,8 @@ object ChatKitText {
     const val NOT_SENT = "Not sent"
     const val EDITED = "(edited)"
     const val REMOVED = "Message removed"
+    const val RETRY = "Retry"
+    const val DELETE = "Delete"
     fun replies(count: Int) = if (count == 1) "1 reply" else "$count replies"
 }
 
@@ -61,8 +63,9 @@ object ChatKitText {
  * One message in a compact list (the web kit's `MessageRow`, principles §4): the author's avatar,
  * name and time on one line, the words under them. A [continued] row (same author, close in time)
  * drops the avatar and the header. [mentioned] tints it and draws the mention rail. A pending row
- * is dimmed and says "Sending…"; a failed one says why it wasn't sent. [extras] are lines for
- * what this build does not draw yet.
+ * is dimmed and says "Sending…"; a failed one says why it wasn't sent, with Retry ([onRetry], busy
+ * while it runs) and Delete ([onDelete]) when given. [extras] are lines for what this build does
+ * not draw yet.
  */
 @Composable
 fun MessageRow(
@@ -81,6 +84,8 @@ fun MessageRow(
     extras: List<String> = emptyList(),
     onLink: (String) -> Unit = {},
     onMention: (MentionTarget) -> Unit = {},
+    onRetry: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
 ) {
     val palette = Kit.palette
     val under = palette.tintBase(Kit.surface)
@@ -150,6 +155,7 @@ fun MessageRow(
                     Icon(Icons.CircleAlert, size = IconSize.Xs, colour = palette.danger)
                     Text(state.reason ?: ChatKitText.NOT_SENT, variant = TextVariant.Small, tone = TextTone.Danger)
                 }
+                FailedActions(state.retrying, onRetry, onDelete)
             }
         }
     }

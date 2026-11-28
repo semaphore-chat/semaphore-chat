@@ -9,6 +9,8 @@ package app.semaphorechat.android.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -28,10 +30,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.TextFieldValue
 import app.semaphorechat.android.design.Icons
 import app.semaphorechat.android.design.Tokens
 import app.semaphorechat.android.kit.AvatarSize
@@ -49,7 +53,13 @@ import app.semaphorechat.android.kit.SurfacePadding
 import app.semaphorechat.android.kit.Text
 import app.semaphorechat.android.kit.TextTone
 import app.semaphorechat.android.kit.TextVariant
+import app.semaphorechat.android.kit.chat.ComposerField
+import app.semaphorechat.android.kit.chat.ComposerNotice
+import app.semaphorechat.android.kit.chat.ComposerText
 import app.semaphorechat.android.kit.chat.DayDivider
+import app.semaphorechat.android.kit.chat.SuggestionItem
+import app.semaphorechat.android.kit.chat.SuggestionList
+import app.semaphorechat.android.kit.chat.SuggestionLook
 import app.semaphorechat.android.kit.chat.JumpToLatest
 import app.semaphorechat.android.kit.chat.MentionTarget
 import app.semaphorechat.android.kit.chat.MessageQuoteItem
@@ -90,13 +100,22 @@ class ChatActions(
     /** A link was tapped: its checked address (`check_link`'s, never the text it was written as). */
     val onOpenLink: (String) -> Unit = {},
     val onOpenChannel: (String) -> Unit = {},
+    /** The composer's text or caret changed. */
+    val onDraftChange: (TextFieldValue) -> Unit = {},
+    val onSend: () -> Unit = {},
+    val onPickMention: (MentionSuggestion) -> Unit = {},
+    /** Retry of a failed send, by its client nonce. */
+    val onRetrySend: (String) -> Unit = {},
+    /** Delete of a failed send, by its client nonce. */
+    val onDiscardSend: (String) -> Unit = {},
 )
 
 /**
  * A text channel on a phone (the web Lounge's `ChannelChat` at phone width): the header with Back,
- * the connection line, the message list or why there is none, "Jump to latest" and the typing
- * line. The list is newest at the bottom ([LazyColumn] with `reverseLayout`), keyed by core's row
- * `seq`, so older pages land above what is read without moving it, and new messages land below.
+ * the connection line, the message list or why there is none, "Jump to latest", the typing
+ * line and the composer (or the line saying why the reader can't post). The screen follows the
+ * keyboard: `safeDrawingPadding` includes the IME's inset (the activity resizes for it). The list
+ * is newest at the bottom ([LazyColumn] with `reverseLayout`), keyed by core's row `seq`, so older pages land above what is read without moving it, and new messages land below.
  */
 @Composable
 fun ChatScreen(
@@ -105,6 +124,8 @@ fun ChatScreen(
     format: ChatFormat,
     actions: ChatActions,
     listState: LazyListState = rememberLazyListState(),
+    draft: TextFieldValue = TextFieldValue(),
+    composer: ComposerModel = ComposerModel(),
 ) {
     Column(Modifier.fillMaxSize().safeDrawingPadding().padding(Tokens.Space.Sm)) {
         Island(modifier = Modifier.fillMaxSize(), padding = SurfacePadding.None) {
@@ -124,6 +145,73 @@ fun ChatScreen(
                 }
             }
             TypingLine(chat.typing)
+            val scope = rememberCoroutineScope()
+            // Sending needs the list loaded: the pending row is what carries the text once sent.
+            ComposerArea(header.name, draft, composer, actions, ready = chat.face == ChatFace.Ready) {
+                actions.onSend()
+                // What was sent lands at the bottom: go there, as Discord does. From history the
+                // store brings the newest rows back before it sends.
+                scope.launch { listState.scrollToItem(0) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComposerArea(
+    channel: String,
+    draft: TextFieldValue,
+    composer: ComposerModel,
+    actions: ChatActions,
+    ready: Boolean,
+    onSend: () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth().padding(start = Tokens.Space.Sm, end = Tokens.Space.Sm, bottom = Tokens.Space.Sm),
+        verticalArrangement = Arrangement.spacedBy(Tokens.Space.Xs),
+    ) {
+        when (val access = composer.access) {
+            is ComposerAccess.Blocked -> ComposerNotice(
+                access.text,
+                when (access.kind) {
+                    BlockedKind.NoPermission -> Icons.Lock
+                    BlockedKind.ReadOnly -> Icons.Megaphone
+                    BlockedKind.TimedOut -> Icons.Info
+                },
+                reason = access.reason,
+            )
+            ComposerAccess.Open -> {
+                val suggestions = composer.suggestions
+                SuggestionList(
+                    heading = suggestionHeading(suggestions),
+                    items = suggestions.map { suggestion ->
+                        SuggestionItem(
+                            label = suggestion.label,
+                            detail = suggestion.insertText.takeIf { suggestion.kind == SuggestionKind.User },
+                            look = when (suggestion.kind) {
+                                SuggestionKind.User -> SuggestionLook.Person(suggestion.id)
+                                SuggestionKind.Channel -> SuggestionLook.Channel
+                                else -> SuggestionLook.Group
+                            },
+                        )
+                    },
+                    shown = ComposerCaps.SUGGESTIONS_SHOWN,
+                    onPick = { index -> suggestions.getOrNull(index)?.let(actions.onPickMention) },
+                    // Measured after the field: with the keyboard up the list gets only what is
+                    // left, and never squeezes the field and Send.
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                ComposerField(
+                    value = draft,
+                    onValueChange = actions.onDraftChange,
+                    placeholder = ComposerText.placeholder(channel),
+                    // The keyboard is up when it takes room at the bottom (`isImeVisible` reads true
+                    // where no insets are dispatched at all, as under Robolectric).
+                    maxLines = if (WindowInsets.ime.getBottom(LocalDensity.current) > 0) ComposerCaps.KEYBOARD_ROWS else ComposerCaps.PHONE_ROWS,
+                    canSend = ready && draft.text.isNotBlank(),
+                    onSend = onSend,
+                )
+            }
         }
     }
 }
@@ -286,13 +374,15 @@ private fun MessageItem(entry: ChatEntry.Message, format: ChatFormat, actions: C
         state = when (val state = message.state) {
             MessageState.Sent -> RowState.Sent
             MessageState.Pending -> RowState.Pending
-            is MessageState.Failed -> RowState.Failed(state.reason)
+            is MessageState.Failed -> RowState.Failed(state.reason, state.retrying)
         },
         quote = message.replyTo?.let { MessageQuoteItem(it.author, it.text, it.deleted) },
         replyCount = message.replyCount,
         extras = message.extras,
         onLink = actions.onOpenLink,
         onMention = { target -> if (target is MentionTarget.Channel) actions.onOpenChannel(target.id) },
+        onRetry = message.clientNonce?.takeIf { message.state is MessageState.Failed }?.let { nonce -> { actions.onRetrySend(nonce) } },
+        onDelete = message.clientNonce?.takeIf { message.state is MessageState.Failed }?.let { nonce -> { actions.onDiscardSend(nonce) } },
     )
 }
 
