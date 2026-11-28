@@ -400,6 +400,58 @@ test.describe('The Lounge chat (390 px)', () => {
     }
   });
 
+  // The chat fixture is the new shell's at every width, so a resize keeps the one list: only its height changes (the
+  // rows are one line at both widths). It keeps the reader's place (#921): at the newest message the newest stays in
+  // view; scrolled up, the older message stays in view and the list is not pulled to the bottom.
+  test('resizing across the phone boundary in the chat fixture keeps the reader at the newest message, or at an older one', async ({
+    browser,
+    request,
+  }) => {
+    const world = await loungeWorld(request);
+    for (let i = 1; i <= 40; i += 1) await sendTestMessage(request, world.c1.lobbyId, `numbered message ${i}`, world.owner.token);
+    const numbered = (page: Page, n: number) => messages(page).getByRole('article').filter({ hasText: new RegExp(`numbered message ${n}$`) });
+    const TABLET = { width: 820, height: 1180 };
+    const { context, page } = await openSession(browser, world.member, PHONE);
+    try {
+      await openChat(page, world.c1.id, world.c1.lobbyId);
+      await expect(numbered(page, 40)).toBeInViewport(EVENTUAL);
+      // The list's laid-out height per viewport width, so the "scrolled up" loop below can wait for a resize.
+      const heightAt = new Map<number, number>();
+      for (const viewport of [TABLET, PHONE, TABLET, PHONE]) {
+        await page.setViewportSize(viewport);
+        await expect(page.locator('[data-shell="lounge"]'), `${viewport.width}px`).toBeAttached();
+        await expect(numbered(page, 40), `${viewport.width}px`).toBeInViewport(EVENTUAL);
+        heightAt.set(viewport.width, await messages(page).evaluate((el) => el.clientHeight));
+      }
+
+      // Scroll back to an older message: the newest leaves the view.
+      const older = numbered(page, 10);
+      const box = await messages(page).boundingBox();
+      await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+      // Scroll to the very top first, so virtua has measured every row (the older page's rows are estimated
+      // until they render, and their real heights would otherwise shift the reader while the test resizes).
+      for (let i = 0; i < 40 && !(await numbered(page, 1).isVisible().catch(() => false)); i += 1) {
+        await page.mouse.wheel(0, -400);
+      }
+      for (let i = 0; i < 40; i += 1) await page.mouse.wheel(0, -400);
+      // Then put the older message in the middle of the view, with room on both sides.
+      await older.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+      await expect(older).toBeInViewport();
+      await expect(numbered(page, 40)).not.toBeInViewport();
+      for (const viewport of [TABLET, PHONE]) {
+        await page.setViewportSize(viewport);
+        // The list's height is what changes (the rows are one line at both widths): wait for it before asserting.
+        await expect
+          .poll(() => messages(page).evaluate((el) => el.clientHeight), { ...EVENTUAL, message: `${viewport.width}px` })
+          .toBe(heightAt.get(viewport.width));
+        await expect(older, `${viewport.width}px`).toBeInViewport(EVENTUAL);
+      }
+      await expect(numbered(page, 40)).not.toBeInViewport();
+    } finally {
+      await context.close();
+    }
+  });
+
   test('a cold link to a chat in another community makes it the last opened: the classic Home tab returns there', async ({ browser, request }) => {
     const world = await loungeWorld(request);
     const { context, page } = await openSession(browser, world.member, PHONE);

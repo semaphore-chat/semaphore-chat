@@ -158,7 +158,18 @@ export interface MessageListCoreProps {
  *   pinned (a reaction added to the newest message, an image or GIF finishing
  *   loading, a link preview expanding: virtua keeps the scroll offset when a
  *   row in view resizes, so the bottom would move below the fold; the same
- *   row ResizeObserver as the visible-range report below detects it).
+ *   row ResizeObserver as the visible-range report below detects it), and
+ *   so does the list's own viewport changing height while pinned (a window
+ *   resize or a phone rotating, the composer growing with a longer draft, a
+ *   reply bar or the on-screen keyboard opening, a hidden pane shown again:
+ *   the browser and virtua keep the scroll offset, i.e. the top edge, so a
+ *   shorter viewport would leave the newest rows below it; #921). Unpinned,
+ *   that top edge is the reader's place and is left alone. A growth larger
+ *   than the reader's distance from the bottom clamps them to the bottom;
+ *   that counts as pinned, so the next shrink keeps them at the newest (a
+ *   reader that close to the end is treated like one at it). A list
+ *   opened at the start with a newer page still to load is exempt from all
+ *   three (see the stick-to-bottom effect below).
  *   Disabled in anchored mode (a newer page
  *   landing below the viewport must not yank the reader off their spot — see
  *   the stick-to-bottom effect below for the full rationale) and, for normal
@@ -528,6 +539,12 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
     scrollToBottomRef.current = scrollToBottom;
     const modeRef = useRef(mode);
     modeRef.current = mode;
+    // The observer below is created once, so it reads these through refs: the gate the stick-to-bottom effect
+    // applies (a list opened at the start with a newer page still to load is not at the live edge).
+    const startAtRef = useRef(startAt);
+    startAtRef.current = startAt;
+    const hasNewerRef = useRef(hasNewer);
+    hasNewerRef.current = hasNewer;
     // Last seen height per rendered row element. A row without an entry has
     // just mounted: its first notification is a measurement, not growth.
     const rowHeightsRef = useRef(new WeakMap<Element, number>());
@@ -556,7 +573,14 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
         // stick-to-bottom on a new message (normal mode only, same reasons).
         // A shrinking row needs nothing: the browser clamps a scrollTop past
         // the new end, so a pinned list stays at the bottom.
-        if (grew && modeRef.current === 'normal' && pinnedRef.current) {
+        if (
+          grew &&
+          modeRef.current === 'normal' &&
+          // Opened at the start with a newer page still to load: the loaded end is not the live edge (same
+          // gate as the stick-to-bottom effect).
+          !(startAtRef.current === 'start' && hasNewerRef.current) &&
+          pinnedRef.current
+        ) {
           scrollToBottomRef.current();
         }
         reportRangeIfFits();
@@ -584,6 +608,50 @@ const MessageListCore = forwardRef<MessageListCoreHandle, MessageListCoreProps>(
       return () => {
         rowObserverRef.current?.unobserve(row);
       };
+    }, []);
+
+    // Stay pinned when the list's viewport changes height (see the module
+    // doc). The container's height is the VList's (the page-load bars are
+    // absolutely positioned). Created in a layout effect after virtua's own
+    // viewport observer (its child layout effects run first), so within a
+    // delivery virtua already has the new viewport size when this scrolls,
+    // and before the scroll event of any offset change virtua made in the
+    // same delivery, so `pinnedRef` still says where the reader was.
+    useLayoutEffect(() => {
+      const container = listContainerRef.current;
+      if (!container || typeof ResizeObserver === "undefined") return;
+      let height: number | null = null;
+      const observer = new ResizeObserver((entries) => {
+        const entry = entries[entries.length - 1];
+        const next = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+        const previous = height;
+        if (previous === null) {
+          // The first notification is the initial measurement (initial positioning owns that).
+          height = next;
+          return;
+        }
+        if (next === 0) {
+          // A hidden list has nothing to show; coming back from 0 is a fresh measurement of the shown list.
+          height = next;
+          return;
+        }
+        // Ignore sub-pixel layout noise, but keep the last stored height as the baseline: comparing each noise-
+        // sized step against the previous notification would swallow a run of them that adds up to a real change.
+        if (Math.abs(next - previous) <= ROW_GROWTH_EPSILON_PX) return;
+        height = next;
+        if (
+          modeRef.current !== 'normal' ||
+          // Opened at the start with a newer page still to load: the loaded end is not the live edge (same
+          // gate as the stick-to-bottom effect).
+          (startAtRef.current === 'start' && hasNewerRef.current) ||
+          !initialPositionedRef.current
+        ) {
+          return;
+        }
+        if (pinnedRef.current) scrollToBottomRef.current();
+      });
+      observer.observe(container);
+      return () => observer.disconnect();
     }, []);
 
     // A new consumer callback (markAsRead is re-created when the socket

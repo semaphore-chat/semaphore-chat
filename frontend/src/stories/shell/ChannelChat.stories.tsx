@@ -343,6 +343,27 @@ export const PrivateChannel = story({ handlers: privateHandlers });
 /** No messages yet. */
 export const Empty = story({ handlers: [http.get(messagesPath, () => HttpResponse.json({ messages: [], continuationToken: undefined }))] });
 
+/**
+ * Forty short numbered messages in two pages, as the server sends them (25, newest first, then the rest; the older
+ * page loads near the top). More than a phone or a tablet shows: the list opens at the newest. The rows fit one line
+ * even on a phone, so a width change resizes only the list, not its rows: what browser-tests/chat-resize.spec.ts
+ * uses to check that the list keeps the reader's place when it changes height (#921).
+ */
+const NUMBERED = Array.from({ length: 40 }, (_, i) =>
+  message(['u-kwam3', 'u-aiko', 'u-dropbear'][i % 3], at(0, i), [text(`numbered message ${i + 1}`)]),
+);
+export const ManyMessages = story({
+  handlers: [
+    http.get(messagesPath, ({ request }) => {
+      const older = new URL(request.url).searchParams.get('continuationToken') === 'page-2';
+      const newestFirst = [...NUMBERED].reverse();
+      return HttpResponse.json(
+        older ? { messages: newestFirst.slice(25), continuationToken: undefined } : { messages: newestFirst.slice(0, 25), continuationToken: 'page-2' },
+      );
+    }),
+  ],
+});
+
 /** Still loading the messages: skeleton rows. */
 export const Loading = story({
   handlers: [

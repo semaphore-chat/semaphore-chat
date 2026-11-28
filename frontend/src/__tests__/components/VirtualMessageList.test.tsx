@@ -141,6 +141,17 @@ function resizeRows(heights: Record<string, number>) {
   }
 }
 
+/** Deliver a ResizeObserver notification for the list's own viewport (the
+ * scroll container's box) at the given height to every observer watching it. */
+function resizeViewport(height: number) {
+  const target = document.querySelector('[data-testid="virtual-scroll-container"]');
+  for (const observer of FakeResizeObserver.instances) {
+    if (target === null || !observer.observed.has(target)) continue;
+    const entry = { target, contentRect: { height } as DOMRectReadOnly, borderBoxSize: [{ blockSize: height, inlineSize: 390 }] };
+    act(() => observer.callback([entry] as unknown as ResizeObserverEntry[], observer as unknown as ResizeObserver));
+  }
+}
+
 beforeEach(() => {
   resetFactoryCounter();
   capturedProps = {};
@@ -1302,6 +1313,121 @@ describe('VirtualMessageList', () => {
       resizeRows({ newer: 400 }); // its GIF loads
 
       expect(fakeHandle.scrollToIndex).toHaveBeenCalledWith(5, { align: 'end' });
+    });
+  });
+
+  // The browser and virtua keep the scroll offset (the top edge) when the
+  // list's viewport changes height, so a shorter viewport leaves the newest
+  // rows below it while no row resizes: a window resize or a phone rotating
+  // (#921, the Lounge chat across the phone boundary), the composer growing,
+  // the on-screen keyboard opening. Shared by the classic and the Lounge chat.
+  describe("stays pinned when the list's viewport changes height", () => {
+    const renderMeasured = (props: Partial<React.ComponentProps<typeof VirtualMessageList>> = {}) => {
+      installFakeResizeObserver();
+      const utils = render(<VirtualMessageList {...baseProps} orderedMessages={messages(5)} {...props} />);
+      resizeViewport(1028); // the first measurement
+      return utils;
+    };
+    const bottomScrolls = () =>
+      fakeHandle.scrollToIndex.mock.calls.filter(
+        ([index, opts]) => index === 4 && (opts as { align?: string })?.align === 'end',
+      );
+
+    it('scrolls back to the bottom when the viewport gets shorter while pinned (tablet width to a phone)', () => {
+      renderMeasured();
+      act(() => capturedProps.onScroll?.(600)); // at the bottom → pinned
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeViewport(616);
+
+      expect(bottomScrolls()).toHaveLength(1);
+    });
+
+    it('also when it gets taller (the browser clamps, the bottom is asserted the same way)', () => {
+      renderMeasured();
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeViewport(1180);
+
+      expect(bottomScrolls()).toHaveLength(1);
+    });
+
+    it('does not scroll for the first measurement (initial positioning owns it)', () => {
+      installFakeResizeObserver();
+      render(<VirtualMessageList {...baseProps} orderedMessages={messages(5)} />);
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeViewport(616);
+
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it('keeps the place of a reader who scrolled up (no scroll: the top edge stays)', () => {
+      renderMeasured();
+      act(() => capturedProps.onScroll?.(100)); // 500px from the bottom
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeViewport(616);
+
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it('ignores sub-pixel changes', () => {
+      renderMeasured();
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeViewport(1027.7);
+
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it('counts sub-pixel steps against the last stored height, so a run of them still re-pins', () => {
+      renderMeasured();
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      // Twenty pixels of growth in 0.4 px steps: each step alone is layout noise.
+      for (let h = 1028.4; h <= 1048; h += 0.4) resizeViewport(h);
+
+      expect(bottomScrolls().length).toBeGreaterThan(0);
+    });
+
+    it('does not scroll when the list is opened at the start with a newer page to load (a thread)', () => {
+      renderMeasured({ startAt: 'start', hasNewer: true });
+      act(() => capturedProps.onScroll?.(600)); // at the loaded end → pinned
+      fakeHandle.scrollToIndex.mockClear();
+      resizeRows({ 'msg-4': 60 }); // first measurement of the rows
+
+      resizeViewport(616);
+      expect(bottomScrolls()).toHaveLength(0);
+
+      resizeRows({ 'msg-4': 96 }); // a reply's row grows
+      expect(bottomScrolls()).toHaveLength(0);
+    });
+
+    it('does nothing while hidden (0 px) and returns to the bottom when shown again', () => {
+      renderMeasured();
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeViewport(0);
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+
+      resizeViewport(616);
+      expect(bottomScrolls()).toHaveLength(1);
+    });
+
+    it('does not scroll in anchored mode (stick-to-bottom is normal mode only)', () => {
+      renderMeasured({ mode: 'anchored' });
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeViewport(616);
+
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
     });
   });
 });
