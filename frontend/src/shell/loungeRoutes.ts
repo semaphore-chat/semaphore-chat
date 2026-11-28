@@ -13,7 +13,7 @@
  * notice. So a converted three-islands screen no longer strands a call's video.
  *
  * Registered: the test fixtures (the marker, the community fixture, which
- * assembles every piece of the shell on real data, and the chat fixture) and two real screens at phone
+ * assembles every piece of the shell on real data, and the chat fixture) and two real screens at every
  * width: the community home (`COMMUNITY_HOME_PATH`) and a text channel's chat (`CHANNEL_CHAT_PATH`). Every
  * `/__lounge...` path is a fixture: with the new design off it is the old
  * shell's not-found page, and only a fixture's descriptor may set `links`.
@@ -69,11 +69,14 @@ export function loungeChatFixturePath(communityId: string, channelId: string): s
   return `/__lounge/community/${communityId}/channel/${channelId}`;
 }
 
-/** The community home: the community's channels and rooms. The new shell's at phone width only. */
+/**
+ * The community home: the community's channels and rooms. At compact and wide its centre redirects to the last (or
+ * first) text channel (`CommunityRedirect`).
+ */
 export const COMMUNITY_HOME_PATH = '/community/:communityId';
 
 /**
- * A channel's chat. The new shell's at phone width only, and for a text channel only: a voice channel's route is the
+ * A channel's chat. The new shell's for a text channel only: a voice channel's route is the
  * old shell's call view (`chooseShell`'s `voiceChannels`). `.../search` and the rest under it stay the old shell's
  * (whole-path match).
  */
@@ -105,14 +108,12 @@ export const LOUNGE_ROUTES: readonly LoungeRoute[] = [
   },
   {
     path: COMMUNITY_HOME_PATH,
-    // Compact would be an empty centre island (no converted chat beside it yet); 820 px and wider stay classic.
-    widths: ['phone'],
+    widths: ['phone', 'compact', 'wide'],
     load: () => import('./lounge/screens/CommunityHomeScreen'),
   },
   {
     path: CHANNEL_CHAT_PATH,
-    // Wider widths show the chat beside the channel list in the old shell until those layouts are converted.
-    widths: ['phone'],
+    widths: ['phone', 'compact', 'wide'],
     load: () => import('./lounge/screens/ChannelChatScreen'),
   },
 ];

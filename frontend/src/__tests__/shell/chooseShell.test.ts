@@ -63,21 +63,19 @@ describe('chooseShell', () => {
   it('with the new design on, a route that is not registered is the old shell', () => {
     for (const width of WIDTHS) {
       for (const pathname of paths) {
-        if (width === 'phone' && (pathname === '/community/x-communityId' || pathname === '/community/x-communityId/channel/x-channelId')) continue;
+        if (pathname === '/community/x-communityId' || pathname === '/community/x-communityId/channel/x-channelId') continue;
         expect(chooseShell({ pathname, enabled: true, width }), `${pathname} at ${width}`).toEqual({ kind: 'classic' });
       }
     }
   });
 
-  it('with the new design on, /community/:id is the new shell at phone only, with its community', () => {
-    const choice = chooseShell({ pathname: '/community/c-1', enabled: true, width: 'phone' });
+  it.each(WIDTHS)('with the new design on, /community/:id is the new shell at %s width, with its community', (width) => {
+    const choice = chooseShell({ pathname: '/community/c-1', enabled: true, width });
     expect(choice.kind === 'lounge' && choice.route.path).toBe(COMMUNITY_HOME_PATH);
     expect(choice.kind === 'lounge' && choice.params).toEqual({ communityId: 'c-1' });
-    expect(chooseShell({ pathname: '/community/c-1', enabled: true, width: 'compact' })).toEqual({ kind: 'classic' });
-    expect(chooseShell({ pathname: '/community/c-1', enabled: true, width: 'wide' })).toEqual({ kind: 'classic' });
     // A channel's search and the community's settings stay the old shell's.
     for (const pathname of ['/community/c-1/channel/ch-2/search', '/community/c-1/edit']) {
-      expect(chooseShell({ pathname, enabled: true, width: 'phone' }), pathname).toEqual({ kind: 'classic' });
+      expect(chooseShell({ pathname, enabled: true, width }), pathname).toEqual({ kind: 'classic' });
     }
   });
 
@@ -157,15 +155,13 @@ describe('chooseShell', () => {
   describe('the real channel route', () => {
     const pathname = '/community/c-1/channel/ch-2';
 
-    it('is the new shell at phone width, with its community and channel', () => {
-      const choice = chooseShell({ pathname, enabled: true, width: 'phone' });
+    it.each(WIDTHS)('is the new shell at %s width, with its community and channel', (width) => {
+      const choice = chooseShell({ pathname, enabled: true, width });
       expect(choice.kind === 'lounge' && choice.route.path).toBe(CHANNEL_CHAT_PATH);
       expect(choice.kind === 'lounge' && choice.params).toEqual({ communityId: 'c-1', channelId: 'ch-2' });
     });
 
-    it('is the old shell at tablet and desktop widths, and with the new design off at every width', () => {
-      expect(chooseShell({ pathname, enabled: true, width: 'compact' })).toEqual({ kind: 'classic' });
-      expect(chooseShell({ pathname, enabled: true, width: 'wide' })).toEqual({ kind: 'classic' });
+    it('is the old shell with the new design off at every width', () => {
       for (const width of WIDTHS) expect(chooseShell({ pathname, enabled: false, width }), width).toEqual({ kind: 'classic' });
     });
 
@@ -195,10 +191,12 @@ describe('chooseShell', () => {
 
     it('a known voice channel is the old shell (its call view); a text channel and the fixture are not affected', () => {
       const voiceChannels = new Set(['v-1']);
-      expect(chooseShell({ pathname: '/community/c-1/channel/v-1', enabled: true, width: 'phone', voiceChannels })).toEqual({ kind: 'classic' });
-      expect(chooseShell({ pathname, enabled: true, width: 'phone', voiceChannels }).kind).toBe('lounge');
-      expect(chooseShell({ pathname: '/community/v-1', enabled: true, width: 'phone', voiceChannels }).kind).toBe('lounge');
-      expect(chooseShell({ pathname: loungeChatFixturePath('c-1', 'v-1'), enabled: true, width: 'phone', voiceChannels }).kind).toBe('lounge');
+      for (const width of WIDTHS) {
+        expect(chooseShell({ pathname: '/community/c-1/channel/v-1', enabled: true, width, voiceChannels }), width).toEqual({ kind: 'classic' });
+        expect(chooseShell({ pathname, enabled: true, width, voiceChannels }).kind, width).toBe('lounge');
+        expect(chooseShell({ pathname: '/community/v-1', enabled: true, width, voiceChannels }).kind, width).toBe('lounge');
+        expect(chooseShell({ pathname: loungeChatFixturePath('c-1', 'v-1'), enabled: true, width, voiceChannels }).kind, width).toBe('lounge');
+      }
     });
   });
 
@@ -248,7 +246,7 @@ describe('the registry (LOUNGE_ROUTES)', () => {
     for (const route of LOUNGE_ROUTES) expect(route.widths.length).toBeGreaterThan(0);
   });
 
-  it('registers the fixtures and the phone community home', () => {
+  it('registers the fixtures, the community home and the channel chat at every width', () => {
     expect(LOUNGE_ROUTES.map((route) => route.path)).toEqual([
       LOUNGE_MARKER_PATH,
       LOUNGE_COMMUNITY_FIXTURE_PATH,
@@ -256,8 +254,8 @@ describe('the registry (LOUNGE_ROUTES)', () => {
       COMMUNITY_HOME_PATH,
       CHANNEL_CHAT_PATH,
     ]);
-    expect(LOUNGE_ROUTES.find((route) => route.path === COMMUNITY_HOME_PATH)?.widths).toEqual(['phone']);
-    expect(LOUNGE_ROUTES.find((route) => route.path === CHANNEL_CHAT_PATH)?.widths).toEqual(['phone']);
+    expect(LOUNGE_ROUTES.find((route) => route.path === COMMUNITY_HOME_PATH)?.widths).toEqual(['phone', 'compact', 'wide']);
+    expect(LOUNGE_ROUTES.find((route) => route.path === CHANNEL_CHAT_PATH)?.widths).toEqual(['phone', 'compact', 'wide']);
   });
 
   it("the channel chat: the chat fixture's descriptor without links", async () => {

@@ -2,7 +2,8 @@
  * The Lounge chat (PR 10c-1 read side, PR 10c-2a write side) on real data at phone width, on the real channel route
  * `/community/:communityId/channel/:channelId` (PR 10c-2b, the new design on) and, where cheap, on the hidden chat
  * fixture `/__lounge/community/:communityId/channel/:channelId` too (`LOUNGE_WHERES`). The real route stays the old
- * shell's with the new design off, at tablet width, for its search and for a voice channel (checked here).
+ * shell's with the new design off, for its search and for a voice channel (checked here). Tablet and desktop widths:
+ * `lounge-wide.spec.ts`.
  *
  * Each test builds its own world (`loungeWorld`): C1 with `lobby` (public) and `staff` (private, the owner's),
  * owned by the seeded `testuser`, and a fresh plain member N in no private channel.
@@ -326,75 +327,70 @@ test.describe('The Lounge chat (390 px)', () => {
     }
   });
 
-  test('the real route stays the old shell’s at 820 px, for its search and for a voice channel (the call view)', async ({ browser, request }) => {
+  // Since C3 the real route is the new shell's at 820 px too (lounge-wide.spec.ts covers it there); its search and a
+  // voice channel are still the old shell's at every width.
+  test('at 820 px the real route is the Lounge chat; its search and a voice channel (the call view) stay the old shell’s', async ({ browser, request }) => {
     const world = await loungeWorld(request);
     const { context, page } = await openSession(browser, world.member, { width: 820, height: 1180 });
     const real = chatPath('real', world.c1.id, world.c1.lobbyId);
     try {
       await page.goto(`/#${real}?design=lounge`);
-      await expect(page.getByRole('textbox', { name: /^Message #lobby/ })).toBeVisible(EVENTUAL);
-      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
+      await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
+      await expect(page.locator('[data-shell="lounge"]')).toBeAttached();
 
-      await page.setViewportSize(PHONE);
-      // The chat's search stays the old shell's full-screen search.
-      await page.goto(`/#${real}/search`);
-      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
-      await expect(page.getByPlaceholder('Search #lobby')).toBeVisible(EVENTUAL);
+      for (const viewport of [{ width: 820, height: 1180 }, PHONE]) {
+        await page.setViewportSize(viewport);
+        // The chat's search stays the old shell's full-screen search.
+        await page.goto(`/#${real}/search`);
+        await expect(page.getByPlaceholder('Search #lobby'), `${viewport.width}px`).toBeVisible(EVENTUAL);
+        await expect(page.locator('[data-shell="lounge"]'), `${viewport.width}px`).toHaveCount(0);
 
-      // A voice channel's route is the old shell's call view, also on a cold link with nothing known yet.
-      await page.goto(`/#${chatPath('real', world.c1.id, world.c1.hangoutId)}`);
-      await expect(page.getByText('Voice channel', { exact: true })).toBeVisible(EVENTUAL);
-      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0, EVENTUAL);
-      await expect(page.getByRole('textbox', { name: /^Message #/ })).toHaveCount(0);
+        // A voice channel's route is the old shell's call view, also on a cold link: a fresh tab whose first route it is,
+        // so no Lounge community screen has mounted and nothing is known of the channel yet (voiceChannelMemory empty).
+        const cold = await context.newPage();
+        try {
+          await cold.setViewportSize(viewport);
+          await cold.goto(`/#${chatPath('real', world.c1.id, world.c1.hangoutId)}?design=lounge`);
+          await expect(cold.getByText('Voice channel', { exact: true }), `${viewport.width}px, cold`).toBeVisible(EVENTUAL);
+          await expect(cold.locator('[data-shell="lounge"]'), `${viewport.width}px, cold`).toHaveCount(0, EVENTUAL);
+          await expect(cold.getByRole('textbox', { name: /^Message #/ }), `${viewport.width}px, cold`).toHaveCount(0);
+          // The tab really has the new design on: its text channel is the Lounge chat.
+          await cold.goto(`/#${real}?design=lounge`);
+          await expect(chatHeading(cold, 'lobby'), `${viewport.width}px, cold`).toBeVisible(EVENTUAL);
+        } finally {
+          await cold.close();
+        }
+      }
     } finally {
       await context.close();
     }
   });
 
-  // The scroll place is NOT kept across a shell swap: each shell mounts its own list, which opens at the newest
-  // message (the read marks are shared, so nothing is marked read twice). The URL and the draft are kept.
-  test('resizing across the phone boundary in the chat keeps the URL and the draft; each shell reopens at the newest message', async ({
-    browser,
-    request,
-  }) => {
+  // Since C3 the chat is the new shell's on both sides of the phone boundary, so a resize no longer swaps shells (the
+  // old shell's 820 px chat is gone with the new design on). The URL and the draft are kept; wider resizes:
+  // lounge-wide.spec.ts.
+  test('resizing across the phone boundary in the chat keeps the new shell, the URL and the draft', async ({ browser, request }) => {
     const world = await loungeWorld(request);
     for (let i = 1; i <= 40; i += 1) await sendTestMessage(request, world.c1.lobbyId, `numbered message ${i}`, world.owner.token);
     const { context, page } = await openSession(browser, world.member, PHONE);
     const real = chatPath('real', world.c1.id, world.c1.lobbyId);
-    const inView = (el: Element) => {
-      const r = el.getBoundingClientRect();
-      return r.bottom > 0 && r.top < innerHeight;
-    };
     try {
       await openChat(page, world.c1.id, world.c1.lobbyId, '', 'real');
       await expect(row(page, 'numbered message 40')).toBeVisible(EVENTUAL);
       await page.getByRole('textbox', { name: 'Message #lobby' }).fill('half a thought');
-      // Scroll back to an older message: the newest leaves the view.
-      const older = row(page, 'numbered message 12');
-      const box = await messages(page).boundingBox();
-      await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-      for (let i = 0; i < 30 && !(await older.isVisible().catch(() => false)); i += 1) await page.mouse.wheel(0, -400);
-      await older.scrollIntoViewIfNeeded();
-      await expect(older).toBeInViewport();
-      await expect(row(page, 'numbered message 40')).not.toBeInViewport();
 
-      await page.setViewportSize({ width: 820, height: 1180 });
-      await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0, EVENTUAL);
-      await expect(page).toHaveURL(hashUrl(real));
-      const classicNewest = page.getByTestId('message-body').filter({ hasText: 'numbered message 40' });
-      await expect(classicNewest).toBeVisible(EVENTUAL);
-      expect(await classicNewest.evaluate(inView)).toBe(true);
-      await expect(page.getByRole('textbox', { name: /^Message #lobby/ })).toHaveValue('half a thought', EVENTUAL);
-
-      await page.setViewportSize(PHONE);
-      await expect(chatHeading(page, 'lobby')).toBeVisible(EVENTUAL);
-      await expect(page).toHaveURL(hashUrl(real));
-      await expect(row(page, 'numbered message 40')).toBeInViewport(EVENTUAL);
-      // The older message the user had scrolled to is not where they were: the place is not kept.
-      // Bounded and auto-retrying: a row virtua dropped from the DOM counts as out of view and does not hang.
-      await expect(row(page, 'numbered message 12')).not.toBeInViewport(EVENTUAL);
-      await expect(page.getByRole('textbox', { name: 'Message #lobby' })).toHaveValue('half a thought', EVENTUAL);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false);
+      for (const viewport of [{ width: 820, height: 1180 }, PHONE]) {
+        const step = `${viewport.width}px`;
+        await page.setViewportSize(viewport);
+        await expect(page.locator('[data-shell="lounge"]'), step).toBeAttached();
+        await expect(chatHeading(page, 'lobby'), step).toBeVisible(EVENTUAL);
+        await expect(page, step).toHaveURL(hashUrl(real));
+        // The scroll place across the resize is covered by the chat-fixture test (#921, fixed in #925).
+        await expect(page.getByRole('textbox', { name: 'Message #lobby' }), step).toHaveValue('half a thought', EVENTUAL);
+        // Back to the community on a phone only: at 820 px the community's list is beside the chat.
+        await expect(page.getByRole('button', { name: 'Back to the community' }), step).toHaveCount(viewport === PHONE ? 1 : 0);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), step).toBe(false);
+      }
     } finally {
       await context.close();
     }

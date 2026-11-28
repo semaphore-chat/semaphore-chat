@@ -184,8 +184,13 @@ function FocusOnMount({ children }: { children: React.ReactNode }) {
 }
 const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 
-function setup(messages: Message[], list: ListState = 'TEXT', isPrivate = false, options: { extra?: React.ReactNode; entry?: string } = {}) {
-  conversation.current = makeConversation(messages);
+function setup(
+  messages: Message[],
+  list: ListState = 'TEXT',
+  isPrivate = false,
+  options: { extra?: React.ReactNode; entry?: string; conversation?: Partial<Conversation> } = {},
+) {
+  conversation.current = { ...makeConversation(messages), ...options.conversation };
   const queryClient = createTestQueryClient();
   activeClient = queryClient;
   // The channel capabilities are not what these tests are about: serve them as an error (the screen fails open), so the
@@ -637,6 +642,19 @@ describe('ChannelChat at wide (PR 10e)', () => {
     setup([mine()]);
     await screen.findByRole('textbox', { name: 'Message #lobby' });
     await waitFor(() => expect(getLastChannelId('me', 'c-1')).toBe('ch-1'));
+  });
+
+  it.each([
+    ['cannot be read (403)', { error: Object.assign(new Error('Forbidden'), { status: 403 }) }],
+    ['are gone (404)', { error: Object.assign(new Error('Not found'), { status: 404 }) }],
+    ['are still loading', { isLoading: true }],
+  ] as const)('a listed text channel is not remembered as the last while its messages %s', async (_, state) => {
+    localStorage.clear();
+    setup([], 'TEXT', false, { conversation: state });
+    await screen.findByRole('heading', { name: '# lobby', level: 1 });
+    await settle();
+    // Else the home at compact and wide would send "Go to the community" straight back here.
+    expect(getLastChannelId('me', 'c-1')).toBeNull();
   });
 
   it('on a phone the composer does not take focus (no keyboard raised on navigation)', async () => {
