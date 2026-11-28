@@ -7,8 +7,7 @@
  *   composer, not while a layer is open.
  * - Mod+/: the shortcut sheet (a kit Dialog); again closes it. It opens from a field too, never over another layer.
  * - Escape: the last step of the screen's Escape chain (`ESCAPE_PRIORITY.conversation`): marks the open channel read
- *   ("Marked as read"). Anything that used the key first (a layer, the right panel, an edit, the mention list, a
- *   reply banner) keeps it.
+ *   ("Marked as read"). Anything that used the key first (a layer, the right panel, an edit, the mention list) keeps it.
  *
  * One `window` keydown listener in the bubble phase, so every more specific handler runs first and anything it
  * handled (`defaultPrevented`) is left alone.
