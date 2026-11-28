@@ -44,6 +44,10 @@ object SemaphoreHost {
         private val events: EventPipe,
         private val network: ConnectivityManager.NetworkCallback?,
         private val connectivity: ConnectivityManager?,
+        /** The chat's pictures, through core's `file`. */
+        val images: AttachmentLoader,
+        /** Opens sent files in other apps. */
+        val files: FileOpener,
     ) {
         internal fun close() {
             network?.let { runCatching { connectivity?.unregisterNetworkCallback(it) } }
@@ -152,7 +156,13 @@ object SemaphoreHost {
         val connectivity = app.getSystemService(ConnectivityManager::class.java)
         val network = connectivity?.let { watchNetwork(it, core) }
         val modelScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val store = CoreStore(core, modelScope, events.events)
+        // Opened files left by an earlier run (another session's, maybe) go first.
+        val files = FileOpener(app, core).also { runCatching { it.clear() } }
+        val images = AttachmentLoader({ fileId, thumbnail -> core.file(fileId, thumbnail) }, modelScope, maxSide = imageSide(app))
+        val store = CoreStore(core, modelScope, events.events) {
+            images.clear()
+            runCatching { files.clear() }
+        }
         val model = AppModel(
             core = core,
             store = store,
@@ -163,7 +173,7 @@ object SemaphoreHost {
         )
         // Published with whatever the activity recorded meanwhile: a start that finished in the
         // background is suspended now, and `foregrounded` resumes it.
-        val startedSession = Session(started, model, modelScope, events, network, connectivity)
+        val startedSession = Session(started, model, modelScope, events, network, connectivity, images, files)
         val suspend = synchronized(lifecycle) {
             session = startedSession
             backgrounded
@@ -171,6 +181,9 @@ object SemaphoreHost {
         if (suspend) core.suspend()
         return startedSession
     }
+
+    /** Pixels on the longer side of the largest image box (320 dp) on this screen. */
+    private fun imageSide(app: Context): Int = (320 * app.resources.displayMetrics.density).toInt().coerceAtLeast(320)
 
     private object SystemClock : WallClock {
         override fun nowMs(): ULong = System.currentTimeMillis().toULong()

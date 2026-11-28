@@ -69,6 +69,18 @@ pub(crate) fn span_json(span: &SpanInput) -> Value {
     value
 }
 
+/// A draft's spans as sent. A message with no words but [has_files] still carries one empty
+/// `PLAINTEXT` span, as the web's `MessageInput` sends it: the backend requires at least one.
+/// Nothing at all (no words, no files) is nothing to send: [`Core::begin_send`] refuses it rather
+/// than putting an empty message on the wire.
+pub(crate) fn wire_spans(draft: &MessageDraft, has_files: bool) -> Vec<Value> {
+    let spans: Vec<Value> = draft_to_spans(draft).iter().map(span_json).collect();
+    if spans.is_empty() && has_files {
+        return vec![json!({ "type": "PLAINTEXT", "text": "" })];
+    }
+    spans
+}
+
 /// The event and payload for a send. `nonce` makes a retry safe.
 fn wire_send(
     conversation: &Conversation,
@@ -354,12 +366,18 @@ impl Core {
         needs_row: bool,
     ) -> Result<String, CoreError> {
         self.services().ok_or_else(|| unavailable("sending"))?;
+        // Nothing is not a message: an empty span would be a blank message on the wire.
+        if draft_to_spans(&draft).is_empty() && draft.files.is_empty() {
+            return Err(CoreError::Failed {
+                message: "nothing to send".into(),
+            });
+        }
         // The bytes go to the upload job; the send itself only needs how many.
         let files = std::mem::take(&mut draft.files);
         let file_count = files.len();
         let nonce = uuid::Uuid::new_v4().to_string();
         let client_id = format!("{OPTIMISTIC_ID_PREFIX}{nonce}");
-        let spans: Vec<Value> = draft_to_spans(&draft).iter().map(span_json).collect();
+        let spans = wire_spans(&draft, file_count > 0);
         let (event, mut payload) = wire_send(&conversation, &draft, &spans, &nonce);
         if file_count > 0 {
             payload["pendingAttachments"] = json!(file_count);

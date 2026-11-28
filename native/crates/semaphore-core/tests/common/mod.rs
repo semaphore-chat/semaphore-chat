@@ -260,6 +260,8 @@ pub struct FakeBackend {
     pub uploads: Mutex<Vec<(String, usize, Option<String>)>>,
     /// The next upload fails with this.
     pub upload_error: Mutex<Option<BackendError>>,
+    /// With `upload_error`: let this many uploads succeed first (one-shot).
+    pub upload_error_after: Mutex<Option<usize>>,
     /// Each attach: message id, file id (none releases a slot).
     pub attaches: Mutex<Vec<(String, Option<String>)>>,
     /// W1 part A's calls: `actions.rs`.
@@ -926,7 +928,21 @@ impl FilesBackend for FakeBackend {
             .lock()
             .unwrap()
             .push((file.filename.clone(), size, file.resource_id.clone()));
-        if let Some(error) = self.upload_error.lock().unwrap().take() {
+        let fail_now = {
+            let mut after = self.upload_error_after.lock().unwrap();
+            match after.as_mut() {
+                Some(left) if *left == 0 => {
+                    *after = None;
+                    true
+                }
+                Some(left) => {
+                    *left -= 1;
+                    false
+                }
+                None => true,
+            }
+        };
+        if fail_now && let Some(error) = self.upload_error.lock().unwrap().take() {
             return Err(error);
         }
         progress(size as u64 / 2);
@@ -971,6 +987,32 @@ impl FilesBackend for FakeBackend {
 
     async fn file_controller_get_file_thumbnail(&self, _: String) -> BackendResult<Vec<u8>> {
         Err(not_found())
+    }
+
+    async fn file_controller_get_file_range(
+        &self,
+        id: String,
+        start: u64,
+        end: u64,
+    ) -> BackendResult<semaphore_core::model::FileRange> {
+        let bytes = self.files.lock().unwrap().get(&id).cloned();
+        let Some(bytes) = bytes else {
+            return Err(not_found());
+        };
+        let size = bytes.len() as u64;
+        let end = end.min(size.saturating_sub(1));
+        if start > end {
+            return Err(not_found());
+        }
+        self.w4
+            .calls
+            .lock()
+            .unwrap()
+            .push(format!("file {id} {start}-{end}"));
+        Ok(semaphore_core::model::FileRange {
+            bytes: bytes[start as usize..=end as usize].to_vec(),
+            size: Some(size),
+        })
     }
 }
 

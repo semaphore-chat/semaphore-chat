@@ -155,15 +155,15 @@ pub enum MessageListEvent {
     OpenReply {
         message_id: String,
     },
-    /// A failed upload's Retry: `Core::retry_upload`.
+    /// A failed upload's Retry: `Core::retry_upload` for [`UploadView::id`].
     RetryUpload {
         client_nonce: String,
-        index: u32,
+        upload_id: u64,
     },
     /// A failed upload's Remove: `Core::remove_upload`.
     RemoveUpload {
         client_nonce: String,
-        index: u32,
+        upload_id: u64,
     },
     /// Reply: the owner puts the message in the composer's reply banner and focuses it.
     Reply {

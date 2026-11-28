@@ -14,6 +14,19 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import android.widget.Toast
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import app.semaphorechat.android.kit.chat.LocalAttachmentImages
+import app.semaphorechat.android.kit.chat.displayName
+import app.semaphorechat.android.screens.ComposerCaps
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -230,6 +243,33 @@ private fun ChannelChat(model: AppModel, links: LinkOpener, communityId: String,
     val chat = remember(channelId) { model.chat(channelId) }
     val composer = remember(communityId, channelId) { model.composer(communityId, channelId) }
     val composerState by composer.state.collectAsState()
+    val session = remember { checkNotNull(SemaphoreHost.current()) }
+    val scope = rememberCoroutineScope()
+    // The system's pickers: no storage permission, a content URI per file, read only when sent.
+    val picked: (List<Uri>) -> Unit = { uris ->
+        if (uris.isNotEmpty()) {
+            scope.launch {
+                // A pick that can't even be read (the provider refuses the query, the grant was
+                // revoked) is named in the tray instead of vanishing from the send.
+                val (files, unreadable) = withContext(Dispatchers.IO) {
+                    val readable = mutableListOf<PickedFile>()
+                    val refused = mutableListOf<String>()
+                    uris.forEach { uri ->
+                        try {
+                            readable += pickedFile(context.contentResolver, uri)
+                        } catch (_: Exception) {
+                            refused += uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "file"
+                        }
+                    }
+                    readable to refused
+                }
+                composer.attach(files)
+                unreadable.forEach(composer::unreadable)
+            }
+        }
+    }
+    val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(ComposerCaps.MAX_FILES), picked)
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments(), picked)
     LaunchedEffect(chat) { chat.open() }
     val state by chat.state.collectAsState()
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
@@ -267,7 +307,22 @@ private fun ChannelChat(model: AppModel, links: LinkOpener, communityId: String,
             onPickMention = composer::pick,
             onRetrySend = chat::retrySend,
             onDiscardSend = chat::discardSend,
+            onAttachMedia = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
+            onAttachFiles = { pickFiles.launch(arrayOf("*/*")) },
+            onRemoveFile = composer::removeFile,
+            onOpenAttachment = { file ->
+                scope.launch {
+                    if (!session.files.open(file.fileId, file.name, file.mimeType)) {
+                        Toast.makeText(context, "Couldn't open ${displayName(file.name)}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            onRetryUpload = chat::retryUpload,
+            onRemoveUpload = chat::removeUpload,
         )
     }
-    ChatScreen(header, state, format, actions, chat.listState, composer.draft, composerState)
+    var attaching by rememberSaveable { mutableStateOf(false) }
+    CompositionLocalProvider(LocalAttachmentImages provides session.images) {
+        ChatScreen(header, state, format, actions, chat.listState, composer.draft, composerState, attaching) { attaching = it }
+    }
 }

@@ -43,14 +43,45 @@ data class ChatMessage(
     val mentionsMe: Boolean = false,
     val replyTo: QuoteItem? = null,
     val replyCount: Int = 0,
+    /** Files sent with it, drawn under its words. */
+    val attachments: List<AttachmentModel> = emptyList(),
+    /** Its files still on their way (a send from this device), each by core's upload id. */
+    val uploads: List<UploadModel> = emptyList(),
     /**
-     * One line for each thing this build does not draw yet (attachments, a GIF, link previews: D7),
-     * so nothing in a message is silently missing.
+     * One line for each thing this build does not draw yet (a GIF, link previews), so nothing in a
+     * message is silently missing.
      */
     val extras: List<String> = emptyList(),
     /** A send from this device (core's `client_nonce`): what Retry and Delete of a failed one name. */
     val clientNonce: String? = null,
 )
+
+/** What an attachment is drawn as (core's `AttachmentKind`: audio and documents are files here). */
+enum class AttachmentLook { Image, Video, File }
+
+/**
+ * A file sent with a message (core's `AttachmentView`). [boxWidth] and [boxHeight] are the dp box an
+ * image or a video's still is drawn in (`image_box`); [thumbnail] says the server has a small copy.
+ */
+data class AttachmentModel(
+    val fileId: String,
+    val name: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val look: AttachmentLook,
+    val boxWidth: Float = 240f,
+    val boxHeight: Float = 160f,
+    val thumbnail: Boolean = false,
+)
+
+/**
+ * A file on its way (core's `UploadView`): [id] names it for Retry and Remove while the rest come
+ * and go, [failed] is why it stopped, already through errorText.
+ */
+data class UploadModel(val id: ULong, val name: String, val sizeBytes: Long, val sentBytes: Long, val failed: String? = null)
+
+/** A file picked in the composer, not sent yet. */
+data class PickedFileModel(val name: String, val sizeBytes: Long)
 
 /** The words and the accessible name of the "Jump to latest" control (the FFI's `jump_text`). */
 data class JumpLabel(val text: String, val name: String, val counted: Boolean)
@@ -94,6 +125,10 @@ object ComposerCaps {
     const val KEYBOARD_ROWS = 2
     /** Suggestion rows shown before the list scrolls (`SUGGESTIONS_SHOWN`). */
     const val SUGGESTIONS_SHOWN = 6
+    /** Files one message may carry (`attachment_limits().max_files`). */
+    const val MAX_FILES = 10
+    /** The largest file a message may carry (`attachment_limits().max_file_bytes`): 10 MB. */
+    const val MAX_FILE_BYTES = 10L * 1024 * 1024
 }
 
 /** Why the reader can't post: which picture goes with the line. */
@@ -121,6 +156,12 @@ data class MentionSuggestion(
 data class ComposerModel(
     val access: ComposerAccess = ComposerAccess.Open,
     val suggestions: List<MentionSuggestion> = emptyList(),
+    /** Files picked for the next message. */
+    val files: List<PickedFileModel> = emptyList(),
+    /** The reader may attach files here (the channel's `attach` permission). */
+    val canAttach: Boolean = true,
+    /** Why the last pick was refused ("Maximum 10 files per message"), until the next pick or send. */
+    val fileProblem: String? = null,
 )
 
 /** The suggestion list's heading (`MentionDropdown`): what all of them are, or "Suggestions". */

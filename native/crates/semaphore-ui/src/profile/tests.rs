@@ -353,6 +353,7 @@ fn a_busy_form_waits_and_a_finished_edit_drops_the_picks(cx: &mut TestAppContext
                     upload: Some(ProfileUpload {
                         image: ProfileImage::Banner,
                         upload: UploadView {
+                            id: 0,
                             name: "a.png".into(),
                             size_bytes: 10,
                             sent_bytes: 4,

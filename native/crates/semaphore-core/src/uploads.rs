@@ -75,6 +75,7 @@ impl UploadJob {
         self.files
             .iter()
             .map(|file| UploadView {
+                id: file.id,
                 name: file.name.clone(),
                 size_bytes: file.bytes.len() as u64,
                 sent_bytes: file.sent,
@@ -238,14 +239,19 @@ impl Core {
         })
     }
 
-    /// Tries a failed upload again. `index` is its place in the row's `uploads`.
-    pub async fn retry_upload(&self, client_nonce: String, index: u32) -> Result<(), CoreError> {
+    /// Tries a failed upload again. `upload_id` is its [`UploadView::id`], stable as the others come
+    /// and go.
+    pub async fn retry_upload(
+        &self,
+        client_nonce: String,
+        upload_id: u64,
+    ) -> Result<(), CoreError> {
         self.services().ok_or_else(|| unavailable("uploading"))?;
         self.write(|state, _| {
             let Some(job) = state.uploads.get_mut(&client_nonce) else {
                 return;
             };
-            if let Some(file) = job.files.get_mut(index as usize) {
+            if let Some(file) = job.files.iter_mut().find(|file| file.id == upload_id) {
                 file.failed = None;
             }
             state.touch_upload_row(&client_nonce);
@@ -262,19 +268,20 @@ impl Core {
 
     /// Gives up on an upload that isn't running: its bytes are dropped and, once the message
     /// exists, its pending slot is released, so the message stops waiting for it.
-    pub async fn remove_upload(&self, client_nonce: String, index: u32) -> Result<(), CoreError> {
+    pub async fn remove_upload(
+        &self,
+        client_nonce: String,
+        upload_id: u64,
+    ) -> Result<(), CoreError> {
         self.write(|state, _| {
             let Some(job) = state.uploads.get_mut(&client_nonce) else {
                 return;
             };
-            if job
-                .files
-                .get(index as usize)
-                .is_none_or(|file| file.running)
-            {
-                return;
+            match job.files.iter().find(|file| file.id == upload_id) {
+                Some(file) if !file.running => {}
+                _ => return,
             }
-            job.files.remove(index as usize);
+            job.files.retain(|file| file.id != upload_id);
             let message_id = job.message_id.clone();
             let done = job.is_empty();
             state.touch_upload_row(&client_nonce);
@@ -317,5 +324,21 @@ impl Core {
             services.backend.file_controller_get_file(file_id).await
         };
         fetched.map_err(|error| self.backend_failed(error))
+    }
+
+    /// Bytes `start..=end` of a file, with the session's auth, for a client writing it out as it
+    /// arrives: the whole size comes back once the server says it.
+    pub async fn file_range(
+        &self,
+        file_id: String,
+        start: u64,
+        end: u64,
+    ) -> Result<crate::model::FileRange, CoreError> {
+        let services = self.services().ok_or_else(|| unavailable("files"))?;
+        services
+            .backend
+            .file_controller_get_file_range(file_id, start, end)
+            .await
+            .map_err(|error| self.backend_failed(error))
     }
 }

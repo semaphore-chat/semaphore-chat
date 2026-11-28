@@ -64,8 +64,8 @@ object ChatKitText {
  * name and time on one line, the words under them. A [continued] row (same author, close in time)
  * drops the avatar and the header. [mentioned] tints it and draws the mention rail. A pending row
  * is dimmed and says "Sending…"; a failed one says why it wasn't sent, with Retry ([onRetry], busy
- * while it runs) and Delete ([onDelete]) when given. [extras] are lines for what this build does
- * not draw yet.
+ * while it runs) and Delete ([onDelete]) when given. [attachments] draws the files under the words; [extras] are lines for what this
+ * build does not draw yet.
  */
 @Composable
 fun MessageRow(
@@ -82,6 +82,7 @@ fun MessageRow(
     quote: MessageQuoteItem? = null,
     replyCount: Int = 0,
     extras: List<String> = emptyList(),
+    attachments: (@Composable () -> Unit)? = null,
     onLink: (String) -> Unit = {},
     onMention: (MentionTarget) -> Unit = {},
     onRetry: (() -> Unit)? = null,
@@ -116,8 +117,10 @@ fun MessageRow(
         Box(Modifier.width(Tokens.Avatar.Md)) {
             if (!continued) Avatar(author, colour = personColour(authorColourId), size = AvatarSize.Md, decorative = true)
         }
+        // A pending row's words are dimmed; its uploads are not: their Retry and Remove work.
+        val dim = Modifier.alpha(if (state == RowState.Pending) Tokens.State.Disabled else 1f)
         Column(
-            Modifier.weight(1f).alpha(if (state == RowState.Pending) Tokens.State.Disabled else 1f),
+            Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(Tokens.Space.TwoXs),
         ) {
             val marks = listOfNotNull(
@@ -125,7 +128,7 @@ fun MessageRow(
                 ChatKitText.SENDING.takeIf { state == RowState.Pending },
             )
             if (!continued) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm)) {
+                Row(dim, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm)) {
                     Box(Modifier.weight(1f, fill = false).semantics { heading() }) {
                         Text(author, variant = TextVariant.Name, truncate = true)
                     }
@@ -133,15 +136,16 @@ fun MessageRow(
                     marks.forEach { Text(it, variant = TextVariant.Small, tone = TextTone.Dim) }
                 }
             } else if (marks.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm)) {
+                Row(dim, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm)) {
                     marks.forEach { Text(it, variant = TextVariant.Small, tone = TextTone.Dim) }
                 }
             }
-            quote?.let { MessageQuote(it) }
+            quote?.let { MessageQuote(it, dim) }
             if (removed) {
                 Text(ChatKitText.REMOVED, tone = TextTone.Dim)
             } else {
-                MessageText(pieces, onLink = onLink, onMention = onMention)
+                if (pieces.isNotEmpty()) Box(dim) { MessageText(pieces, onLink = onLink, onMention = onMention) }
+                attachments?.invoke()
                 extras.forEach { Text(it, variant = TextVariant.Meta, tone = TextTone.Secondary) }
             }
             if (replyCount > 0) {

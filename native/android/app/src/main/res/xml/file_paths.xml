@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the FileProvider may serve: only opened attachments, under cache/open (FileOpener). -->
+<paths>
+    <cache-path name="open" path="open/" />
+</paths>

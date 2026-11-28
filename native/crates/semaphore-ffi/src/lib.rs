@@ -30,7 +30,7 @@ use semaphore_core::cache::QueryKey;
 use semaphore_core::model::{
     AttachmentKind, AttachmentView, ChannelKind, ChannelModeration, ChannelModerationView,
     ChannelPermissions, ChannelRow, CommunityRow, ConnectionQuality, Conversation, DisplayRole,
-    DraftFile, DraftMention, EmojiView, ErrorView, LinkPreviewView, ListOp, LoadState,
+    DraftFile, DraftMention, EmojiView, ErrorView, FileRange, LinkPreviewView, ListOp, LoadState,
     LocalMediaView, LocalShare, MemberList, MemberView, MentionCandidate, MentionKind,
     MessageDraft, MessageLink, MessageRow, ParticipantView, PinnedList, PinnedRow, RailCounts,
     ReactionUsers, ReactionView, ReplyToView, ScreenShareRequest, SearchHit, SearchScope, SegKind,
@@ -268,10 +268,17 @@ pub struct MessageRow {
 
 #[uniffi::remote(Record)]
 pub struct UploadView {
+    pub id: u64,
     pub name: String,
     pub size_bytes: u64,
     pub sent_bytes: u64,
     pub failed: Option<ErrorView>,
+}
+
+#[uniffi::remote(Record)]
+pub struct FileRange {
+    pub bytes: Vec<u8>,
+    pub size: Option<u64>,
 }
 
 #[uniffi::remote(Record)]
@@ -1155,18 +1162,38 @@ impl SemaphoreCore {
             .await
     }
 
-    pub async fn retry_upload(&self, client_nonce: String, index: u32) -> Result<(), CoreError> {
-        self.run(move |core| async move { core.retry_upload(client_nonce, index).await })
+    pub async fn retry_upload(
+        &self,
+        client_nonce: String,
+        upload_id: u64,
+    ) -> Result<(), CoreError> {
+        self.run(move |core| async move { core.retry_upload(client_nonce, upload_id).await })
             .await
     }
 
-    pub async fn remove_upload(&self, client_nonce: String, index: u32) -> Result<(), CoreError> {
-        self.run(move |core| async move { core.remove_upload(client_nonce, index).await })
+    pub async fn remove_upload(
+        &self,
+        client_nonce: String,
+        upload_id: u64,
+    ) -> Result<(), CoreError> {
+        self.run(move |core| async move { core.remove_upload(client_nonce, upload_id).await })
             .await
     }
 
     pub async fn file(&self, file_id: String, thumbnail: bool) -> Result<Vec<u8>, CoreError> {
         self.run(move |core| async move { core.file(file_id, thumbnail).await })
+            .await
+    }
+
+    /// Bytes `start..=end` of a file, and its whole size: a client writes an opened file out as the
+    /// pieces arrive instead of holding it all.
+    pub async fn file_range(
+        &self,
+        file_id: String,
+        start: u64,
+        end: u64,
+    ) -> Result<FileRange, CoreError> {
+        self.run(move |core| async move { core.file_range(file_id, start, end).await })
             .await
     }
 
@@ -1318,7 +1345,7 @@ mod tests {
         }
         assert_eq!(asyncs, runs, "every async export awaits `self.run`");
         // Exact, so an export the check stops seeing fails here: change these with the exports.
-        assert_eq!(asyncs, 135, "async exports found");
+        assert_eq!(asyncs, 136, "async exports found");
         assert_eq!(syncs, 102, "sync exports found");
     }
 

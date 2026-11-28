@@ -870,6 +870,7 @@ impl Core {
             state.w5a_entry(view).upload = Some((
                 change,
                 UploadView {
+                    id: 0,
                     name: file.name.clone(),
                     size_bytes: total,
                     sent_bytes: 0,

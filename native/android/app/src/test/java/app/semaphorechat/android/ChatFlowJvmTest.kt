@@ -18,6 +18,7 @@ import app.semaphorechat.android.screens.ComposerAccess
 import app.semaphorechat.android.screens.MessageState
 import app.semaphorechat.android.screens.SuggestionKind
 import app.semaphorechat.android.screens.ChatFace
+import app.semaphorechat.android.screens.ComposerCaps
 import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.file.Files
@@ -153,6 +154,125 @@ class ChatFlowJvmTest {
 
     /** How many sends with this client nonce the server has seen. */
     private fun sendsOf(nonce: String): Int = Regex(Regex.escape("\"clientNonce\":\"$nonce\"")).findAll(requestLog()).count()
+
+    /** A file whose bytes come from memory, counting how often they were read. */
+    private class MemoryFile(name: String, val bytes: ByteArray, mime: String = "text/plain", reads: IntArray = IntArray(1)) {
+        val picked = PickedFile(name, bytes.size.toLong(), mime) { reads[0]++; bytes }
+    }
+
+    @Test
+    fun sendsFilesFetchesThemAndRetriesAndRemovesFailedUploads() {
+        assumeTrue("android.sh passes the fake server", server != null && channelId != null && authorId != null)
+        val pipe = EventPipe()
+        val host = startCore(pipe)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val core = host.core()
+            val store = CoreStore(core, scope, pipe.events)
+            runBlocking { core.signIn(server!!, "me", "pw") }
+            until("sign-in and the socket") {
+                core.session() is SessionState.SignedIn && core.connection() == ConnectionState.CONNECTED
+            }
+            until("the channel listed") { core.communities().any { c -> core.channels(c.id).any { it.id == channelId } } }
+            val communityId = core.communities().first { c -> core.channels(c.id).any { it.id == channelId } }.id
+            val chat = store.conversation(Conversation.Channel(channelId!!))
+            val composer = store.composer(communityId, channelId)
+            fun last() = chat.state.value.messages.lastOrNull()
+            chat.open()
+            until("the first page") { chat.state.value.face == ChatFace.Ready }
+
+            // Two files with words: picked files cost nothing until sent, then go with the message.
+            val reads = IntArray(1)
+            val notes = MemoryFile("notes.txt", "first file".toByteArray(), reads = reads)
+            val data = MemoryFile("data.bin", ByteArray(70_000) { (it % 251).toByte() }, "application/octet-stream", reads)
+            composer.attach(listOf(notes.picked, data.picked))
+            assertEquals(listOf("notes.txt", "data.bin"), composer.state.value.files.map { it.name })
+            assertEquals(0, reads[0])
+            composer.onDraftChange(TextFieldValue("two files", TextRange(9)))
+            composer.send()
+            assertTrue("the tray clears at once", composer.state.value.files.isEmpty())
+            until("the message with both files") {
+                last()?.let { words(it) == "two files" && it.state == MessageState.Sent && it.attachments.size == 2 && it.uploads.isEmpty() } == true
+            }
+            assertEquals("each file read once", 2, reads[0])
+            val sent = last()!!.attachments
+            assertEquals(setOf("notes.txt", "data.bin"), sent.map { it.name }.toSet())
+            // Fetched back through core's file, with the session's auth.
+            sent.forEach { file ->
+                val expected = if (file.name == "notes.txt") notes.bytes else data.bytes
+                assertTrue(file.name, expected.contentEquals(runBlocking { core.file(file.fileId, false) }))
+                assertEquals(expected.size.toLong(), file.sizeBytes)
+            }
+
+            // A file alone, no words, is a message too.
+            composer.attach(listOf(MemoryFile("alone.txt", "x".toByteArray()).picked))
+            composer.send()
+            until("the file-only message") { last()?.attachments?.singleOrNull()?.name == "alone.txt" }
+
+            // Past the limits: the whole pick is refused and the tray says why.
+            composer.attach(List(11) { MemoryFile("f$it", ByteArray(1)).picked })
+            assertTrue(composer.state.value.files.isEmpty())
+            assertEquals("Maximum 10 files per message", composer.state.value.fileProblem)
+            composer.attach(listOf(PickedFile("huge.iso", ComposerCaps.MAX_FILE_BYTES + 1, "application/octet-stream") { ByteArray(0) }))
+            assertEquals("File \"huge.iso\" exceeds the 10 MB size limit", composer.state.value.fileProblem)
+            assertTrue(composer.state.value.files.isEmpty())
+
+            // A file that can't be read when sent: nothing goes, and text and file come back.
+            composer.attach(listOf(PickedFile("gone.txt", 3, "text/plain") { throw UnreadableFile("gone.txt") }))
+            composer.onDraftChange(TextFieldValue("with a lost file", TextRange(16)))
+            composer.send()
+            until("the draft back") { composer.draft.text == "with a lost file" }
+            assertEquals(listOf("gone.txt"), composer.state.value.files.map { it.name })
+            assertEquals("Couldn't read \"gone.txt\"", composer.state.value.fileProblem)
+            assertFalse("nothing sent", "with a lost file" in requestLog())
+            composer.removeFile(0)
+            composer.onDraftChange(TextFieldValue())
+            assertTrue(composer.state.value.files.isEmpty())
+
+            // A pick the picker's provider refused: the tray says so instead of dropping it.
+            composer.unreadable("locked.bin")
+            assertEquals("Couldn't read \"locked.bin\"", composer.state.value.fileProblem)
+            composer.removeFile(0)
+
+            // Reading the picks runs out of memory: the text and a budget of files come back, and
+            // the tray names what could not (a third full-cap pick is past the budget).
+            val cap = ComposerCaps.MAX_FILE_BYTES
+            composer.attach(List(3) { PickedFile("oom$it.bin", cap, "application/octet-stream") { throw OutOfMemoryError() } })
+            assertEquals(3, composer.state.value.files.size)
+            composer.onDraftChange(TextFieldValue("out of memory", TextRange(14)))
+            composer.send()
+            until("the draft back after running out of memory") { composer.draft.text == "out of memory" }
+            assertEquals(listOf("oom0.bin", "oom1.bin"), composer.state.value.files.map { it.name })
+            assertEquals("Couldn't bring back \"oom2.bin\"", composer.state.value.fileProblem)
+            assertFalse("nothing sent", "out of memory" in requestLog())
+            composer.state.value.files.indices.reversed().forEach(composer::removeFile)
+            composer.onDraftChange(TextFieldValue())
+
+            // An upload that fails stays on its row with why; Retry sends it again.
+            control("fail_route", """{"operationId":"FileUploadController_uploadFile","status":500,"code":"INTERNAL"}""")
+            composer.attach(listOf(MemoryFile("retry.txt", "again".toByteArray()).picked))
+            composer.onDraftChange(TextFieldValue("upload fails", TextRange(12)))
+            composer.send()
+            until("the failed upload") { last()?.let { words(it) == "upload fails" && it.uploads.singleOrNull()?.failed != null } == true }
+            chat.retryUpload(last()!!.clientNonce!!, last()!!.uploads.single().id)
+            until("the retried file attached") {
+                last()?.let { words(it) == "upload fails" && it.uploads.isEmpty() && it.attachments.singleOrNull()?.name == "retry.txt" } == true
+            }
+
+            // Removed instead: the message settles with no file.
+            control("fail_route", """{"operationId":"FileUploadController_uploadFile","status":500,"code":"INTERNAL"}""")
+            composer.attach(listOf(MemoryFile("drop.txt", "never".toByteArray()).picked))
+            composer.onDraftChange(TextFieldValue("upload dropped", TextRange(14)))
+            composer.send()
+            until("the second failed upload") { last()?.let { words(it) == "upload dropped" && it.uploads.singleOrNull()?.failed != null } == true }
+            chat.removeUpload(last()!!.clientNonce!!, last()!!.uploads.single().id)
+            until("the upload gone") { last()?.let { words(it) == "upload dropped" && it.uploads.isEmpty() && it.attachments.isEmpty() } == true }
+        } finally {
+            pipe.close()
+            scope.cancel()
+            host.shutdown()
+        }
+    }
 
     @Test
     fun sendsRetriesDeletesSignalsTypingMentionsAndKeepsDraftsPerChannel() {
