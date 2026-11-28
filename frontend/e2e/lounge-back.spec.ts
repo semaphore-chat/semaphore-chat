@@ -272,6 +272,23 @@ test.describe('Android Back on a tablet (820 px, touch)', () => {
       await page.goBack();
       await expect(page).toHaveURL(onChat(gardenPath), EVENTUAL);
       await expect(chatHeading(page, 'garden')).toBeVisible(EVENTUAL);
+
+      // From the garden, an "All channels" result in the lobby: still one Back, to the garden.
+      await page.getByRole('button', { name: 'More' }).tap();
+      await page.getByRole('menuitem', { name: 'Search messages' }).tap();
+      const allSheet = page.getByRole('dialog', { name: 'Search messages' });
+      await expect(allSheet).toBeVisible(EVENTUAL);
+      await allSheet.getByRole('tab', { name: 'All channels' }).tap();
+      await allSheet.getByRole('searchbox', { name: 'Search messages' }).fill('zebra');
+      await allSheet
+        .getByRole('button', { name: /^Show the message from .* in #lobby: a zebra wandered into the lobby$/ })
+        .tap();
+      await expect(allSheet).toHaveCount(0, EVENTUAL);
+      await expect(page).toHaveURL(onChat(lobbyPath), EVENTUAL);
+      await expect(row(page, 'a zebra wandered into the lobby')).toBeInViewport(EVENTUAL);
+      await page.goBack();
+      await expect(page).toHaveURL(onChat(gardenPath), EVENTUAL);
+      await expect(chatHeading(page, 'garden')).toBeVisible(EVENTUAL);
     } finally {
       await context.close();
     }

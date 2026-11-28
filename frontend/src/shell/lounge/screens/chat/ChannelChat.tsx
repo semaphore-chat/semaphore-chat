@@ -432,7 +432,7 @@ function ChannelChatBody({ communityId, channelId, search }: { communityId: stri
   }, [range, navigate, communityId, channelId, search, closeThreadForOther]);
   const closeSearch = useCallback(() => {
     search.setOpen(false);
-    // The More button it was opened from (also after a jump to another channel: this chat's own More).
+    // The More button it was opened from (a jump closes the panel itself, with the focus its own case takes).
     requestAnimationFrame(() => {
       if (moreRef.current?.isConnected) moreRef.current.focus({ preventScroll: true });
     });
@@ -473,13 +473,24 @@ function ChannelChatBody({ communityId, channelId, search }: { communityId: stri
         go();
         return;
       }
-      // The Sheet closes first (as Close does: focus to More), and the jump waits until it is gone and its history
-      // entry (a touch device's Back) has been stepped back over: run while the entry is there, the step back would
-      // undo the jump. The `pendingJump` effect above runs it.
+      // The Sheet closes first, and the jump waits until it is gone and its history entry (a touch device's Back) has
+      // been stepped back over: run while the entry is there, the step back would undo the jump. The `pendingJump`
+      // effect above runs it. Closed here rather than through `closeSearch`: that one hands focus to this chat's More,
+      // which a thread or another channel's screen must not lose to.
       pendingJump.current = go;
-      closeSearch();
+      search.setOpen(false);
+      // The right region with it: a Members island chosen at wide would be the Sheet the panel leaves behind, over
+      // the message just jumped to.
+      setRightOpen(false);
+      // Focus follows the jump: a message in this chat keeps this chat's header, so More (as Close puts it); a thread's
+      // heading takes focus itself, and another channel's screen focuses itself (RouteFocus, its composer).
+      if (here && target.thread === undefined) {
+        requestAnimationFrame(() => {
+          if (moreRef.current?.isConnected) moreRef.current.focus({ preventScroll: true });
+        });
+      }
     },
-    [channelId, chatPath, links, communityId, navigate, search, range, closeSearch],
+    [channelId, chatPath, links, communityId, navigate, search, range, setRightOpen],
   );
   const closePinnedPanel = useCallback(() => {
     setPinnedOpen(false);
