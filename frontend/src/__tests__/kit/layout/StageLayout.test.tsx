@@ -116,3 +116,26 @@ describe.each([
     expect(screen.getByText('Reconnecting')).toBeInTheDocument();
   });
 });
+
+describe('StageLayout inIsland', () => {
+  it("adds no island or main of its own: the header, stage and controls sit in the template's island", () => {
+    mockViewport(WIDTH.wide);
+    renderWithKit(
+      <main aria-label="The template's island">
+        <StageLayout
+          inIsland
+          header={<h1>Squad Up</h1>}
+          stage={<div data-testid="stage">Screen share</div>}
+          controls={<IconButton icon="Mic" label="Mute" />}
+          stageLabel="unused"
+        />
+      </main>,
+    );
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+    const main = screen.getByRole('main', { name: "The template's island" });
+    expect(within(main).getByRole('heading', { name: 'Squad Up' })).toBeInTheDocument();
+    expect(within(main).getByTestId('stage')).toBeInTheDocument();
+    expect(within(main).getByRole('button', { name: 'Mute' })).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="controls"]')).not.toBeNull();
+  });
+});

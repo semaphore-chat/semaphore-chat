@@ -23,6 +23,12 @@ export interface StageLayoutProps {
   sideLabel?: string;
   sideOpen?: boolean;
   onSideClose?: () => void;
+  /**
+   * Already inside a template's island (the centre of ThreeIslands: at compact and wide a room keeps the community
+   * beside it; on a phone that island fills the frame): no island or landmark of its own, the header, stage, strip
+   * and controls fill the island it is in. `stageLabel` is then unused; the island names the main.
+   */
+  inIsland?: boolean;
 }
 
 /** Takes what the frame has left under a banner, so the island never outgrows it. */
@@ -97,7 +103,8 @@ const noop = () => undefined;
  * the height with its content centred and contained, an optional strip, and the controls centred at the bottom.
  * Optional slots count as absent when `undefined`, `null`, `false` or `''`.
  * `side` (the people) is a Sheet at every width, shown while `sideOpen`. Render inside an `AppFrame`,
- * which keeps the controls above the home indicator.
+ * which keeps the controls above the home indicator. With `inIsland` it renders only the column, for a template's
+ * island that already is the main (the Lounge's stage template).
  */
 export function StageLayout({
   header,
@@ -109,23 +116,31 @@ export function StageLayout({
   sideLabel,
   sideOpen = false,
   onSideClose,
+  inIsland = false,
 }: StageLayoutProps): JSX.Element {
   const controlsRef = useRef<HTMLDivElement>(null);
   useToastClearance(controlsRef);
+  const column = (
+    <Column>
+      <Header data-slot="header">{header}</Header>
+      <Stage data-slot="stage">{stage}</Stage>
+      {isPresent(strip) && <Strip data-slot="strip">{strip}</Strip>}
+      <Controls ref={controlsRef} data-slot="controls">
+        {controls}
+      </Controls>
+    </Column>
+  );
   return (
     <>
-      <Fill data-kit-toast-anchor="">
-        <Island as="main" label={stageLabel} padding="none" scroll>
-          <Column>
-            <Header data-slot="header">{header}</Header>
-            <Stage data-slot="stage">{stage}</Stage>
-            {isPresent(strip) && <Strip data-slot="strip">{strip}</Strip>}
-            <Controls ref={controlsRef} data-slot="controls">
-              {controls}
-            </Controls>
-          </Column>
-        </Island>
-      </Fill>
+      {inIsland ? (
+        column
+      ) : (
+        <Fill data-kit-toast-anchor="">
+          <Island as="main" label={stageLabel} padding="none" scroll>
+            {column}
+          </Island>
+        </Fill>
+      )}
       {isPresent(side) && (
         <Sheet open={sideOpen} onClose={onSideClose ?? noop} title={sideLabel ?? 'People'}>
           {side}

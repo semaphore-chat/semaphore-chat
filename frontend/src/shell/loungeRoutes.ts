@@ -13,7 +13,8 @@
  * notice. So a converted three-islands screen no longer strands a call's video.
  *
  * Registered: the test fixtures (the marker, the community fixture, which
- * assembles every piece of the shell on real data, and the chat fixture) and two real screens at every
+ * assembles every piece of the shell on real data, the chat fixture, and the settings and stage fixtures, which
+ * show the `settings` and `stage` templates around placeholders) and two real screens at every
  * width: the community home (`COMMUNITY_HOME_PATH`) and a text channel's chat (`CHANNEL_CHAT_PATH`). Every
  * `/__lounge...` path is a fixture: with the new design off it is the old
  * shell's not-found page, and only a fixture's descriptor may set `links`.
@@ -69,6 +70,28 @@ export function loungeChatFixturePath(communityId: string, channelId: string): s
   return `/__lounge/community/${communityId}/channel/${channelId}`;
 }
 
+/** A hidden settings fixture (the `settings` template around placeholder sections): the list of sections. */
+export const LOUNGE_SETTINGS_FIXTURE_PATH = '/__lounge/settings';
+
+/** The settings fixture's section path. */
+export const LOUNGE_SETTINGS_SECTION_FIXTURE_PATH = '/__lounge/settings/:section';
+
+/** The settings fixture's path for one section. */
+export function loungeSettingsFixturePath(section: string): string {
+  return `/__lounge/settings/${section}`;
+}
+
+/**
+ * A hidden stage fixture (the `stage` template around a placeholder room): a voice channel's room in the community's
+ * frame.
+ */
+export const LOUNGE_STAGE_FIXTURE_PATH = '/__lounge/community/:communityId/room/:channelId';
+
+/** The stage fixture's path for one room. */
+export function loungeStageFixturePath(communityId: string, channelId: string): string {
+  return `/__lounge/community/${communityId}/room/${channelId}`;
+}
+
 /**
  * The community home: the community's channels and rooms. At compact and wide its centre redirects to the last (or
  * first) text channel (`CommunityRedirect`).
@@ -105,6 +128,21 @@ export const LOUNGE_ROUTES: readonly LoungeRoute[] = [
     path: LOUNGE_CHAT_FIXTURE_PATH,
     widths: ['phone', 'compact', 'wide'],
     load: () => import('./lounge/screens/ChatFixtureScreen'),
+  },
+  {
+    path: LOUNGE_SETTINGS_FIXTURE_PATH,
+    widths: ['phone', 'compact', 'wide'],
+    load: () => import('./lounge/screens/SettingsFixtureScreen'),
+  },
+  {
+    path: LOUNGE_SETTINGS_SECTION_FIXTURE_PATH,
+    widths: ['phone', 'compact', 'wide'],
+    load: () => import('./lounge/screens/SettingsFixtureScreen').then((m) => ({ default: m.settingsFixtureSectionScreen })),
+  },
+  {
+    path: LOUNGE_STAGE_FIXTURE_PATH,
+    widths: ['phone', 'compact', 'wide'],
+    load: () => import('./lounge/screens/StageFixtureScreen'),
   },
   {
     path: COMMUNITY_HOME_PATH,

@@ -2,7 +2,7 @@ import { useState, type JSX } from 'react';
 import { AppFrame, SettingsLayout, type SettingsLayoutProps } from '../../kit';
 import type { ModeName } from '../../theme/derive/derivePalette';
 import { KitFrameStage } from '../fixtures/kitStory';
-import { SampleRoleForm, SampleSections, SampleUnsaved } from '../fixtures/layoutSamples';
+import { SampleCallBar, SampleDock, SampleRoleForm, SampleSections, SampleUnsaved } from '../fixtures/layoutSamples';
 
 /**
  * The settings screen's layout: the sections beside the section being edited, with the unsaved-changes bar
@@ -41,3 +41,13 @@ export const CommunityLight = () => <Screen mode="light" phonePane="content" />;
 
 /** No footer: the content island is only its section, with no bar under it. */
 export const NoFooter = () => <Screen mode="dark" phonePane="content" footer={undefined} />;
+
+/**
+ * With the shell's pieces, as the Lounge's settings template uses them: the dock above the sections, the call bar
+ * under them at compact and wide; on a phone the section, then the call bar, then the dock bar.
+ */
+export const WithDockAndCall = () => <Screen mode="dark" phonePane="content" dock={<SampleDock />} callBar={<SampleCallBar />} />;
+
+/** The same on a phone's list of sections. */
+export const WithDockAndCallPhoneNav = () => <Screen mode="dark" phonePane="nav" dock={<SampleDock />} callBar={<SampleCallBar />} />;
+WithDockAndCallPhoneNav.meta = { viewports: ['phone'] };

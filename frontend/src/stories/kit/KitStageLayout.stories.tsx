@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react';
-import { AppFrame, StageLayout, type StageLayoutProps } from '../../kit';
+import { AppFrame, Island, StageLayout, type StageLayoutProps } from '../../kit';
 import type { ModeName } from '../../theme/derive/derivePalette';
 import { KitFrameStage } from '../fixtures/kitStory';
 import {
@@ -44,3 +44,27 @@ export const SharingLight = () => <Screen mode="light" />;
 
 /** No strip: the stage takes the room and no gap is left above the controls. */
 export const NoStrip = () => <Screen mode="dark" strip={undefined} />;
+
+/**
+ * `inIsland`: inside a template's island (the Lounge's stage template puts the room in the three islands' centre),
+ * with no island of its own. Here the island stands alone in the frame.
+ */
+export const InIsland = () => (
+  <KitFrameStage mode="dark">
+    <AppFrame>
+      {/* Takes the frame's height, as a template's pane does. */}
+      <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <Island as="main" label="Squad Up" padding="none" scroll>
+        <StageLayout
+          inIsland
+          header={<SampleStageHeader />}
+          stage={<SampleScreen />}
+          strip={<SampleStrip />}
+          controls={<SampleControls />}
+          stageLabel="Squad Up"
+        />
+      </Island>
+      </div>
+    </AppFrame>
+  </KitFrameStage>
+);

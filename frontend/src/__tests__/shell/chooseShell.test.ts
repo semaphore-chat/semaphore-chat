@@ -13,6 +13,9 @@ import {
   CLASSIC_STATIC_PATHS,
   COMMUNITY_HOME_PATH,
   LOUNGE_CHAT_FIXTURE_PATH,
+  LOUNGE_SETTINGS_FIXTURE_PATH,
+  LOUNGE_SETTINGS_SECTION_FIXTURE_PATH,
+  LOUNGE_STAGE_FIXTURE_PATH,
   LOUNGE_COMMUNITY_FIXTURE_PATH,
   LOUNGE_FIXTURE_PREFIX,
   LOUNGE_MARKER_PATH,
@@ -232,7 +235,7 @@ async function routesSettingLinksOutsideFixtures(routes: readonly LoungeRoute[])
   for (const route of routes) {
     if (route.path.startsWith(LOUNGE_FIXTURE_PREFIX)) continue;
     const { default: screen } = await route.load();
-    if (screen.template === 'threeIslands' && screen.links !== undefined) offenders.push(route.path);
+    if (screen.template !== 'bare' && screen.links !== undefined) offenders.push(route.path);
   }
   return offenders;
 }
@@ -251,11 +254,33 @@ describe('the registry (LOUNGE_ROUTES)', () => {
       LOUNGE_MARKER_PATH,
       LOUNGE_COMMUNITY_FIXTURE_PATH,
       LOUNGE_CHAT_FIXTURE_PATH,
+      LOUNGE_SETTINGS_FIXTURE_PATH,
+      LOUNGE_SETTINGS_SECTION_FIXTURE_PATH,
+      LOUNGE_STAGE_FIXTURE_PATH,
       COMMUNITY_HOME_PATH,
       CHANNEL_CHAT_PATH,
     ]);
     expect(LOUNGE_ROUTES.find((route) => route.path === COMMUNITY_HOME_PATH)?.widths).toEqual(['phone', 'compact', 'wide']);
     expect(LOUNGE_ROUTES.find((route) => route.path === CHANNEL_CHAT_PATH)?.widths).toEqual(['phone', 'compact', 'wide']);
+  });
+
+  it('the settings and stage fixtures: their templates, the section path a phone shows as content', async () => {
+    const load = async (path: string) => (await LOUNGE_ROUTES.find((route) => route.path === path)!.load()).default;
+    const list = await load(LOUNGE_SETTINGS_FIXTURE_PATH);
+    const section = await load(LOUNGE_SETTINGS_SECTION_FIXTURE_PATH);
+    const stage = await load(LOUNGE_STAGE_FIXTURE_PATH);
+    expect(list).toMatchObject({ template: 'settings', place: 'none', phonePane: 'nav' });
+    expect(section).toMatchObject({ template: 'settings', place: 'none', phonePane: 'content' });
+    expect(stage).toMatchObject({ template: 'stage', place: 'community' });
+    expect(chooseShell({ pathname: '/__lounge/settings/notifications', enabled: true, width: 'phone' })).toMatchObject({
+      kind: 'lounge',
+      params: { section: 'notifications' },
+    });
+    // The room path is its own pattern, never the chat fixture's.
+    expect(chooseShell({ pathname: '/__lounge/community/c-1/room/vc-1', enabled: true, width: 'wide' })).toMatchObject({
+      kind: 'lounge',
+      route: { path: LOUNGE_STAGE_FIXTURE_PATH },
+    });
   });
 
   it("the channel chat: the chat fixture's descriptor without links", async () => {

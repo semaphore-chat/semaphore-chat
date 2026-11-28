@@ -396,7 +396,26 @@ Phone (below 600): one pane at a time
 ```
 
 The nav island is 288 px wide. Wide and compact look the same: this template
-has no right region and no dock.
+has no right region.
+
+**The shell's pieces.** Like the three islands, the layout takes an optional
+`dock` (above the nav island at compact and wide; the bar at the bottom of a
+phone, left out while the keyboard is up), a `navFooter` that stays at the nav
+island's foot (the user's card), and a `callBar` (under the nav island at
+compact and wide; between the shown pane and the dock bar on a phone). The rows
+are the same as the three islands' (`kit/layout/leftColumnGrid.ts`), so the
+dock and the call bar sit in the same place on both templates.
+
+In the Lounge (the frame's `settings` template, `shell/lounge/frame/SettingsFrame.tsx`)
+the dock and the user's card are there at compact and wide, and the call bar at
+every width while you are in a call, so the call's controls stay on screen. A
+phone has no dock bar in settings: they are a screen pushed over the app, left by
+their own Back, as in Discord's app: a step back in the history when the list
+of sections was the screen before, else a replace, so the system Back never
+returns to the section. A section pins its unsaved-changes bar with
+`useSettingsFooter(node)` and renders what it returns: the frame shows the slot
+only for the path it was asked on, and the section portals the bar's content
+into it, so the bar reads the section's context and goes when the section goes.
 
 **What goes where**
 
@@ -420,7 +439,10 @@ show it takes the role of the main.
 
 Stories: `kit-settings-layout--community`, `kit-settings-layout--phone-nav`,
 `kit-settings-layout--phone-content`, `kit-settings-layout--community-light`,
-`kit-settings-layout--no-footer`.
+`kit-settings-layout--no-footer`, `kit-settings-layout--with-dock-and-call`,
+`kit-settings-layout--with-dock-and-call-phone-nav`; in the Lounge frame
+`lounge-frame--settings-section`, `--settings-list`, `--settings-in-call`,
+`--settings-in-call-list`.
 
 **In the native kit.** `SettingsLayout`, the same; native stories
 `kit-settings-layout-community` and so on.
@@ -447,6 +469,24 @@ All widths
 People is a Sheet over the stage, opened by the user. The arrangement is the
 same at every width; only the size changes.
 
+**In the Lounge** (the frame's `stage` template) a room keeps its place in the
+app, as the Voice mock-up and Discord do: at compact and wide the stage is the
+centre of the three islands, with the dock, the community's channels and rooms
+and the call bar beside it, and no right island. It is the same frame as the
+chat, so moving between a channel and a room keeps those pieces mounted. On a
+phone the room is the full stage, with no dock bar.
+
+On the room of the call you are in, the room's own controls (mute, deafen,
+Leave) replace the call bar at every width, as in the Voice mock-up. The frame
+leaves the bar out only on evidence: the screen says the room is your call
+(`useShowsCall`), and the component that renders the controls registers them
+while it is mounted and shown (`useStageCallControls`, a layout effect). A
+crashed stage (the centre's error), a loading one (its Suspense fallback, which
+also hides a stage that suspends again) or a stage without its controls keeps
+the call bar, so nobody is left in a call with no control on screen. A room you
+are not in keeps the call bar too: your call is elsewhere. The screen renders
+`StageLayout` with `inIsland` (the template's island is the main).
+
 **What goes where**
 
 |Region|Goes here|Does not go here|
@@ -463,7 +503,9 @@ leave it out, the name is "People". The screen says whether People is open and
 handles its close request.
 
 Stories: `kit-stage-layout--sharing`, `kit-stage-layout--people-open`,
-`kit-stage-layout--sharing-light`, `kit-stage-layout--no-strip`.
+`kit-stage-layout--sharing-light`, `kit-stage-layout--no-strip`,
+`kit-stage-layout--in-island`; in the Lounge frame `lounge-frame--stage-not-in-call`,
+`--stage-in-call`, `--stage-other-room-in-call`.
 
 **In the native kit.** `StageLayout`, the same. GPUI cannot cap another
 element's size, so the content sits in a wrapper capped at the stage on both axes
@@ -509,11 +551,6 @@ make up an answer on your own screen.
   what the browser reports, but the page's viewport setting (`index.html`, the
   `interactive-widget` option for Android) is an app-level change that is not
   made yet. Until it is, a phone may pan the page instead of resizing it.
-- **The call bar on other templates.** The call bar stays on screen while the
-  user moves between three-islands screens: the frame keeps it mounted, with
-  the dock, the left island and the members. Settings screens and the full stage
-  are still the old shell's, so the call bar is not on them yet. "Open call view"
-  goes to the old shell's call stage.
 - **A phone thread as a full pane.** On a phone a thread covers the chat as a
   pane of its own. At compact it is the right Sheet, and at wide the right
   island.
@@ -606,8 +643,11 @@ rule").
 route: with the new design off it is the old shell's "Page not found". The
 community fixture, `/__lounge/community/:communityId`, puts every piece of the
 shell on real data around a placeholder centre, so the end-to-end tests can
-check the pieces before a real screen is registered. Its descriptor sets
-`links`, so its dock and "All communities" sheet stay on the fixture. When a
+check the pieces before a real screen is registered. The settings fixture
+(`/__lounge/settings`, `/__lounge/settings/:section`) and the stage fixture
+(`/__lounge/community/:communityId/room/:channelId`) do the same for the
+`settings` and `stage` templates. Each fixture's descriptor sets `links`, so
+its dock and "All communities" sheet stay on the fixtures. When a
 real screen takes over, point those tests at the real path.
 
 ## A new template

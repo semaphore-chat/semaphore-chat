@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { StrictMode, useEffect, useMemo, type ReactNode } from 'react';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { renderWithProviders } from '../test-utils';
 import { createMockSocket } from '../test-utils/mockSocket';
@@ -29,7 +29,7 @@ import { derivePalette } from '../../theme/derive/derivePalette';
 import { chooseShell } from '../../shell/chooseShell';
 import { LOUNGE_ROUTES, type LoungeRoute } from '../../shell/loungeRoutes';
 import { readShownShellKind } from '../../shell/shownShellKind';
-import { useScreenChrome, type LoungeScreenProps, type ThreeIslandsScreen } from '../../shell/lounge/screen';
+import { useScreenChrome, type LoungeScreenProps, type StageScreen, type ThreeIslandsScreen } from '../../shell/lounge/screen';
 import { forgetRouteMemory, rememberActivatedRow } from '../../shell/routeMemory';
 import LoungeRoot from '../../shell/lounge/LoungeRoot';
 
@@ -154,12 +154,14 @@ const handles: {
   navigate?: ReturnType<typeof useNavigate>;
   show?: ReturnType<typeof useNotification>['showNotification'];
   voice?: ReturnType<typeof useVoiceDispatch>['dispatch'];
+  pathname?: string;
 } = {};
 
 function Handles() {
   handles.navigate = useNavigate();
   handles.show = useNotification().showNotification;
   handles.voice = useVoiceDispatch().dispatch;
+  handles.pathname = useLocation().pathname;
   return null;
 }
 
@@ -185,6 +187,8 @@ function renderFrame(
     extra?: ReactNode;
     electron?: ReturnType<typeof createFakeElectronAPI>;
     strict?: boolean;
+    /** The history before `path` (the entries under it). */
+    before?: string[];
   } = {},
 ) {
   const wrap = (node: ReactNode) => (options.strict ? <StrictMode>{node}</StrictMode> : <>{node}</>);
@@ -206,7 +210,7 @@ function renderFrame(
   );
   const socket = options.socket ?? createMockSocket();
   const view = renderWithProviders(tree(options.themeColor ?? '#101010'), {
-    routerProps: { initialEntries: [path] },
+    routerProps: { initialEntries: [...(options.before ?? []), path], initialIndex: options.before?.length ?? 0 },
     socket,
     isSocketConnected: options.connected ?? true,
     electronAPI: options.electron,
@@ -232,6 +236,38 @@ function themeColor(): string | null {
 }
 
 const consoleError = vi.spyOn(console, 'error');
+
+/**
+ * A fixed viewport `width` for the kit's queries and the old shell's (MUI's `max-width`, which the frame's banner row
+ * still renders): every media query this tree asks, answered for that width.
+ */
+const originalMatchMedia = window.matchMedia;
+function viewport(width: number): void {
+  const evaluate = (query: string): boolean => {
+    if (query.includes('pointer') || query.includes('hover') || query.includes('prefers-')) return false;
+    const below = /^not all and \(min-width: (\d+(?:\.\d+)?)px\)$/.exec(query);
+    if (below) return width < Number(below[1]);
+    const between = /^\(min-width: (\d+(?:\.\d+)?)px\) and \(not \(min-width: (\d+(?:\.\d+)?)px\)\)$/.exec(query);
+    if (between) return width >= Number(between[1]) && width < Number(between[2]);
+    const min = /min-width:\s*(\d+(?:\.\d+)?)px/.exec(query);
+    const max = /max-width:\s*(\d+(?:\.\d+)?)px/.exec(query);
+    if (!min && !max) return false;
+    return (!min || width >= Number(min[1])) && (!max || width <= Number(max[1]));
+  };
+  window.matchMedia = ((query: string) => ({
+    matches: evaluate(query),
+    media: query,
+    onchange: null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => true,
+  })) as unknown as typeof window.matchMedia;
+}
+afterEach(() => {
+  window.matchMedia = originalMatchMedia;
+});
 
 beforeEach(() => {
   pieces.dock = 0;
@@ -662,5 +698,119 @@ describe('under StrictMode', () => {
     expect(screen.getAllByText('Saved').filter((el) => el.closest('[data-kit-live-slot]') === null)).toHaveLength(1);
     unmount();
     expect(readShownShellKind()).toBe('classic');
+  });
+});
+
+describe('the probes of a stage (one per hook, each with its own key)', () => {
+  it('a room\'s title and shows-call probes unmount when the user leaves it: their cleanups run, with no React warning', async () => {
+    const probes = { titleMounts: 0, titleCleanups: 0, showsMounts: 0, showsCleanups: 0 };
+    const room: StageScreen = {
+      template: 'stage',
+      place: 'community',
+      Stage: () => <h1>Room fx</h1>,
+      useShowsCall: () => {
+        useEffect(() => {
+          probes.showsMounts += 1;
+          return () => {
+            probes.showsCleanups += 1;
+          };
+        }, []);
+        return false;
+      },
+      useTitle: () => {
+        useEffect(() => {
+          probes.titleMounts += 1;
+          return () => {
+            probes.titleCleanups += 1;
+          };
+        }, []);
+        return 'Room fx';
+      },
+    };
+    const roomRoute: LoungeRoute = { path: '/fx/community/:communityId/room/:channelId', widths: ALL, load: async () => ({ default: room }) };
+    ROUTES.unshift(roomRoute);
+    try {
+      renderFrame('/fx/community/c-1/room/vc-1');
+      await screen.findByRole('heading', { name: 'Room fx' });
+      expect(probes).toEqual({ titleMounts: 1, titleCleanups: 0, showsMounts: 1, showsCleanups: 0 });
+      await go('/fx/community/c-1');
+      await screen.findByRole('heading', { name: 'Home of c-1' });
+      expect(probes).toEqual({ titleMounts: 1, titleCleanups: 1, showsMounts: 1, showsCleanups: 1 });
+    } finally {
+      ROUTES.shift();
+    }
+  });
+});
+
+describe('the settings template: a phone\'s Back', () => {
+  it('list, section, Back, then the system Back: the screen before the list, not the section again', async () => {
+    viewport(390);
+    const { user } = renderFrame('/__lounge/settings', { before: ['/fx/community/c-1'] });
+    await screen.findByRole('link', { name: /Notifications/ });
+    await go('/__lounge/settings/notifications');
+    await screen.findByRole('switch', { name: /Mention sounds/ });
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    // A step back: the list again.
+    expect(await screen.findByRole('link', { name: /Notifications/ })).toBeInTheDocument();
+    expect(handles.pathname).toBe('/__lounge/settings');
+    await go(-1 as never);
+    expect(handles.pathname).toBe('/fx/community/c-1');
+    expect(await screen.findByRole('heading', { name: 'Home of c-1' })).toBeInTheDocument();
+  });
+
+  it('a section opened cold (a deep link): Back replaces it with the list, so the system Back leaves settings', async () => {
+    viewport(390);
+    const { user } = renderFrame('/__lounge/settings/notifications', { before: ['/fx/community/c-1'] });
+    await screen.findByRole('switch', { name: /Mention sounds/ });
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    expect(await screen.findByRole('link', { name: /Notifications/ })).toBeInTheDocument();
+    expect(handles.pathname).toBe('/__lounge/settings');
+    await go(-1 as never);
+    expect(handles.pathname).toBe('/fx/community/c-1');
+    expect(await screen.findByRole('heading', { name: 'Home of c-1' })).toBeInTheDocument();
+  });
+});
+
+describe('the call across the templates (the real LoungeRoot)', () => {
+  const CALL = { channelId: 'vc-1', channelName: 'Squad Up', communityId: 'c-1', isPrivate: false, createdAt: '2026-01-01T00:00:00.000Z' };
+
+  /** The call's bar on screen: once, in the frame's call slot or (your call's room) in the room's own controls. */
+  function expectCallControls(step: string, inStage: boolean) {
+    const bars = screen.queryAllByRole('region', { name: 'Call in Squad Up' });
+    expect(bars, step).toHaveLength(1);
+    const slot = bars[0].closest('[data-slot="call-bar"]');
+    if (inStage) {
+      expect(slot, step).toBeNull();
+      expect(screen.getByRole('main'), step).toContainElement(bars[0]);
+      expect(document.querySelector('[data-slot="call-bar"]'), step).toBeNull();
+    } else {
+      expect(slot, step).not.toBeNull();
+    }
+    expect(within(bars[0]).getByRole('button', { name: 'Leave call' }), step).toBeInTheDocument();
+  }
+
+  it.each([390, 820, 1440])('at %ipx: chat, the settings list, a section, your room, another room, chat: the call stays in reach', async (width) => {
+    viewport(width);
+    renderFrame('/fx/community/c-1/channel/ch-1');
+    await screen.findByRole('heading', { name: 'Channel ch-1' });
+    act(() => handles.voice!({ type: VoiceActionType.SetConnected, payload: CALL }));
+    expectCallControls('chat', false);
+
+    const steps: [string, string, boolean][] = [
+      ['/__lounge/settings', 'the settings list', false],
+      ['/__lounge/settings/notifications', 'a section', false],
+      ['/__lounge/community/c-1/room/vc-1', 'your room', true],
+      ['/__lounge/community/c-1/room/vc-2', 'another room', false],
+      ['/fx/community/c-1/channel/ch-1', 'chat again', false],
+    ];
+    for (const [path, step, inStage] of steps) {
+      await go(path);
+      await waitFor(() => expect(screen.getByTestId('lounge-call-bar'), step).toBeInTheDocument());
+      if (path.includes('/room/')) await screen.findByTestId('lounge-stage-fixture-stage');
+      if (path.includes('/settings')) await screen.findByText('Back to the app');
+      if (path.endsWith('/notifications')) await screen.findByRole('switch', { name: /Mention sounds/ });
+      expectCallControls(`${step} at ${width}px`, inStage);
+    }
+    expect(consoleError).not.toHaveBeenCalled();
   });
 });
