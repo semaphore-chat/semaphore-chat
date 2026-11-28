@@ -544,8 +544,8 @@ fn escape_in_pins_closes_the_panel(cx: &mut TestAppContext) {
 
 // ---- What the rows say. ----
 
-/// A message with a lookalike host, as the server sends it: the address as typed.
-fn lookalike(seq: i64) -> MessageRow {
+/// A message whose words hold a link, as typed.
+fn with_link(seq: i64) -> MessageRow {
     fixture::message(
         seq,
         fixture::user("u-ava", "ava", Some("Ava Chen")),
@@ -560,7 +560,7 @@ fn lookalike(seq: i64) -> MessageRow {
 #[test]
 fn previews_show_links_the_way_messages_do() {
     let hit = SearchHit {
-        row: lookalike(1),
+        row: with_link(1),
         ..hit(1)
     };
     assert_eq!(
@@ -568,7 +568,7 @@ fn previews_show_links_the_way_messages_do() {
         "log in at https://xn--pple-43d.com/login"
     );
     let pin = PinnedRow {
-        row: lookalike(2),
+        row: with_link(2),
         parent_message_id: None,
     };
     assert_eq!(
