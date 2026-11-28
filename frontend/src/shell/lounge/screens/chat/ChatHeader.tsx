@@ -1,11 +1,11 @@
 /**
  * The chat's header (design §3 PR 10c, B6): Back to the community (a phone only: at compact and wide the community's
  * list is beside the chat), the channel's name as the screen's heading (a lock when it is private), Members (at wide a
- * toggle for the members island beside the list, pressed while it shows), and More with Search, which is the old
- * shell's search screen (owner default: phone search stays classic), and Pinned messages with their count (PR 10d-B),
+ * toggle for the members island beside the list, pressed while it shows), and More with Search (a phone: the old
+ * shell's search screen, owner default Q4; compact and wide: the search panel, PR 10e), and Pinned messages with their count (PR 10d-B),
  * and Notifications (PR 10e): the channel's notification level, a second menu of the levels from the same button.
  */
-import { useRef, useState, type JSX } from 'react';
+import { useRef, useState, type JSX, type RefObject } from 'react';
 import { Icon, IconButton, Menu, Skeleton, Stack, Text, useToasts, type MenuEntry } from '../../../../kit';
 import { CHANNEL_LEVEL_TEXT, type ChannelLevelChoice, type ChannelNotifications } from '../../../../data/channelNotifications';
 
@@ -27,6 +27,8 @@ export interface ChatHeaderProps {
   pinnedCount?: number;
   /** The channel's notification level; undefined: no Notifications in the menu. */
   notifications?: ChannelNotifications;
+  /** The More button, for the screen (the search panel gives focus back to it when it closes). */
+  moreRef?: RefObject<HTMLButtonElement | null>;
 }
 
 const LEVELS: ChannelLevelChoice[] = ['all', 'mentions', 'none', 'default'];
@@ -41,10 +43,12 @@ export function ChatHeader({
   onShowPinned,
   pinnedCount,
   notifications,
+  moreRef,
 }: ChatHeaderProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const [levelsOpen, setLevelsOpen] = useState(false);
-  const more = useRef<HTMLButtonElement>(null);
+  const ownMore = useRef<HTMLButtonElement>(null);
+  const more = moreRef ?? ownMore;
   const toasts = useToasts();
   const levelItems: MenuEntry[] =
     notifications === undefined

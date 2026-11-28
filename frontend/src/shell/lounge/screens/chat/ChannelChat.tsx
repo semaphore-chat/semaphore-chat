@@ -5,9 +5,9 @@
  * (`ChatComposer`), a message's actions (`MessageActionsSheet`), editing in place, and Retry or Delete on a failed
  * send. The real channel route's at phone width (PR 10c-2b, `ChannelChatScreen`), and the hidden chat fixture's.
  *
- * At compact and wide (PR 10e) the community's list is beside the chat, so there is no Back; a thread and (at wide)
- * the pinned messages are the frame's right panel (`ScreenChrome.setPanel`), portalled into its slot, in place of the
- * members; at wide the composer takes focus on entry (B4); the channel is remembered as the community's last at every
+ * At compact and wide (PR 10e) the community's list is beside the chat, so there is no Back; a thread, the search
+ * (`SearchPanel`) and (at wide) the pinned messages are the frame's right panel (`ScreenChrome.setPanel`), portalled
+ * into its slot, in place of the members, one at a time (B9); at wide the composer takes focus on entry (B4); the channel is remembered as the community's last at every
  * width (both shells open it next). Not touch-first, a right-click or the keyboard opens a message's actions as a
  * Menu (at the cursor, or beside the row), the same actions as the Sheet; rows have the hover toolbar.
  *
@@ -64,6 +64,8 @@ import { MessageMediaViewer, type ViewerRequest } from './MessageMediaViewer';
 import { ReactionPeopleSheet, type ReactionPeopleRequest } from './ReactionPeopleSheet';
 import { THREAD_VIEW_ATTRIBUTE, ThreadView } from './ThreadView';
 import { PinnedPanel, PinnedSheet } from './PinnedSheet';
+import { SearchPanel, freshSearchMemory, type SearchMemory } from './SearchPanel';
+import type { SearchResult } from '../../../../hooks/useMessageSearch';
 import { ReactionPickerSheet, type ReactionPickerRequest } from './ReactionPickerSheet';
 import { useComposerDrop } from './composerDrop';
 import { findLastEditableMessage } from '../../../../data/chat/lastEditable';
@@ -143,6 +145,16 @@ function useChatBack(communityId: string): { onBack: (() => void) | undefined; g
   return { onBack: phone ? onBack : undefined, goHome };
 }
 
+/**
+ * The search panel's state (compact and wide), held above the chat so a jump to a result in another channel (a new
+ * chat) keeps the panel open with its text and scope.
+ */
+interface ChatSearch {
+  open: boolean;
+  memory: SearchMemory;
+  setOpen(open: boolean): void;
+}
+
 /** The history entry a thread was opened into from this chat (Back then closes it with a step back). */
 interface ThreadEntryState {
   threadFrom?: string;
@@ -181,7 +193,7 @@ function focusAfterThread(opener: HTMLElement | null, parentId: string | null, s
   requestAnimationFrame(attempt);
 }
 
-function ChannelChatBody({ communityId, channelId }: { communityId: string; channelId: string }): JSX.Element {
+function ChannelChatBody({ communityId, channelId, search }: { communityId: string; channelId: string; search: ChatSearch }): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -330,12 +342,16 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   }, [location.state, chatPath, navigate]);
   // Closed (Back, its button, the browser's Back): focus back where it came from.
   const lastThread = useRef<string | null>(threadId);
+  const searchTakesFocus = useRef(false);
+  searchTakesFocus.current = search.open && range !== 'phone' && search.memory.focus !== null;
   useEffect(() => {
     const was = lastThread.current;
     lastThread.current = threadId;
     if (was === null || threadId !== null) return;
     const opener = threadOpener.current;
     threadOpener.current = null;
+    // A thread opened from a search result: the search comes back into the panel and gives focus to that result.
+    if (searchTakesFocus.current) return;
     focusAfterThread(opener, was, (id) => conversation.listRef.current?.scrollToMessage(id), inputRef.current);
   }, [threadId, conversation.listRef]);
   // --- Pinned messages: a sheet from More; a jump closes it and centres the message (a thread reply: its parent,
@@ -344,10 +360,16 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   const { data: pins = [] } = useQuery({ ...moderationControllerGetPinnedMessagesOptions({ path: { channelId } }), enabled: writable });
   const [pinnedOpen, setPinnedOpen] = useState(false);
   const [pinnedOpener, setPinnedOpener] = useState<HTMLElement | null>(null);
-  const showPinned = useCallback((opener: HTMLElement | null) => {
-    setPinnedOpener(opener);
-    setPinnedOpen(true);
-  }, []);
+  const setSearchOpen = search.setOpen;
+  const showPinned = useCallback(
+    (opener: HTMLElement | null) => {
+      // One of pins and search at a time (B9).
+      setSearchOpen(false);
+      setPinnedOpener(opener);
+      setPinnedOpen(true);
+    },
+    [setSearchOpen],
+  );
   const closePinned = useCallback(() => setPinnedOpen(false), []);
   const jumpToPin = useCallback(
     (pin: PinnedMessageDto) => {
@@ -374,6 +396,47 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   // --- The right panel (compact and wide): the thread, else (wide only) the pinned messages, in the members' place.
   // A thread opened from a pin takes the panel; closing it brings the pins back. ---
   const pinsInPanel = pinnedOpen && range === 'wide' && !threadInPanel;
+  // --- Search (compact and wide; a phone has the old search screen): the panel in the members' place, or the right
+  // Sheet at compact. A thread opened from a result takes the panel; closing it brings the search back. ---
+  const searchInPanel = search.open && range !== 'phone' && !threadInPanel;
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const openSearch = useCallback(() => {
+    if (range === 'phone') {
+      navigate(`/community/${communityId}/channel/${channelId}/search`);
+      return;
+    }
+    setPinnedOpen(false);
+    search.memory.focus = 'field';
+    search.setOpen(true);
+  }, [range, navigate, communityId, channelId, search]);
+  const closeSearch = useCallback(() => {
+    search.setOpen(false);
+    // The More button it was opened from (also after a jump to another channel: this chat's own More).
+    requestAnimationFrame(() => {
+      if (moreRef.current?.isConnected) moreRef.current.focus({ preventScroll: true });
+    });
+  }, [search]);
+  const jumpToResult = useCallback(
+    (result: SearchResult) => {
+      if (!result.channelId) return;
+      // A thread reply: its parent, then its thread opens (as a pin).
+      const target = pinnedJumpTarget({ id: result.id, parentMessageId: result.parentMessageId });
+      const here = result.channelId === channelId;
+      const path = here ? chatPath : pathOf(links.channel(communityId, result.channelId));
+      // The panel mounts again (another channel's chat, or after the thread): focus goes back to this result.
+      if (!here || target.thread !== undefined) search.memory.focus = { result: result.id };
+      if (target.thread !== undefined) {
+        threadOpener.current = null;
+        // Opened from this channel's entry, the thread is a new entry Back closes; in another channel, closing it
+        // replaces the address (Back would leave that channel).
+        navigate(`${path}?highlight=${target.highlight}&${THREAD_PARAM}=${target.thread}`, here ? { state: { threadFrom: chatPath } satisfies ThreadEntryState } : undefined);
+      } else {
+        // In this channel the jump replaces the entry, as a pin's; another channel is a new entry, as the old search.
+        navigate(`${path}?highlight=${target.highlight}`, here ? { replace: true } : undefined);
+      }
+    },
+    [channelId, chatPath, links, communityId, navigate, search],
+  );
   const closePinnedPanel = useCallback(() => {
     setPinnedOpen(false);
     // The More button that opened them (its menu has closed); it stays in the header.
@@ -385,14 +448,18 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
   closeThreadRef.current = closeThread;
   const closePinnedRef = useRef(closePinnedPanel);
   closePinnedRef.current = closePinnedPanel;
-  const panelKind = threadInPanel ? 'thread' : pinsInPanel ? 'pins' : null;
+  const closeSearchRef = useRef(closeSearch);
+  closeSearchRef.current = closeSearch;
+  const panelKind = threadInPanel ? 'thread' : searchInPanel ? 'search' : pinsInPanel ? 'pins' : null;
   useEffect(() => {
     setPanel(
       panelKind === 'thread'
         ? { label: 'Thread', fill: true, onClose: () => closeThreadRef.current() }
-        : panelKind === 'pins'
-          ? { label: 'Pinned messages', onClose: () => closePinnedRef.current() }
-          : null,
+        : panelKind === 'search'
+          ? { label: 'Search messages', fill: true, onClose: () => closeSearchRef.current() }
+          : panelKind === 'pins'
+            ? { label: 'Pinned messages', onClose: () => closePinnedRef.current() }
+            : null,
     );
   }, [panelKind, setPanel]);
   // The panel goes with the chat (another channel, another screen).
@@ -569,7 +636,8 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
             // Only for a channel the reader can see: never a member list for one they have no access to.
             onShowMembers={channel === null || face === 'noAccess' || face === 'gone' ? undefined : onMembers}
             membersShown={membersShown}
-            onSearch={() => navigate(`/community/${communityId}/channel/${channelId}/search`)}
+            onSearch={openSearch}
+            moreRef={moreRef}
             onShowPinned={face === 'gone' || face === 'noAccess' ? undefined : showPinned}
             pinnedCount={pins.length}
             notifications={writable && face !== 'gone' && face !== 'noAccess' ? notifications : undefined}
@@ -655,6 +723,12 @@ function ChannelChatBody({ communityId, channelId }: { communityId: string; chan
         panelTarget !== null &&
         createPortal(
           <PinnedPanel communityId={communityId} channelId={channelId} writable={writable} onClose={closePinnedPanel} onJump={jumpToPin} />,
+          panelTarget,
+        )}
+      {searchInPanel &&
+        panelTarget !== null &&
+        createPortal(
+          <SearchPanel communityId={communityId} channelId={channelId} memory={search.memory} onClose={closeSearch} onJump={jumpToResult} />,
           panelTarget,
         )}
       {pinnedOpen && range !== 'wide' && (
@@ -748,6 +822,25 @@ export function ChannelChat({ params }: LoungeScreenProps): JSX.Element {
   const channelId = params.channelId ?? '';
   const { channel, status, error, refetch } = useRouteChannel({ communityId, channelId });
   const isVoice = channel?.type === ChannelType.VOICE;
+  // The search panel outlives one channel's chat (a result in another channel), not the community.
+  const searchMemory = useRef<SearchMemory>(freshSearchMemory());
+  const [searchIn, setSearchIn] = useState<string | null>(null);
+  const searchInRef = useRef(searchIn);
+  searchInRef.current = searchIn;
+  const setSearchOpen = useCallback(
+    (open: boolean) => {
+      // Closed, or opened afresh (here, or after another community's): a new search, keeping where focus goes.
+      if (!open || searchInRef.current !== communityId) {
+        Object.assign(searchMemory.current, { ...freshSearchMemory(), focus: open ? searchMemory.current.focus : null });
+      }
+      setSearchIn(open ? communityId : null);
+    },
+    [communityId],
+  );
+  const search = useMemo<ChatSearch>(
+    () => ({ open: searchIn === communityId, memory: searchMemory.current, setOpen: setSearchOpen }),
+    [searchIn, communityId, setSearchOpen],
+  );
   useEffect(() => {
     if (isVoice) noteVoiceChannels([channelId]);
   }, [isVoice, channelId]);
@@ -777,5 +870,5 @@ export function ChannelChat({ params }: LoungeScreenProps): JSX.Element {
       );
     return <ChannelChatState communityId={communityId} title="Channel" isPrivate={false} state={state} />;
   }
-  return <ChannelChatBody key={`${communityId}/${channelId}`} communityId={communityId} channelId={channelId} />;
+  return <ChannelChatBody key={`${communityId}/${channelId}`} communityId={communityId} channelId={channelId} search={search} />;
 }
