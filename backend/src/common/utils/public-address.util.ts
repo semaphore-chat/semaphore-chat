@@ -127,6 +127,19 @@ for (const [network, prefix] of PRIVATE_NETWORK_IPV6) {
 }
 
 /**
+ * Addresses that no push endpoint may reach even when an operator lists its
+ * host: cloud instance metadata and credential services. Some sit inside a
+ * range an operator may otherwise allow (link-local or IPv4 CGNAT), hence the
+ * separate list, checked first.
+ */
+const ALWAYS_FORBIDDEN_ADDRESSES: Readonly<Record<string, true>> = {
+  '100.100.100.200': true,
+  '100.100.100.100': true,
+  'fd00:ec2::254': true,
+  'fd20:ce::254': true,
+};
+
+/**
  * Where an address points: the public internet, a private network an
  * operator may allow (see `PRIVATE_NETWORK_IPV4`), or somewhere no outbound
  * request may ever reach. Anything that isn't a valid address is forbidden.
@@ -137,6 +150,9 @@ export function classifyAddress(address: string): AddressClass {
   const normalized = normalizeAddress(address);
   const family = isIP(normalized);
   if (family === 0) return 'forbidden';
+  if (ALWAYS_FORBIDDEN_ADDRESSES[normalized.toLowerCase()]) {
+    return 'forbidden';
+  }
   if (!isPrivateIp(normalized)) return 'public';
   const privateNetwork =
     family === 4

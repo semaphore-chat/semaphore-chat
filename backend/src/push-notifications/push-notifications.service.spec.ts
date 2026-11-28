@@ -3,6 +3,8 @@ import type { Mocked } from '@suites/doubles.jest';
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'node:crypto';
+import * as dns from 'node:dns';
+import type { Agent } from 'node:https';
 import { PushNotificationsService } from './push-notifications.service';
 import { DatabaseService } from '@/database/database.service';
 import { createMockDatabase } from '@/test-utils';
@@ -494,6 +496,20 @@ describe('PushNotificationsService', () => {
 
       expect(isPublicUrl).toHaveBeenCalledWith('ntfy.sh');
     });
+
+    it.each([
+      [
+        'a percent-encoded dot in the host',
+        'https://127.0.0.1%2Eexample.com/up',
+      ],
+      ['a host containing braces', 'https://n{tfy}.lan/up'],
+    ])('refuses %s', async (_what, endpoint) => {
+      await expect(
+        withHosts('').subscribe('u', { endpoint, keys }),
+      ).rejects.toThrow(BadRequestException);
+      expect(isPublicUrl).not.toHaveBeenCalled();
+      expect(resolvesPrivate).not.toHaveBeenCalled();
+    });
   });
 
   describe('unsubscribe', () => {
@@ -740,6 +756,113 @@ describe('PushNotificationsService', () => {
       expect(mockDatabase.pushSubscription.delete).toHaveBeenCalledWith({
         where: { id: 'sub-1' },
       });
+    });
+  });
+
+  describe('the agent a send uses', () => {
+    const userId = 'user-123';
+    const payload = { title: 'Test Notification', body: 'Test body' };
+
+    /** Makes every name resolve through `table` (unknown names fail). */
+    function fakeDns(table: Record<string, string>): void {
+      jest.spyOn(dns, 'lookup').mockImplementation(((
+        host: string,
+        _options: unknown,
+        callback: (
+          error: NodeJS.ErrnoException | null,
+          address: string,
+          family: number,
+        ) => void,
+      ) => {
+        const address = table[host];
+        if (!address) {
+          callback(
+            Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }),
+            '',
+            0,
+          );
+          return;
+        }
+        callback(null, address, address.includes(':') ? 6 : 4);
+      }) as never);
+    }
+
+    /** The agent handle web-push is given when it sends to `endpoint`. */
+    async function agentFor(
+      rawHosts: string,
+      endpoint: string,
+    ): Promise<Agent> {
+      const pushService = new PushNotificationsService(
+        configService as unknown as ConfigService,
+        mockDatabase as unknown as DatabaseService,
+        parsePushPrivateHosts(rawHosts).hosts,
+      );
+      configService.get.mockImplementation((key: string) => {
+        if (key === 'VAPID_PUBLIC_KEY') return mockVapidPublicKey;
+        if (key === 'VAPID_PRIVATE_KEY') return mockVapidPrivateKey;
+        return undefined;
+      });
+      await pushService.onModuleInit();
+      mockDatabase.pushSubscription.findMany.mockResolvedValue([
+        {
+          id: 'sub-1',
+          userId,
+          endpoint,
+          keys: { p256dh: 'key1', auth: 'auth1' },
+        },
+      ]);
+      (webpush.sendNotification as jest.Mock).mockResolvedValue({});
+
+      await pushService.sendToUser(userId, payload);
+
+      const calls = (webpush.sendNotification as jest.Mock).mock.calls;
+      return calls[calls.length - 1][2].agent as Agent;
+    }
+
+    function lookupWith(
+      agent: Agent,
+      host: string,
+    ): Promise<NodeJS.ErrnoException | null> {
+      const lookup = agent.options.lookup;
+      if (!lookup) throw new Error('the agent has no lookup');
+      return new Promise((resolve) => {
+        lookup(host, {}, (error) => resolve(error));
+      });
+    }
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('allows a listed host that resolves to a LAN address', async () => {
+      fakeDns({ 'ntfy.lan': '192.168.1.5' });
+      const agent = await agentFor('ntfy.lan', 'https://ntfy.lan/up');
+
+      await expect(lookupWith(agent, 'ntfy.lan')).resolves.toBeNull();
+    });
+
+    it('refuses an unlisted host that resolves to a LAN address', async () => {
+      fakeDns({ 'other.lan': '192.168.1.5' });
+      const agent = await agentFor('ntfy.lan', 'https://other.lan/up');
+
+      expect((await lookupWith(agent, 'other.lan'))?.code).toBe('ENOTFOUND');
+    });
+
+    it.each([
+      ['loopback', '127.0.0.1'],
+      ['the metadata service', '169.254.169.254'],
+      ['an IPv4-mapped LAN address', '::ffff:192.168.1.5'],
+    ])('refuses a listed host resolving to %s', async (_what, address) => {
+      fakeDns({ 'ntfy.lan': address });
+      const agent = await agentFor('ntfy.lan', 'https://ntfy.lan/up');
+
+      expect((await lookupWith(agent, 'ntfy.lan'))?.code).toBe('ENOTFOUND');
+    });
+
+    it('refuses an IP literal at connection time, without a lookup', async () => {
+      const agent = await agentFor('', 'https://ntfy.sh/up');
+
+      expect(() =>
+        agent.createConnection({ host: '127.0.0.1', port: 443 }),
+      ).toThrow(/non-public/);
     });
   });
 

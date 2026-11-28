@@ -17,6 +17,18 @@ export const MAX_PUSH_PRIVATE_HOSTS = 20;
 /** One DNS label: letters, digits and inner hyphens, 1 to 63 characters. */
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
+/**
+ * Whether `host` is a host name: dot-separated labels, no empty labels, and a
+ * last label that isn't all digits (which a URL parser reads as IPv4, in its
+ * canonical form or one of the non-canonical ones below).
+ */
+export function isPushHostName(host: string): boolean {
+  if (host.length > 253) return false;
+  const labels = host.split('.');
+  if (!labels.every((label) => LABEL.test(label))) return false;
+  return !/^\d+$/.test(labels[labels.length - 1]);
+}
+
 export interface PushPrivateHost {
   host: string;
   /** A port this entry allows besides 443, or null for 443 only. */
@@ -59,8 +71,17 @@ function hostProblem(host: string): string | null {
     return 'IP addresses are not supported, use a host name';
   }
   if (host.length > 253) return 'the host name is too long';
-  if (!host.split('.').every((label) => LABEL.test(label))) {
+  if (!isPushHostName(host)) return 'not a valid host name';
+  // A URL parser also reads forms like 0x7f.0x1 as IPv4. Refuse an entry if
+  // what it would connect to isn't the name written here.
+  let parsed: string;
+  try {
+    parsed = new URL(`https://${host}`).hostname.replace(/^\[|\]$/g, '');
+  } catch {
     return 'not a valid host name';
+  }
+  if (isIP(parsed) !== 0) {
+    return 'IP addresses are not supported, use a host name';
   }
   return null;
 }

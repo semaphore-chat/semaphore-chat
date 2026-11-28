@@ -49,6 +49,12 @@ describe('parsePushPrivateHosts', () => {
     ['ntfy_lan', 'not a valid host name'],
     ['https://ntfy.lan', 'not a valid host name'],
     [`${'a'.repeat(64)}.lan`, 'not a valid host name'],
+    // Forms a URL parser reads as IPv4, though isIP does not
+    ['2130706433', 'not a valid host name'],
+    ['10.1', 'not a valid host name'],
+    ['0x7f.1', 'not a valid host name'],
+    ['0177.0.0.1', 'not a valid host name'],
+    ['0x7f.0x1', 'IP addresses'],
   ])('refuses %s', (raw, reason) => {
     const { hosts, errors } = parsePushPrivateHosts(`ok.lan,${raw}`);
 

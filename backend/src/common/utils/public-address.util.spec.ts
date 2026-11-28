@@ -54,9 +54,10 @@ const TABLE = {
   'ntfy.lan': ['192.168.1.5'],
   'ntfy.tailnet': ['100.101.102.103'],
   'ntfy.ula': ['fd12:3456::7'],
-  'mixed.lan': ['192.168.1.5', '127.0.0.1'],
+  'mixed.lan': ['127.0.0.1', '192.168.1.5'],
   'loop.lan': ['127.0.0.1'],
   'metadata.lan': ['169.254.169.254'],
+  'mapped.lan': ['::ffff:192.168.1.5'],
   'linklocal6.lan': ['fe80::1'],
 };
 
@@ -91,6 +92,12 @@ describe('public-address util', () => {
       ['224.0.0.1', 'forbidden'],
       ['240.0.0.1', 'forbidden'],
       ['198.18.0.1', 'forbidden'],
+      // Metadata and credential endpoints, even for an allowlisted host
+      ['100.100.100.200', 'forbidden'],
+      ['100.100.100.100', 'forbidden'],
+      ['fd00:ec2::254', 'forbidden'],
+      ['fd20:ce::254', 'forbidden'],
+      ['FD00:EC2::254', 'forbidden'],
       // An embedded private IPv4 address could be anything: never allowed
       ['::ffff:192.168.1.5', 'forbidden'],
       ['64:ff9b::c0a8:105', 'forbidden'],
@@ -131,7 +138,12 @@ describe('public-address util', () => {
     beforeEach(() => fakeDns(TABLE));
 
     const allowLan = guardedLookup(
-      (host) => host === 'ntfy.lan' || host === 'loop.lan',
+      (host) =>
+        host === 'ntfy.lan' ||
+        host === 'loop.lan' ||
+        host === 'metadata.lan' ||
+        host === 'mixed.lan' ||
+        host === 'mapped.lan',
     );
 
     it('connects to a public host', async () => {
@@ -153,12 +165,14 @@ describe('public-address util', () => {
     });
 
     it('refuses a single (non-all) lookup to a forbidden address', async () => {
-      const error = await new Promise<NodeJS.ErrnoException | null>(
-        (resolve) => {
-          allowLan('metadata.lan', {}, (e) => resolve(e));
-        },
-      );
-      expect(error?.code).toBe('ENOTFOUND');
+      for (const host of ['metadata.lan', 'mixed.lan', 'mapped.lan']) {
+        const error = await new Promise<NodeJS.ErrnoException | null>(
+          (resolve) => {
+            allowLan(host, {}, (e) => resolve(e));
+          },
+        );
+        expect(error?.code).toBe('ENOTFOUND');
+      }
     });
 
     it('passes a DNS failure through', async () => {

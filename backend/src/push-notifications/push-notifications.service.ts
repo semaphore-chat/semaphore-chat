@@ -11,16 +11,22 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Agent } from 'node:https';
 import { isIP } from 'node:net';
+import { parse as legacyUrlParse } from 'node:url';
 import * as webpush from 'web-push';
 import { DatabaseService } from '@/database/database.service';
 import { SubscribePushDto } from './dto/subscribe.dto';
 import { PushSubscription } from '@prisma/client';
 import {
+  classifyAddress,
   guardedLookup,
   isPublicUrl,
   resolvesToPublicOrPrivateNetwork,
 } from '@/common/utils/public-address.util';
-import { PUSH_PRIVATE_HOSTS, PushPrivateHosts } from './push-private-hosts';
+import {
+  PUSH_PRIVATE_HOSTS,
+  PushPrivateHosts,
+  isPushHostName,
+} from './push-private-hosts';
 
 /**
  * Domain-separation string used when deriving the push action-token signing
@@ -48,11 +54,29 @@ const MAX_SUBSCRIPTIONS_PER_USER = 10;
 const SEND_CHUNK_SIZE = 5;
 
 /**
+ * The raw authority of an absolute URL: everything between `//` and the path,
+ * query or fragment. Percent-encoding there is refused because the endpoint
+ * is later re-parsed by the sender, and an encoded host can read differently
+ * in the two parsers.
+ */
+function rawAuthority(endpoint: string): string {
+  const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(endpoint);
+  if (!scheme) return '';
+  const rest = endpoint.slice(scheme[0].length);
+  const end = rest.search(/[/?#]/);
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+/**
  * What a push endpoint must look like (RFC 8030: an HTTPS URL of a push
  * service): https, a host name rather than an IP address, no credentials.
  * Returns the lower-case host name and the port (443 when none is given), or
  * null. Whether that port is allowed, and whether the name is public, are
  * separate checks.
+ *
+ * The endpoint is read here with WHATWG `URL`, but the sender re-reads the raw
+ * string with Node's legacy `url.parse`; both must agree on the authority, so
+ * a disagreement is refused rather than sent to another host.
  */
 function parsePushEndpoint(
   endpoint: string,
@@ -66,13 +90,22 @@ function parsePushEndpoint(
   }
   if (url.protocol !== 'https:') return null;
   if (url.username || url.password) return null;
+  if (/%[0-9a-f]{2}/i.test(rawAuthority(endpoint))) return null;
+  const host = url.hostname.toLowerCase();
   // URL keeps the brackets of an IPv6 literal
-  if (isIP(url.hostname.replace(/^\[|\]$/g, '')) !== 0) return null;
+  if (isIP(host.replace(/^\[|\]$/g, '')) !== 0) return null;
+  if (!isPushHostName(host)) return null;
   // URL drops a default port, so '' is 443
-  return {
-    host: url.hostname.toLowerCase(),
-    port: url.port === '' ? 443 : Number(url.port),
-  };
+  const port = url.port === '' ? 443 : Number(url.port);
+  const legacy = legacyUrlParse(endpoint);
+  if (
+    !legacy.hostname ||
+    legacy.hostname.toLowerCase() !== host ||
+    (legacy.port === null ? 443 : Number(legacy.port)) !== port
+  ) {
+    return null;
+  }
+  return { host, port };
 }
 
 /** Push urgency (RFC 8030 section 5.3). */
@@ -101,7 +134,8 @@ export class PushNotificationsService implements OnModuleInit {
   /**
    * Re-checks at connection time what a push endpoint's name resolves to:
    * public addresses only, or also private networks for a host the operator
-   * listed in PUSH_PRIVATE_HOSTS.
+   * listed in PUSH_PRIVATE_HOSTS. An IP literal is not resolved, so the
+   * socket's `createConnection` applies the same rule to it.
    */
   private readonly pushAgent: Agent;
 
@@ -116,6 +150,39 @@ export class PushNotificationsService implements OnModuleInit {
         this.privateHosts.allowsHost(hostname),
       ),
     });
+    const createConnection = this.pushAgent.createConnection.bind(
+      this.pushAgent,
+    ) as typeof this.pushAgent.createConnection;
+    const guardedCreateConnection: typeof createConnection = (
+      options,
+      callback,
+    ) => {
+      const host = options.host;
+      if (typeof host === 'string') {
+        const literal = host.replace(/^\[|\]$/g, '');
+        if (isIP(literal) !== 0 && !this.addressAllowed(literal)) {
+          throw new Error(
+            `Refusing to connect to a non-public address for ${host}`,
+          );
+        }
+      }
+      return createConnection(options, callback);
+    };
+    this.pushAgent.createConnection = guardedCreateConnection;
+  }
+
+  /**
+   * Whether a connection may be made to an address: the same rule the
+   * connection-time lookup applies. Public addresses are always reachable,
+   * private-network ones only for a host the operator listed, and forbidden
+   * ones never.
+   */
+  private addressAllowed(address: string): boolean {
+    const kind = classifyAddress(address);
+    return (
+      kind === 'public' ||
+      (kind === 'private-network' && this.privateHosts.allowsHost(address))
+    );
   }
 
   async onModuleInit() {
