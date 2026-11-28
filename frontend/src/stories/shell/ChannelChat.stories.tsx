@@ -705,7 +705,9 @@ export const ThreadComposerDraft = story({
  * Members pressed (PR 10e): at wide the header's Members is a toggle and this hides the island (the button is then
  * unpressed); at tablet and phone widths it opens the members Sheet.
  */
-export const MembersPressed = story({ steps: [press('Members')] });
+export const MembersPressed = story({
+  steps: [{ find: () => document.querySelector<HTMLElement>('main button[aria-label="Members"]'), run: (el: HTMLElement) => el.click() }],
+});
 
 /** No right to reply in threads: the notice in the composer's place. */
 export const ThreadComposerNoPermission = story({

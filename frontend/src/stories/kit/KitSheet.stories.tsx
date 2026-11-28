@@ -196,7 +196,9 @@ function FillContent({ onClose }: { onClose: () => void }): JSX.Element {
       </div>
       <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: `0 ${tokens.space.md}px` }}>
         {Array.from({ length: 24 }, (_, i) => (
-          <Text key={i}>Reply {i + 1}: we wiped four times on that drop</Text>
+          <div key={i}>
+            <Text>Reply {i + 1}: we wiped four times on that drop</Text>
+          </div>
         ))}
       </div>
       <div style={{ padding: tokens.space.md }}>

@@ -8,7 +8,7 @@
  */
 import { useEffect, type JSX } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Stack, Text, useWidthRange } from '../../../kit';
+import { ChatPane, Stack, Text, useWidthRange } from '../../../kit';
 import { useCommunityChannels } from '../../../data/channels';
 import { useCurrentUser } from '../../../hooks/useCurrentUser';
 import { getLastChannelId, pickInitialChannel } from '../../../utils/lastChannel';
@@ -32,12 +32,17 @@ export function CommunityRedirect({ params }: LoungeScreenProps): JSX.Element | 
   }, [targetHref, navigate]);
 
   if (!wanted || target !== null) return null;
+  // In a ChatPane's state region: the room around it a chat's own empty state has.
   return (
-    <Stack gap="xs">
-      <Text variant="title" as="h1">
-        No text channels yet
-      </Text>
-      <Text tone="secondary">Pick a voice room from the list, or come back when a text channel is added.</Text>
-    </Stack>
+    <ChatPane
+      state={
+        <Stack gap="xs">
+          <Text variant="title" as="h1">
+            No text channels yet
+          </Text>
+          <Text tone="secondary">Pick a voice room from the list, or come back when a text channel is added.</Text>
+        </Stack>
+      }
+    />
   );
 }
