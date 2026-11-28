@@ -1,7 +1,8 @@
 /**
  * Search in the new shell's chat at compact and wide (PR 10e, B9), on a faked conversation and search: More → Search
  * opens the panel in the members' place (the right Sheet at compact) with focus in the field; a phone keeps the old
- * search screen; pins and search are one at a time; a result jumps (`?highlight=`) and the panel stays; a result in
+ * search screen; pins and search are one at a time; a result jumps (`?highlight=`) and the panel stays at wide (at
+ * compact the jump closes the Sheet, #926); a result in
  * another channel opens that channel's chat with the panel, its text and focus on the result; a thread reply opens its
  * parent's thread, and closing the thread brings the search back; Close hands focus to More.
  */
@@ -257,6 +258,52 @@ describe('ChannelChat search (compact and wide)', () => {
     const { user } = setup();
     await openSearch(user);
     expect(lastPanel.current).toMatchObject({ label: 'Search messages', fill: true });
+  });
+
+  it('at compact a result in this channel jumps and closes the Sheet, focus to More (#926)', async () => {
+    mockViewport(WIDTH.compact);
+    const { user } = setup();
+    const field = await openSearch(user);
+    await user.type(field, 'deploy');
+    await user.click(screen.getByRole('button', { name: /Show the message from Aiko: the deploy is green/ }));
+    await waitFor(() => expect(where()).toBe(`${CHAT}?highlight=m-5`));
+    expect(navCalls[navCalls.length - 1]).toEqual([`${CHAT}?highlight=m-5`, { replace: true }]);
+    await waitFor(() => expect(lastPanel.current).toBeNull());
+    expect(screen.queryByRole('searchbox', { name: 'Search messages' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'More' })));
+  });
+
+  it('at compact a result in another channel opens that chat with the Sheet closed; reopened, a new search (#926)', async () => {
+    mockViewport(WIDTH.compact);
+    searchState.results = [result('m-7', 'deploy notes', { channelId: 'ch-2', channelName: 'random' })];
+    const { user } = setup();
+    const field = await openSearch(user);
+    await user.type(field, 'deploy');
+    await user.click(screen.getByRole('tab', { name: 'All channels' }));
+    await user.click(screen.getByRole('button', { name: /deploy notes/ }));
+    await waitFor(() => expect(where()).toBe(`${OTHER}?highlight=m-7`));
+    expect(navCalls[navCalls.length - 1]).toEqual([`${OTHER}?highlight=m-7`, undefined]);
+    expect(await screen.findByRole('heading', { level: 1, name: '# random' })).toBeInTheDocument();
+    await waitFor(() => expect(lastPanel.current).toBeNull());
+    const again = await openSearch(user);
+    expect(again).toHaveValue('');
+    expect(screen.getByRole('tab', { name: 'This channel' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('at compact a thread reply opens its thread with the search closed; closing the thread shows the channel (#926)', async () => {
+    mockViewport(WIDTH.compact);
+    searchState.results = [result('r-1', 'a reply about deploys', { parentMessageId: 'm-1' })];
+    const { user } = setup();
+    const field = await openSearch(user);
+    await user.type(field, 'deploy');
+    await user.click(screen.getByRole('button', { name: /a reply about deploys/ }));
+    await waitFor(() => expect(where()).toBe(`${CHAT}?highlight=m-1&thread=m-1`));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Thread' })).toBeInTheDocument();
+    expect(lastPanel.current).toMatchObject({ label: 'Thread' });
+    await user.click(screen.getByRole('button', { name: 'Close thread' }));
+    await waitFor(() => expect(where()).toBe(CHAT));
+    await waitFor(() => expect(lastPanel.current).toBeNull());
+    expect(screen.queryByRole('searchbox', { name: 'Search messages' })).toBeNull();
   });
 
   it('on a phone Search is the old search screen', async () => {

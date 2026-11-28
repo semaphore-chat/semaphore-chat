@@ -2,9 +2,10 @@
  * Message search in the new shell's chat at compact and wide (design §3 PR 10e, B9): the screen's right panel, in the
  * members' place at wide and the filling right Sheet at compact (a phone keeps the old search screen). On the shared
  * `useMessageSearch` (the old popover's and the phone screen's query): this channel or all of the community's, the
- * text debounced as the old search does. Choosing a result jumps to it (`?highlight=`) and keeps the panel open, as the
- * old docked panel, so several results can be stepped through; a result in another channel opens that channel with the
- * panel still open (its text and scope live above the chat, `SearchMemory`), focus back on the result.
+ * text debounced as the old search does. Choosing a result jumps to it (`?highlight=`). At wide the panel stays open, as
+ * the old docked panel, so several results can be stepped through; a result in another channel opens that channel with
+ * the panel still open (its text and scope live above the chat, `SearchMemory`), focus back on the result. At compact
+ * the Sheet covers the chat, so the screen closes it after the jump (#926).
  *
  * Keys: ↓ from the field goes to the results, ↑/↓ move through them, Enter opens one (Enter in the field opens the
  * first); Escape is the frame's (closes the panel, focus back to More).
@@ -63,7 +64,7 @@ export interface SearchPanelProps {
   channelId: string;
   memory: SearchMemory;
   onClose: () => void;
-  /** A result was chosen; the panel stays open. */
+  /** A result was chosen: the screen jumps (and at compact closes the panel). */
   onJump: (result: SearchResult) => void;
 }
 
