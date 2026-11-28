@@ -1,8 +1,8 @@
 /**
  * The Lounge's pieces (dock, "All communities" sheet, community left island, members island, user card,
  * banners) on real data, through the hidden community fixture `/__lounge/community/:communityId`. The
- * phone-width tests also run on the real community home `/community/:communityId` (the new shell's at 390 px
- * only, PR 9b); at 820 px and wider the real path is the old shell.
+ * phone-width tests also run on the real community home `/community/:communityId` (the new shell's at every width
+ * since C3; at 820 px and wider it opens a channel, `lounge-wide.spec.ts`).
  *
  * Each test builds its own world (`loungeWorld`): two communities C1 and C2 owned by the seeded `testuser`,
  * and a fresh plain member N who has never been online (so presence is deterministic and N is in no private
@@ -564,16 +564,28 @@ test.describe('The Lounge pieces on the community fixture', () => {
 
   // ---- The real community home (PR 9b) -----------------------------------------------------------------------
 
-  test('at 820 px the real path is the old shell, even with the new design on', async ({ browser, request }, testInfo) => {
+  // Since C3 the real home is the new shell's at 820 px too: its centre opens a text channel beside the list. With the
+  // design off it is still the old shell's touch layout.
+  test('at 820 px the real path is the new shell with the new design on (a channel beside the list), the old one without', async ({
+    browser,
+    request,
+  }, testInfo) => {
     const world = await loungeWorld(request);
     const { context, page } = await openSession(browser, world.member, COMPACT);
     try {
       await page.goto(`/#/community/${world.c1.id}?design=lounge`);
-      // The old shell's touch layout: its community header and categorised channel list.
+      await expect(page.locator('[data-shell="lounge"]')).toBeAttached(EVENTUAL);
+      await expect(page).toHaveURL(new RegExp(`#/community/${world.c1.id}/channel/[^/?]+$`), EVENTUAL);
+      await expect(page.getByRole('heading', { name: /^# /, level: 1 })).toBeVisible(EVENTUAL);
+      await expect(communityLink(leftIsland(page), 'lobby')).toBeVisible(EVENTUAL);
+      await expect(page.getByRole('button', { name: 'Switch community' })).toHaveCount(0);
+      await shot(page, testInfo, 'r1-real-path-820-lounge');
+
+      // The preview off for this tab: the old shell's touch layout, its community header and categorised channel list.
+      await page.goto(`/#/community/${world.c1.id}?design=classic`);
       await expect(page.getByRole('button', { name: 'Switch community' })).toBeVisible(EVENTUAL);
       await expect(page.getByRole('button', { name: 'lobby', exact: true })).toBeVisible(EVENTUAL);
       await expect(page.locator('[data-shell="lounge"]')).toHaveCount(0);
-      await shot(page, testInfo, 'r1-real-path-820-classic');
     } finally {
       await context.close();
     }

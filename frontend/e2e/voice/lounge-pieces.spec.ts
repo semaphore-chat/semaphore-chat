@@ -25,7 +25,9 @@
  *       real community home;
  *   V7. signing out mid-call from the account menu leaves the call;
  *   V8. a card joiner publishes the soundboard track like a classic one: B renders A's mic and soundboard, and
- *       opening the classic shell afterwards (its Messages screen, and Back) adds no <audio> element on B.
+ *       opening the classic shell afterwards (its Messages screen, and Back) adds no <audio> element on B;
+ *   V9. in a call, the real channel chat crossing widths (390 to 1440 and back, #848 C3) keeps the call: the same
+ *       Room and <audio> elements, no new getUserMedia, audio both ways, the Lounge call bar at every width.
  *
  * The soundboard warm-up runs above both shells (VoiceSessionEffects → useSoundboardWarmup), so a card joiner and a
  * classic joiner (`joinVoiceChannel`) publish the same tracks, and a shell change publishes nothing late.
@@ -563,6 +565,40 @@ test.describe('The Lounge call bar, call surface and room cards', () => {
       await expectCallUntouched(b, onB, 'after a channel tap and Back (on B)');
     });
   }
+
+  test('V9: in a call, crossing widths in the Lounge chat keeps the call (390 → 820 → 1440 → 1000 → 500 → 1440 → 390)', async () => {
+    test.setTimeout(240_000);
+    await aOnFixtureWithBInRoom(CH, PHONE, 'real');
+    // A probe on this page only: counts getUserMedia from here on (the page is not reloaded below).
+    await a.page.evaluate(countGetUserMedia);
+    await joinFromRoomCard(a, CH);
+    await waitForAudioFlow(a, b);
+    await waitForAudioFlow(b, a);
+    const before = await tagCall(a, b);
+    const onB = await tagCall(b, a);
+    expect(before.gum).toBeGreaterThan(0);
+
+    // Into a text channel's chat on the real route: since C3 it is the new shell's at every width, so no resize below
+    // swaps shells, and the call bar stays in the frame's call slot.
+    await shell(a.page).getByRole('navigation', { name: 'Community', exact: true }).getByRole('link').first().click();
+    await expect(a.page.getByRole('textbox', { name: /^Message #/ })).toBeVisible({ timeout: 20_000 });
+    const chatUrl = a.page.url();
+    expect(chatUrl).toMatch(/#\/community\/[^/]+\/channel\/[^/?]+$/);
+
+    for (const width of [820, 1440, 1000, 500, 1440, 390]) {
+      const step = `the chat at ${width}px`;
+      await a.page.setViewportSize({ width, height: 900 });
+      await expect(shell(a.page), step).toBeAttached();
+      await expect(a.page.getByRole('textbox', { name: /^Message #/ }), step).toBeVisible({ timeout: 20_000 });
+      await expect(callBar(a.page), step).toBeVisible();
+      await expect(classicBar(a.page), step).toHaveCount(0);
+      expect(a.page.url(), step).toBe(chatUrl);
+      await expectCallUntouched(a, before, step);
+      await waitForAudioFlow(b, a);
+      await waitForAudioFlow(a, b);
+      await expectCallUntouched(b, onB, `${step} (on B)`);
+    }
+  });
 
   test('V8: a card joiner publishes the soundboard track once; opening the classic shell adds no <audio> element on B', async () => {
     test.setTimeout(180_000);

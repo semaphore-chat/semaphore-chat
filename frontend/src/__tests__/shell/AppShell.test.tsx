@@ -494,13 +494,13 @@ describe('the phone community home (/community/:communityId)', () => {
     expect(screen.queryByTestId('mobile-screen')).toBeNull();
   });
 
-  it.each([820, 1440])('at %d px the real path stays classic with the setting on', async (width) => {
+  it.each([820, 1440])('at %d px the real path is the Lounge home with the setting on', async (width) => {
     stubHomeLoad();
     createViewport(width);
     setNewDesignStored(true);
     const { container } = renderShell({ route: '/community/c-1', inCall: false });
     await flush();
-    expect(loungeShell(container)).toBeNull();
+    expect(loungeShell(container)).toHaveAttribute('data-route', COMMUNITY_HOME_PATH);
   });
 
   it('/community/create at phone with the setting on is the old shell', async () => {
@@ -532,7 +532,7 @@ describe('the phone community home (/community/:communityId)', () => {
     expect(loungeShell(fixture.container)).not.toBeNull();
   });
 
-  it('a text channel tap shows the Lounge chat, a voice channel the classic call view; phone → compact → phone mid-call swaps shells as deferred renders; the call stays', async () => {
+  it('a text channel tap shows the Lounge chat, a voice channel the classic call view; phone → compact → phone mid-call keeps the Lounge, a voice channel at compact swaps shells; the call stays', async () => {
     stubHomeLoad();
     const viewport = createViewport(390);
     setNewDesignStored(true);
@@ -591,12 +591,22 @@ describe('the phone community home (/community/:communityId)', () => {
 
     act(() => viewport.setWidth(820));
     await flush();
+    expect(loungeShell(container)).toHaveAttribute('data-route', COMMUNITY_HOME_PATH);
+    expectCallUp('compact');
+
+    // At compact too, a voice channel is the old shell's call view (its tablet layout).
+    act(() => handles.navigate!('/community/c-1/channel/vc-1'));
+    await flush();
     expect(loungeShell(container)).toBeNull();
     expect(screen.getByTestId('tablet-content')).toBeInTheDocument();
-    expectCallUp('compact');
+    expectCallUp('the classic call view at compact');
+    act(() => handles.navigate!(-1));
+    await flush();
+    expect(loungeShell(container)).toHaveAttribute('data-route', COMMUNITY_HOME_PATH);
 
     act(() => viewport.setWidth(390));
     await flush();
+    expect(loungeShell(container)).toHaveAttribute('data-route', COMMUNITY_HOME_PATH);
     expectCallUp('back to phone');
     expect(appSuspended.shown).toBe(0);
   });
@@ -647,12 +657,12 @@ describe('the call across a change of shell', () => {
       expectCallUntouched(`${width}px`);
     }
 
-    // Navigation away: old shell.
-    act(() => handles.navigate!('/community/c-1/channel/ch-1'));
+    // Navigation away, to a page the new shell does not have: old shell.
+    act(() => handles.navigate!('/settings'));
     await flush();
     expect(loungeShell(container)).toBeNull();
     expect(screen.getByTestId('rail')).toBeInTheDocument();
-    expectCallUntouched('back to a channel');
+    expectCallUntouched('to the settings');
 
     // The account setting, with no preview.
     act(() => clearDesignPreview());
