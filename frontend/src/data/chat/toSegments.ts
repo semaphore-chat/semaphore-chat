@@ -8,13 +8,16 @@
  * as links (no `user:pass@` addresses), where the old renderer links any `http(s)://` match.
  */
 import type { MessageSegment, SegmentStyle } from '../../kit';
+import { stripBidiOverrides } from '../../utils/bidi';
 import { SpanType, type Span } from '../../types/message.type';
 
 /** What a #channel mention shows when the reader can't see the channel (as the old renderer). */
 export const HIDDEN_CHANNEL_LABEL = '#private-channel';
 
 /** The old renderer's auto-link pattern: an http(s) address, without trailing sentence punctuation. */
-export const URL_PATTERN = /(https?:\/\/[^\s<>)"']*[^\s<>)"'.,!?;:])/g;
+/** Bidi controls end an address: they are never part of one (the renderers and the server agree). */
+export const URL_PATTERN =
+  /(https?:\/\/[^\s<>)"'\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]*[^\s<>)"'.,!?;:\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069])/g;
 
 /** A channel the reader can see, as a mention needs it. */
 export interface MentionChannel {
@@ -119,6 +122,7 @@ export function segmentsLine(segments: readonly MessageSegment[]): string {
           return segment.text;
       }
     })
+    .map(stripBidiOverrides)
     .join('')
     .replace(/\s+/g, ' ')
     .trim();

@@ -5,6 +5,7 @@
  * Allows editing message text and removing attachments.
  */
 
+import { stripBidi } from "../../utils/bidi";
 import React from "react";
 import { Box, TextField, IconButton, Chip } from "@mui/material";
 import CheckIcon from "@mui/icons-material/Check";
@@ -74,7 +75,7 @@ export const MessageEditForm: React.FC<MessageEditFormProps> = ({
           {editAttachments.map((attachment) => (
             <Chip
               key={attachment.id}
-              label={attachment.filename}
+              label={stripBidi(attachment.filename)}
               size="small"
               onDelete={() => onRemoveAttachment(attachment.id)}
               deleteIcon={<CloseIcon />}

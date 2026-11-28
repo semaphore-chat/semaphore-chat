@@ -691,6 +691,26 @@ describe('FileController', () => {
         }),
       );
     });
+
+    it('sends the name without bidi controls in Content-Disposition', async () => {
+      service.findOne.mockResolvedValue({
+        id: 'file-bidi',
+        filename: 'report\u202Egnp.exe',
+        mimeType: 'application/pdf',
+        fileType: FileType.DOCUMENT,
+        size: 2048,
+        storageType: StorageType.LOCAL,
+        storagePath: '/tmp/special.pdf',
+      } as any);
+
+      await controller.getFile('file-bidi', mockRequest(), mockResponse);
+
+      expect(mockResponse.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          'Content-Disposition': `inline; filename="reportgnp.exe"; filename*=UTF-8''reportgnp.exe`,
+        }),
+      );
+    });
   });
 
   describe('getSignedUrl', () => {
@@ -748,6 +768,21 @@ describe('FileController', () => {
       await expect(
         controller.getSignedUrl('error-file', mockAuthRequest('user-1')),
       ).rejects.toThrow('Database error');
+    });
+  });
+
+  describe('file names and bidi controls', () => {
+    it('metadata returns the name without bidi controls', async () => {
+      service.findOne.mockResolvedValue({
+        id: 'f1',
+        filename: 'report\u202Egnp.exe',
+        mimeType: 'application/octet-stream',
+        fileType: FileType.DOCUMENT,
+        size: 1,
+        thumbnailPath: null,
+      } as any);
+      const result = await controller.getFileMetadata('f1');
+      expect(result.filename).toBe('reportgnp.exe');
     });
   });
 });

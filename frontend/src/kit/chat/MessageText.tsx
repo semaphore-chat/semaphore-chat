@@ -7,7 +7,7 @@ import { focusRing } from '../theme/states';
 import { standOutFill, tintBase, useSurface, type Surface } from '../theme/onSurface';
 import { transientProps } from '../theme/transientProps';
 import { visuallyHidden } from '../theme/a11y';
-import { checkLink, internalHref, stripBidi, type MentionSegment, type MessageSegment, type SegmentStyle } from './messageSegments';
+import { checkLink, cleanSegments, internalHref, stripBidi, type MentionSegment, type MessageSegment, type SegmentStyle } from './messageSegments';
 import { useRowTabIndex } from './rowTabScope';
 
 export interface MessageTextProps {
@@ -92,6 +92,9 @@ const mentionLook = ({ theme, $me, $unavailable, $on }: MentionLookProps & { the
   const tint = mix(palette.accent, under, tokens.state.hoverOnFill);
   return {
     display: 'inline',
+    // The chip is its own isolate, taking its direction from its own name: its sign stays at the name's start, and
+    // a chip that wraps keeps its edges.
+    unicodeBidi: 'isolate' as const,
     margin: 0,
     padding: `0 ${tokens.space['2xs']}px`,
     border: 'none',
@@ -129,6 +132,12 @@ const EmojiImage = styled('img')({
   objectFit: 'contain',
 });
 
+/**
+ * A left-to-right isolate: what is inside never reorders with, or is reordered by, the text around it, so a link's
+ * label and a mention draw as written whatever precedes them in the line.
+ */
+const Isolate = styled('bdi')({ unicodeBidi: 'isolate' });
+
 const Hidden = styled('span')({ ...visuallyHidden });
 
 function CustomEmoji({ name, src }: { name: string; src?: string }): JSX.Element {
@@ -149,7 +158,7 @@ function Mention({
   on: Surface;
   tabIndex: -1 | undefined;
 }): JSX.Element {
-  const look = { $me: segment.me === true, $unavailable: segment.unavailable === true, $on: on };
+  const look = { dir: 'auto' as const, $me: segment.me === true, $unavailable: segment.unavailable === true, $on: on };
   if (segment.unavailable === true) {
     return (
       <MentionSpan {...look}>
@@ -225,10 +234,10 @@ function renderSegment(
     case 'link': {
       // What is shown is always the address itself, as parsed: no masked links, no lookalike host, no bidi tricks.
       const link = checkLink(segment.href);
-      if (link === null) return <span key={key}>{withStyle(stripBidi(segment.href), segment)}</span>;
+      if (link === null) return <Isolate key={key} dir="ltr">{withStyle(stripBidi(segment.href), segment)}</Isolate>;
       return (
         <Link key={key} href={link.href} target="_blank" rel="noopener noreferrer" tabIndex={tabIndex}>
-          {withStyle(link.label, segment)}
+          <Isolate dir="ltr">{withStyle(link.label, segment)}</Isolate>
         </Link>
       );
     }
@@ -248,5 +257,5 @@ export function MessageText({ segments, onMention }: MessageTextProps): JSX.Elem
   const on = useSurface();
   // In a message row Tab skips (not the list's focused row), the links and mentions are not Tab stops.
   const tabIndex = useRowTabIndex();
-  return <Root dir="auto">{segments.map((segment, index) => renderSegment(segment, index, onMention, on, tabIndex))}</Root>;
+  return <Root dir="auto">{cleanSegments(segments).map((segment, index) => renderSegment(segment, index, onMention, on, tabIndex))}</Root>;
 }

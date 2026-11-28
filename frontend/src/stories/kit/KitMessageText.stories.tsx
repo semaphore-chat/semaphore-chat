@@ -83,6 +83,22 @@ const RTL: MessageSegment[] = [
   { type: 'mention', kind: 'user', text: '@سارة', id: 'u5' },
 ];
 
+// Bidi controls in the words before a link or a mention: the label and the mention still draw left to right, as written.
+const ISOLATED: MessageSegment[] = [
+  { type: 'text', text: 'مرحبا، pay at \u202E' },
+  { type: 'link', href: 'https://docs.semaphorechat.app/guide' },
+  { type: 'text', text: ' \u202Etoday \u2067ask\u2069 ' },
+  { type: 'mention', kind: 'user', text: '@aiko', id: 'u1' },
+  { type: 'text', text: ' \u200Fشكرا' },
+];
+
+// A message that starts with a link and goes on in right-to-left words: it keeps the direction of its words.
+const LINK_FIRST_RTL: MessageSegment[] = [
+  { type: 'link', href: 'https://docs.semaphorechat.app/guide' },
+  { type: 'text', text: ' مرحبا بالجميع، هل نلعب الليلة؟ ' },
+  { type: 'mention', kind: 'user', text: '@سارة', id: 'u5' },
+];
+
 const EMOJI_ONLY: MessageSegment[][] = [
   [{ type: 'text', text: '😂🔥👍' }],
   [
@@ -100,6 +116,8 @@ const Body = () => (
         ))}
         <MessageText segments={LONG_LINK} />
         <MessageText segments={RTL} onMention={noop} />
+        <MessageText segments={ISOLATED} onMention={noop} />
+        <MessageText segments={LINK_FIRST_RTL} onMention={noop} />
         {EMOJI_ONLY.map((segments, index) => (
           <MessageText key={`e${index}`} segments={segments} />
         ))}
@@ -111,7 +129,7 @@ const Body = () => (
 /**
  * Every segment type, formatted links, a lookalike host (punycode), a bidi override and spaces (kept encoded), an
  * address with a user name (text, not a link), a mention with an outside address (not a link), a long link,
- * right-to-left text and emoji-only messages (text size, as classic).
+ * right-to-left text, an override before a link and a mention (both draw left to right) and emoji-only messages (text size, as classic).
  */
 export const Segments = () => (
   <OnPalette palette={PALETTES[0]}>

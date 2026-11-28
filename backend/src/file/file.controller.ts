@@ -1,3 +1,4 @@
+import { stripBidiControls } from '@/common/utils/bidi.utils';
 import {
   Controller,
   Get,
@@ -72,7 +73,7 @@ export class FileController {
 
     return {
       id: file.id,
-      filename: file.filename,
+      filename: stripBidiControls(file.filename),
       mimeType: file.mimeType,
       fileType: file.fileType,
       size: file.size,
@@ -151,8 +152,9 @@ export class FileController {
     const provider = this.storageService.getProvider(file.storageType);
 
     // Sanitize filename for Content-Disposition header (RFC 5987)
-    const sanitizedFilename = file.filename.replace(/["\\\n\r]/g, '_');
-    const encodedFilename = encodeURIComponent(file.filename);
+    const shownName = stripBidiControls(file.filename);
+    const sanitizedFilename = shownName.replace(/["\\\n\r]/g, '_');
+    const encodedFilename = encodeURIComponent(shownName);
 
     // Stored types are client-declared: normalise, and force download for
     // anything that can run script.

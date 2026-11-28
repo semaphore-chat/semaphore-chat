@@ -1,3 +1,4 @@
+import { stripBidiControls } from '@/common/utils/bidi.utils';
 import {
   BadRequestException,
   Injectable,
@@ -414,12 +415,12 @@ export class FileUploadService {
 
   /**
    * Sanitize the client-supplied original filename before persisting it for
-   * display: strip path separators and control characters, and cap the
+   * display: strip path separators, control characters and bidi controls, and cap the
    * length at 255 characters. The on-disk name is multer-generated and never
    * derived from this value.
    */
   private sanitizeFilename(originalName: string): string {
-    const sanitized = (originalName ?? '')
+    const sanitized = stripBidiControls(originalName ?? '')
       .replace(/[/\\]/g, '_')
       // eslint-disable-next-line no-control-regex
       .replace(/[\u0000-\u001f\u007f]/g, '')
