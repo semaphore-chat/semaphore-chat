@@ -134,7 +134,8 @@ const ThreeIslandsBody = memo(function ThreeIslandsBody({
   }, [focusRight]);
   const showRight = useCallback(() => {
     // One thing at a time in the right region: an open panel closes first, so the members really show.
-    panelRef.current?.onClose();
+    const open = panelRef.current;
+    (open?.closeAll ?? open?.onClose)?.();
     setRightChoice(true);
     setFocusRight((n) => n + 1);
   }, []);

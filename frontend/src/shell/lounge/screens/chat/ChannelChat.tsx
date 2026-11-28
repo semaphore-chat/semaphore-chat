@@ -340,8 +340,17 @@ function ChannelChatBody({ communityId, channelId, search }: { communityId: stri
     if ((location.state as ThreadEntryState | null)?.threadFrom === chatPath) navigate(-1);
     else navigate(`${chatPath}${searchWith(searchRef.current, THREAD_PARAM, null)}`, { replace: true });
   }, [location.state, chatPath, navigate]);
+  // Closes the thread for something else that takes the right panel; focus is that thing's.
+  const closeThreadForOther = useCallback(() => {
+    if (threadId === null) return;
+    skipThreadFocus.current = true;
+    closeThread();
+  }, [threadId, closeThread]);
   // Closed (Back, its button, the browser's Back): focus back where it came from.
   const lastThread = useRef<string | null>(threadId);
+  // Set when the screen closes the thread to show something else (search, pins, members): focus is theirs, not the
+  // thread's opener's.
+  const skipThreadFocus = useRef(false);
   const searchTakesFocus = useRef(false);
   searchTakesFocus.current = search.open && range !== 'phone' && search.memory.focus !== null;
   useEffect(() => {
@@ -350,6 +359,10 @@ function ChannelChatBody({ communityId, channelId, search }: { communityId: stri
     if (was === null || threadId !== null) return;
     const opener = threadOpener.current;
     threadOpener.current = null;
+    if (skipThreadFocus.current) {
+      skipThreadFocus.current = false;
+      return;
+    }
     // A thread opened from a search result: the search comes back into the panel and gives focus to that result.
     if (searchTakesFocus.current) return;
     focusAfterThread(opener, was, (id) => conversation.listRef.current?.scrollToMessage(id), inputRef.current);
@@ -363,12 +376,13 @@ function ChannelChatBody({ communityId, channelId, search }: { communityId: stri
   const setSearchOpen = search.setOpen;
   const showPinned = useCallback(
     (opener: HTMLElement | null) => {
-      // One of pins and search at a time (B9).
+      // One of pins and search at a time (B9); at wide a thread in the panel would hide them: it closes first.
       setSearchOpen(false);
+      if (range === 'wide') closeThreadForOther();
       setPinnedOpener(opener);
       setPinnedOpen(true);
     },
-    [setSearchOpen],
+    [setSearchOpen, range, closeThreadForOther],
   );
   const closePinned = useCallback(() => setPinnedOpen(false), []);
   const jumpToPin = useCallback(
@@ -406,9 +420,16 @@ function ChannelChatBody({ communityId, channelId, search }: { communityId: stri
       return;
     }
     setPinnedOpen(false);
+    // Already showing: focus the field now (arming `focus` would linger until some later mount took it).
+    if (search.open && search.memory.focusField) {
+      search.memory.focusField();
+      return;
+    }
     search.memory.focus = 'field';
     search.setOpen(true);
-  }, [range, navigate, communityId, channelId, search]);
+    // A thread in the panel would hide the search: it closes first, and the panel takes focus as it shows.
+    closeThreadForOther();
+  }, [range, navigate, communityId, channelId, search, closeThreadForOther]);
   const closeSearch = useCallback(() => {
     search.setOpen(false);
     // The More button it was opened from (also after a jump to another channel: this chat's own More).
@@ -425,6 +446,7 @@ function ChannelChatBody({ communityId, channelId, search }: { communityId: stri
       const path = here ? chatPath : pathOf(links.channel(communityId, result.channelId));
       // The panel mounts again (another channel's chat, or after the thread): focus goes back to this result.
       if (!here || target.thread !== undefined) search.memory.focus = { result: result.id };
+      if (!here) search.memory.carry = true;
       if (target.thread !== undefined) {
         threadOpener.current = null;
         // Opened from this channel's entry, the thread is a new entry Back closes; in another channel, closing it
@@ -450,20 +472,38 @@ function ChannelChatBody({ communityId, channelId, search }: { communityId: stri
   closePinnedRef.current = closePinnedPanel;
   const closeSearchRef = useRef(closeSearch);
   closeSearchRef.current = closeSearch;
+  // Every panel of the right region at once (members asked for): search, pins and a thread over them.
+  const closeAllPanels = useCallback(() => {
+    search.setOpen(false);
+    setPinnedOpen(false);
+    if (threadInPanel) closeThreadForOther();
+  }, [search, threadInPanel, closeThreadForOther]);
+  const closeAllRef = useRef(closeAllPanels);
+  closeAllRef.current = closeAllPanels;
   const panelKind = threadInPanel ? 'thread' : searchInPanel ? 'search' : pinsInPanel ? 'pins' : null;
   useEffect(() => {
     setPanel(
       panelKind === 'thread'
-        ? { label: 'Thread', fill: true, onClose: () => closeThreadRef.current() }
+        ? { label: 'Thread', fill: true, onClose: () => closeThreadRef.current(), closeAll: () => closeAllRef.current() }
         : panelKind === 'search'
-          ? { label: 'Search messages', fill: true, onClose: () => closeSearchRef.current() }
+          ? { label: 'Search messages', fill: true, onClose: () => closeSearchRef.current(), closeAll: () => closeAllRef.current() }
           : panelKind === 'pins'
-            ? { label: 'Pinned messages', onClose: () => closePinnedRef.current() }
+            ? { label: 'Pinned messages', onClose: () => closePinnedRef.current(), closeAll: () => closeAllRef.current() }
             : null,
     );
   }, [panelKind, setPanel]);
   // The panel goes with the chat (another channel, another screen).
   useEffect(() => () => setPanel(null), [setPanel]);
+  // Focus armed for a panel that never mounted (a thread covered it) must not be taken later by a panel the user did not
+  // ask for (a channel picked from the list). Only a jump to another channel hands it on.
+  const searchMemory = search.memory;
+  useEffect(
+    () => () => {
+      if (searchMemory.carry) searchMemory.carry = false;
+      else searchMemory.focus = null;
+    },
+    [searchMemory],
+  );
   // Both shells open this channel next time the community is opened with none chosen.
   useEffect(() => {
     if (writable) setLastChannelId(conversation.me || undefined, communityId, channelId);
@@ -578,7 +618,7 @@ function ChannelChatBody({ communityId, channelId, search }: { communityId: stri
       return;
     }
     if (range === 'wide') {
-      shownPanel?.onClose();
+      (shownPanel?.closeAll ?? shownPanel?.onClose)?.();
       setRightOpen(true);
       return;
     }

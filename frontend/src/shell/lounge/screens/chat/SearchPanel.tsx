@@ -45,6 +45,13 @@ export interface SearchMemory {
   query: string;
   scope: SearchScope;
   focus: 'field' | { result: string } | null;
+  /** Set while a panel is mounted: puts focus in its field now (Search chosen again while it is open). */
+  focusField?: (() => void) | null;
+  /**
+   * A jump to another channel armed `focus` for the next chat's panel: the chat it leaves must not clear it. Any other
+   * unmount with `focus` unconsumed (a channel picked from the list) clears it.
+   */
+  carry?: boolean;
 }
 
 export function freshSearchMemory(): SearchMemory {
@@ -140,6 +147,18 @@ export function SearchPanel({ communityId, channelId, memory, onClose, onJump }:
   // Where focus goes once on mount (`SearchMemory.focus`): the field, or the result last opened once it is in the list
   // again (the results come from the cache). Consumed, so a later remount leaves focus where the user is.
   const placed = useRef(false);
+  // A panel that mounts to restore focus on a result (after a jump or a thread) does not say the count again.
+  const restoring = useRef(typeof memory.focus === 'object' && memory.focus !== null);
+  useEffect(() => {
+    // After the frame: the More menu that chose Search hands focus back to its button as it closes.
+    memory.focusField = () =>
+      requestAnimationFrame(() => {
+        if (field.current?.isConnected) field.current.focus({ preventScroll: false });
+      });
+    return () => {
+      memory.focusField = null;
+    };
+  }, [memory]);
   useEffect(() => {
     if (placed.current) return;
     const want = memory.focus;
@@ -159,6 +178,10 @@ export function SearchPanel({ communityId, channelId, memory, onClose, onJump }:
   const announce = useAnnounce();
   useEffect(() => {
     if (searched === '' || pending || isLoading || isError) return;
+    if (restoring.current) {
+      restoring.current = false;
+      return;
+    }
     announce(resultsAnnouncement(results.length, scope));
   }, [announce, searched, pending, isLoading, isError, results.length, scope]);
 
@@ -244,6 +267,8 @@ export function SearchPanel({ communityId, channelId, memory, onClose, onJump }:
             onChange={setQuery}
             autoComplete="off"
             onKeyDown={(event) => {
+              // An IME's Enter commits its candidate (Safari sends it with keyCode 229 after compositionend).
+              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
               if (event.key === 'ArrowDown' && results.length > 0 && !pending) {
                 event.preventDefault();
                 rows.current.get(results[0].id)?.focus();

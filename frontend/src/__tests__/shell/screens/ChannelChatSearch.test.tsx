@@ -156,7 +156,13 @@ function PanelChrome({ children }: { children: React.ReactNode }) {
   const [panel, setPanel] = React.useState<RightPanel | null>(null);
   const [target, setTarget] = React.useState<HTMLElement | null>(null);
   lastPanel.current = panel;
-  const showRight = React.useCallback(() => undefined, []);
+  // As the frame's `showRight`: the screen's `closeAll` when it has one, else `onClose`.
+  const panelRef = React.useRef(panel);
+  panelRef.current = panel;
+  const showRight = React.useCallback(() => {
+    const open = panelRef.current;
+    (open?.closeAll ?? open?.onClose)?.();
+  }, []);
   const chrome = React.useMemo(
     () => ({ ...NO_SCREEN_CHROME, rightOpen: true, showRight, panel, setPanel, panelTarget: panel === null ? null : target }),
     [panel, target, showRight],
@@ -386,12 +392,105 @@ describe('ChannelChat search (compact and wide)', () => {
     const { user } = setup();
     const field = await openSearch(user);
     await user.type(field, 'reply');
+    await user.click(screen.getByRole('tab', { name: 'All channels' }));
     await user.click(screen.getByRole('button', { name: /a reply in random/ }));
     await waitFor(() => expect(where()).toBe(`${OTHER}?highlight=m-8&thread=m-8`));
     expect(navCalls[navCalls.length - 1]).toEqual([`${OTHER}?highlight=m-8&thread=m-8`, undefined]);
     await user.click(await screen.findByRole('button', { name: 'Close thread' }));
     expect(navCalls[navCalls.length - 1]).toEqual([`${OTHER}?highlight=m-8`, { replace: true }]);
     await waitFor(() => expect(lastPanel.current).toMatchObject({ label: 'Search messages' }));
+  });
+
+  const settleFrames = () =>
+    act(async () => {
+      for (let i = 0; i < 3; i++) await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    });
+
+  it('a thread reply result, then a channel picked from the list, leaves focus in the list', async () => {
+    searchState.results = [result('r-1', 'a reply about deploys', { parentMessageId: 'm-1' })];
+    const { user } = setup();
+    const field = await openSearch(user);
+    await user.type(field, 'deploy');
+    await user.click(screen.getByRole('button', { name: /a reply about deploys/ }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Thread' })).toBeInTheDocument();
+    const go = screen.getByRole('button', { name: 'go to random' });
+    await user.click(go);
+    expect(await screen.findByRole('heading', { level: 1, name: '# random' })).toBeInTheDocument();
+    await waitFor(() => expect(lastPanel.current).toMatchObject({ label: 'Search messages' }));
+    await settleFrames();
+    expect(document.activeElement).toBe(go);
+  });
+
+  it('Search chosen again while open focuses the field (nothing is armed); a channel change after that does not, and a thread from the list returns focus to its opener', async () => {
+    const { user } = setup();
+    const field = await openSearch(user);
+    await user.type(field, 'deploy');
+    const tab = screen.getByRole('tab', { name: 'All channels' });
+    await user.click(tab);
+    expect(document.activeElement).toBe(tab);
+    await user.click(screen.getByRole('button', { name: 'More' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Search messages' }));
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    // Nothing is armed: a channel picked from the list leaves focus there.
+    const go = screen.getByRole('button', { name: 'go to random' });
+    await user.click(go);
+    expect(await screen.findByRole('heading', { level: 1, name: '# random' })).toBeInTheDocument();
+    await settleFrames();
+    expect(document.activeElement).toBe(go);
+    // A thread opened from the message list, then closed: focus goes back to its opener, not the search.
+    const replies = screen.getByRole('button', { name: /1 reply, open the thread/ });
+    replies.focus();
+    await user.click(replies);
+    expect(await screen.findByRole('heading', { level: 2, name: 'Thread' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Close thread' }));
+    await waitFor(() => expect(lastPanel.current).toMatchObject({ label: 'Search messages' }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /1 reply, open the thread/ })));
+  });
+
+  it('More → Search with a thread in the panel closes the thread so the search shows at once, focus in its field', async () => {
+    const { user } = setup([CHAT, `${CHAT}?thread=m-1`]);
+    expect(await screen.findByRole('heading', { level: 2, name: 'Thread' })).toBeInTheDocument();
+    const field = await openSearch(user);
+    expect(where()).toBe(CHAT);
+    expect(lastPanel.current).toMatchObject({ label: 'Search messages' });
+    await waitFor(() => expect(document.activeElement).toBe(field));
+  });
+
+  it('More → Pinned messages with a thread in the panel closes the thread so the pins show', async () => {
+    const { user } = setup([CHAT, `${CHAT}?thread=m-1`]);
+    expect(await screen.findByRole('heading', { level: 2, name: 'Thread' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'More' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Pinned messages/ }));
+    await waitFor(() => expect(lastPanel.current).toMatchObject({ label: 'Pinned messages' }));
+    expect(where()).toBe(CHAT);
+  });
+
+  it('Members over a thread opened from a search result closes search and thread: the members show, focus on the toggle', async () => {
+    searchState.results = [result('r-1', 'a reply about deploys', { parentMessageId: 'm-1' })];
+    const { user } = setup();
+    const field = await openSearch(user);
+    await user.type(field, 'deploy');
+    await user.click(screen.getByRole('button', { name: /a reply about deploys/ }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Thread' })).toBeInTheDocument();
+    const members = screen.getByRole('button', { name: 'Members' });
+    await user.click(members);
+    await waitFor(() => expect(lastPanel.current).toBeNull());
+    expect(where()).toBe(CHAT);
+    expect(rightRegion()).toHaveAccessibleName('Members');
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    await settleFrames();
+    expect(document.activeElement).toBe(members);
+  });
+
+  it('an IME’s Enter (composing, or keyCode 229) in the field does not open a result', async () => {
+    const { user } = setup();
+    const field = await openSearch(user);
+    await user.type(field, 'deploy');
+    fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(field, { key: 'Enter', keyCode: 229 });
+    expect(navCalls.filter((call) => String(call[0]).includes('highlight'))).toHaveLength(0);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await waitFor(() => expect(where()).toBe(`${CHAT}?highlight=m-5`));
   });
 
   it('another channel chosen from the list keeps the search open without taking focus', async () => {
