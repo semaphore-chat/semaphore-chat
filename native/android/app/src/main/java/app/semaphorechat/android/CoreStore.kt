@@ -79,6 +79,8 @@ class CoreStore(
     private val core: SemaphoreCore,
     private val scope: CoroutineScope,
     events: ReceiveChannel<CoreEvent>,
+    /** A session ended: what the app keeps for it besides the lists (pictures, opened files) goes too. */
+    private val onSessionEnded: () -> Unit = {},
 ) {
     private val sessionState = MutableStateFlow(core.session())
     private val connectionState = MutableStateFlow(core.connection())
@@ -210,6 +212,7 @@ class CoreStore(
         val session = core.session()
         // A new session starts with no lists: the old one's rows are another account's.
         if (session !is SessionState.SignedIn) {
+            if (sessionState.value is SessionState.SignedIn) onSessionEnded()
             synchronized(conversations) { conversations.clear() }
             synchronized(composers) { composers.values.toList().also { composers.clear() } }.forEach { it.close() }
         }

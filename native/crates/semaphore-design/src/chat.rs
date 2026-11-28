@@ -291,6 +291,11 @@ pub fn has_text_to_send(text: &str) -> bool {
 /// A suggestion list shows this many rows, then it scrolls (`MAX_SHOWN`).
 pub const SUGGESTIONS_SHOWN: usize = 6;
 
+/// Files one message may carry (the web's `MAX_FILES_PER_MESSAGE` in `constants/messages.ts`).
+pub const MAX_FILES_PER_MESSAGE: usize = 10;
+/// The largest file a message may carry (the web's `MAX_FILE_SIZE`): 10 MB.
+pub const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
+
 /// The Remove button of a queued or uploading file: "Remove notes.txt".
 pub fn remove_name(file: &str) -> String {
     format!("Remove {file}")

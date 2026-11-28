@@ -13,7 +13,10 @@ import app.semaphorechat.android.kit.chat.ChatPiece
 import app.semaphorechat.android.kit.chat.MentionTarget
 import app.semaphorechat.android.kit.chat.PieceKind
 import app.semaphorechat.android.kit.chat.PieceStyle
+import app.semaphorechat.android.screens.AttachmentLook
+import app.semaphorechat.android.screens.AttachmentModel
 import app.semaphorechat.android.screens.ChatConnection
+import app.semaphorechat.android.screens.UploadModel
 import app.semaphorechat.android.screens.ChatFace
 import app.semaphorechat.android.screens.ChatMessage
 import app.semaphorechat.android.screens.ChatModel
@@ -28,6 +31,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import uniffi.semaphore.AttachmentKind
+import uniffi.semaphore.AttachmentView
 import uniffi.semaphore.ConnectionState
 import uniffi.semaphore.Conversation
 import uniffi.semaphore.CoreException
@@ -46,6 +51,8 @@ interface ChatRules {
     fun pieces(display: String, segs: List<TextSeg>): List<MessagePiece>
     fun typing(names: List<String>): String
     fun jump(newCount: Int): JumpLabel
+    /** The dp box an image is drawn in (`image_box`). */
+    fun imageBox(width: UInt?, height: UInt?): Pair<Float, Float>
 
     /** `semaphore_design::chat` and `semaphore_core::links`, through the FFI. */
     object Native : ChatRules {
@@ -53,6 +60,7 @@ interface ChatRules {
         override fun typing(names: List<String>) = uniffi.semaphore.typingText(names)
         override fun jump(newCount: Int): JumpLabel =
             uniffi.semaphore.jumpText(newCount.coerceAtLeast(0).toUInt()).let { JumpLabel(it.text, it.name, it.counted) }
+        override fun imageBox(width: UInt?, height: UInt?) = uniffi.semaphore.imageBox(width, height).let { it.width to it.height }
     }
 }
 
@@ -95,18 +103,6 @@ fun applyOps(rows: MutableList<MessageRow>, ops: List<ListOp>): Int {
 
 private fun nameOf(user: UserView): String = user.displayName?.takeIf { it.isNotBlank() } ?: user.username
 
-/** "2.1 MB": an attachment's size, for its placeholder line. */
-fun sizeText(bytes: Long): String {
-    val units = listOf("B", "KB", "MB", "GB", "TB")
-    var value = bytes.toDouble().coerceAtLeast(0.0)
-    var unit = 0
-    while (value >= 1024 && unit < units.lastIndex) {
-        value /= 1024
-        unit++
-    }
-    return if (unit == 0) "${value.toLong()} B" else String.format(java.util.Locale.ENGLISH, "%.1f %s", value, units[unit])
-}
-
 /** A core run as the kit draws it. A link's address is already `check_link`'s (`message_pieces`). */
 fun chatPiece(piece: MessagePiece, meId: String?): ChatPiece {
     val style = PieceStyle(piece.style.bold, piece.style.italic, piece.style.strikethrough, piece.style.code)
@@ -121,6 +117,17 @@ fun chatPiece(piece: MessagePiece, meId: String?): ChatPiece {
         SegKind.Text -> PieceKind.Text
     }
     return ChatPiece(piece.text, kind, style)
+}
+
+/** Core's attachment as the chat draws it: images and videos in their `image_box`, the rest as files. */
+fun attachmentModel(view: AttachmentView, rules: ChatRules): AttachmentModel {
+    val look = when (view.kind) {
+        AttachmentKind.IMAGE -> AttachmentLook.Image
+        AttachmentKind.VIDEO -> AttachmentLook.Video
+        else -> AttachmentLook.File
+    }
+    val (width, height) = rules.imageBox(view.width, view.height)
+    return AttachmentModel(view.fileId, view.filename, view.mimeType, view.sizeBytes.toLong(), look, width, height, view.hasThumbnail)
 }
 
 /** Core's row as the chat screen draws it. */
@@ -152,7 +159,15 @@ fun chatMessage(row: MessageRow, meId: String?, rules: ChatRules): ChatMessage {
         mentionsMe = mentionsMe,
         replyTo = row.replyTo?.let { QuoteItem(nameOf(it.author), it.text, it.deleted) },
         replyCount = row.replyCount.toInt(),
-        extras = row.attachments.map { "Attachment: ${it.filename}, ${sizeText(it.sizeBytes.toLong())}" },
+        attachments = row.attachments.map { attachmentModel(it, rules) },
+        uploads = row.uploads.map { upload ->
+            UploadModel(
+                upload.name,
+                upload.sizeBytes.toLong(),
+                upload.sentBytes.toLong(),
+                upload.failed?.let { errorText(it.code, it.message) },
+            )
+        },
         clientNonce = row.clientNonce,
     )
 }
@@ -392,6 +407,16 @@ class ConversationStore(
     /** Delete of a failed send: its row goes (a list change from core) and it can't be retried. */
     fun discardSend(clientNonce: String) {
         scope.launch { runCatching { core.discardFailedSend(clientNonce) } }
+    }
+
+    /** Retry of a failed upload: core's upload [index] in the send [clientNonce]; its row shows progress again. */
+    fun retryUpload(clientNonce: String, index: Int) {
+        scope.launch { runCatching { core.retryUpload(clientNonce, index.toUInt()) } }
+    }
+
+    /** Takes an upload off its message (core releases its slot); the row changes through core's list. */
+    fun removeUpload(clientNonce: String, index: Int) {
+        scope.launch { runCatching { core.removeUpload(clientNonce, index.toUInt()) } }
     }
 
     /** Builds the state from what is held and what core says now. Under [lock]. */

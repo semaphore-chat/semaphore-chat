@@ -16,19 +16,23 @@ import app.semaphorechat.android.screens.BlockedKind
 import app.semaphorechat.android.screens.ComposerAccess
 import app.semaphorechat.android.screens.ComposerModel
 import app.semaphorechat.android.screens.MentionSuggestion
+import app.semaphorechat.android.screens.PickedFileModel
 import app.semaphorechat.android.screens.SuggestionKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import uniffi.semaphore.ChannelKind
 import uniffi.semaphore.ChannelPermissions
 import uniffi.semaphore.Conversation
 import uniffi.semaphore.CoreException
+import uniffi.semaphore.DraftFile
 import uniffi.semaphore.DraftMention
 import uniffi.semaphore.MentionCandidate
 import uniffi.semaphore.MentionKind
@@ -278,6 +282,11 @@ class ComposerStore(
 
     private val lock = Any()
     private val picked = mutableListOf<MentionSuggestion>()
+    /** Files picked for the next message, in the tray's order. */
+    private val files = mutableListOf<PickedFile>()
+    private var fileProblem: String? = null
+    private var canAttach = true
+    private var channelName = ""
     private var query: String? = null
     private var access: ComposerAccess = ComposerAccess.Open
     private var lastStartedMs: Long? = null
@@ -363,36 +372,69 @@ class ComposerStore(
             }
 
     /**
+     * Files were picked: they join the tray unless desktop's rules refuse the pick (attaching off
+     * here, a file over 10 MB, more than 10 in all), in which case none of them do and the tray
+     * says why.
+     */
+    fun attach(picks: List<PickedFile>) {
+        if (picks.isEmpty()) return
+        synchronized(lock) {
+            fileProblem = attachProblem(files.size, picks, canAttach, channelName)
+            if (fileProblem == null) files += picks
+            publish()
+        }
+    }
+
+    /** A picked file was taken off the tray. */
+    fun removeFile(index: Int): Unit = synchronized(lock) {
+        if (index in files.indices) files.removeAt(index)
+        fileProblem = null
+        publish()
+    }
+
+    /**
      * Sends the draft, trimmed, as the web and desktop do: the field clears at once, and the pending
      * row carries the text from then on. From history the list goes back to the newest first. Core
      * sends nothing unless that row shows (`send_message_with_row`), so if it can't (the list isn't
-     * loaded, the jump failed) or anything else goes wrong, the text and its mentions come back.
+     * loaded, the jump failed) or anything else goes wrong, the text, its mentions and its files come back.
      */
     fun send() {
         val raw = draft.text
         val text = wellFormed(raw).trim()
-        if (text.isEmpty()) return
-        val picks = synchronized(lock) { picked.toList().also { picked.clear() } }
+        val (picks, sending) = synchronized(lock) {
+            if (text.isEmpty() && files.isEmpty()) return
+            fileProblem = null
+            (picked.toList().also { picked.clear() }) to files.toList().also { files.clear() }
+        }
         stopTyping()
         onDraftChange(TextFieldValue())
         scope.launch {
             try {
                 val mentions = draftMentions(text, picks, ::lookup)
+                // Read only now, one at a time and capped while reading (a picker's size can be wrong).
+                val drafts = withContext(Dispatchers.IO) { sending.map { DraftFile(it.name, it.mimeType, it.read()) } }
                 if (!core.atLiveEdge(conversation)) core.jumpToPresent(conversation)
-                core.sendMessageWithRow(conversation, MessageDraft(text, mentions, null, emptyList()))
+                core.sendMessageWithRow(conversation, MessageDraft(text, mentions, null, drafts))
             } catch (cancelled: CancellationException) {
-                restore(raw, picks)
+                restore(raw, picks, sending, null)
                 throw cancelled
+            } catch (unreadable: UnreadableFile) {
+                restore(raw, picks, sending, "Couldn't read \"${unreadable.name}\"")
             } catch (_: Exception) {
                 // Not only CoreException: nothing that goes wrong here may end the process or the text.
-                restore(raw, picks)
+                restore(raw, picks, sending, null)
             }
         }
     }
 
     /** Puts an unsent draft back: alone if the field is still empty, else before what was typed since. */
-    private fun restore(text: String, picks: List<MentionSuggestion>) {
-        synchronized(lock) { picks.filter { it !in picked }.forEach { picked += it } }
+    private fun restore(text: String, picks: List<MentionSuggestion>, sent: List<PickedFile>, problem: String?) {
+        synchronized(lock) {
+            picks.filter { it !in picked }.forEach { picked += it }
+            files.addAll(0, sent)
+            fileProblem = problem
+            publish()
+        }
         // Snapshot state may be written from any thread; the field picks it up next frame.
         val now = draft.text
         val back = if (now.isEmpty()) text else "$text\n$now"
@@ -421,9 +463,12 @@ class ComposerStore(
     fun refresh(): Unit = synchronized(lock) {
         val channel = core.channels(communityId).firstOrNull { it.id == channelId }
         val now = composerAccess(channel?.permissions, channel?.name.orEmpty(), nowMs())
+        val attach = channel?.permissions?.attach != false
+        channelName = channel?.name.orEmpty()
         // Only a change re-reads the suggestions: reading them can itself make core send events.
-        if (now != access || stateFlow.value.access != now) {
+        if (now != access || attach != canAttach || stateFlow.value.access != now) {
             access = now
+            canAttach = attach
             publish()
         }
         // A timeout counts down while shown: read again each second until it is over.
@@ -451,7 +496,13 @@ class ComposerStore(
         } else {
             emptyList()
         }
-        stateFlow.value = ComposerModel(access, suggestions)
+        stateFlow.value = ComposerModel(
+            access,
+            suggestions,
+            files.map { PickedFileModel(it.name, it.sizeBytes ?: 0) },
+            canAttach,
+            fileProblem,
+        )
     }
 
     /** The community this composer's channel is in (for routing core's mentionables changes). */

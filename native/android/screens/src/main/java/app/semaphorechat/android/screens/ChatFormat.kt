@@ -104,3 +104,17 @@ fun chatEntries(messages: List<ChatMessage>, format: ChatFormat): List<ChatEntry
     }
     return entries
 }
+
+/**
+ * A file's size as the web's `formatFileSize` and desktop's `file_size` write it: "0 Bytes",
+ * "1023 Bytes", "1 KB", "2.13 MB", "10 MB" (1024 steps, at most two decimals, no trailing zeros).
+ */
+fun fileSizeText(bytes: Long): String {
+    val units = listOf("Bytes", "KB", "MB", "GB", "TB", "PB")
+    if (bytes <= 0) return "0 Bytes"
+    var unit = 0
+    while (unit + 1 < units.size && bytes.toDouble() >= Math.pow(1024.0, (unit + 1).toDouble())) unit++
+    val scaled = Math.round(bytes / Math.pow(1024.0, unit.toDouble()) * 100) / 100.0
+    val number = java.math.BigDecimal.valueOf(scaled).stripTrailingZeros().toPlainString()
+    return "$number ${units[unit]}"
+}

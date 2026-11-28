@@ -4,7 +4,11 @@ package app.semaphorechat.android
 
 import app.semaphorechat.android.kit.chat.MentionTarget
 import app.semaphorechat.android.kit.chat.PieceKind
+import app.semaphorechat.android.screens.AttachmentLook
+import app.semaphorechat.android.screens.AttachmentModel
 import app.semaphorechat.android.screens.JumpLabel
+import app.semaphorechat.android.screens.UploadModel
+import app.semaphorechat.android.screens.fileSizeText
 import app.semaphorechat.android.screens.MessageState
 import app.semaphorechat.android.kit.chat.ChatKitText
 import org.junit.Assert.assertEquals
@@ -22,6 +26,7 @@ import uniffi.semaphore.SegKind
 import uniffi.semaphore.SendState
 import uniffi.semaphore.TextSeg
 import uniffi.semaphore.TextStyle
+import uniffi.semaphore.UploadView
 import uniffi.semaphore.UserView
 import uniffi.semaphore.WebhookView
 
@@ -40,6 +45,7 @@ class ConversationStoreTest {
         }
         override fun typing(names: List<String>) = names.joinToString()
         override fun jump(newCount: Int) = JumpLabel("$newCount", "$newCount", newCount > 0)
+        override fun imageBox(width: UInt?, height: UInt?) = (width?.toFloat() ?: 240f) to (height?.toFloat() ?: 160f)
     }
 
     private fun user(id: String, name: String? = null) = UserView(id, id, name, null)
@@ -114,7 +120,13 @@ class ConversationStoreTest {
                 author = UserView("u-p", "priya", "Priya Raman", null),
                 replyTo = ReplyToView("m1", UserView("u-s", "sam", " ", null), "earlier", false),
                 replyCount = 2u,
-                attachments = listOf(AttachmentView("f", "plan.pdf", "application/pdf", 2_202_010u, AttachmentKind.DOCUMENT, false, null, null)),
+                attachments = listOf(
+                    AttachmentView("f", "plan.pdf", "application/pdf", 2_202_010u, AttachmentKind.DOCUMENT, false, null, null),
+                    AttachmentView("i", "cat.png", "image/png", 10u, AttachmentKind.IMAGE, true, 100u, 50u),
+                    AttachmentView("v", "clip.mp4", "video/mp4", 10u, AttachmentKind.VIDEO, false, null, null),
+                    AttachmentView("a", "tune.ogg", "audio/ogg", 10u, AttachmentKind.AUDIO, false, null, null),
+                ),
+                uploads = listOf(UploadView("big.zip", 100u, 40u, ErrorView("FILE_TOO_LARGE", "too big", false, null))),
             ),
             meId = "u-me",
             rules = FakeRules,
@@ -125,7 +137,19 @@ class ConversationStoreTest {
         assertTrue(message.mentionsMe)
         assertEquals("sam", message.replyTo?.author)
         assertEquals(2, message.replyCount)
-        assertEquals(listOf("Attachment: plan.pdf, 2.1 MB"), message.extras)
+        assertEquals(
+            listOf(
+                AttachmentModel("f", "plan.pdf", "application/pdf", 2_202_010, AttachmentLook.File, 240f, 160f, false),
+                AttachmentModel("i", "cat.png", "image/png", 10, AttachmentLook.Image, 100f, 50f, true),
+                AttachmentModel("v", "clip.mp4", "video/mp4", 10, AttachmentLook.Video, 240f, 160f, false),
+                AttachmentModel("a", "tune.ogg", "audio/ogg", 10, AttachmentLook.File, 240f, 160f, false),
+            ),
+            message.attachments,
+        )
+        val upload = message.uploads.single()
+        assertEquals(UploadModel("big.zip", 100, 40, upload.failed), upload)
+        assertTrue(upload.failed!!.isNotBlank())
+        assertTrue(message.extras.isEmpty())
         val kinds = message.pieces.map { it.kind }
         assertEquals(PieceKind.Mention(MentionTarget.User("u-me"), mine = true), kinds[1])
         assertEquals(PieceKind.Mention(MentionTarget.None, mine = true), kinds[3])
@@ -191,11 +215,14 @@ class ConversationStoreTest {
     }
 
     @Test
-    fun sizesReadAsPeopleWriteThem() {
-        assertEquals("0 B", sizeText(0))
-        assertEquals("1023 B", sizeText(1023))
-        assertEquals("1.0 KB", sizeText(1024))
-        assertEquals("2.1 MB", sizeText(2_202_010))
-        assertEquals("1.0 GB", sizeText(1L shl 30))
+    fun sizesReadAsTheWebAndDesktopWriteThem() {
+        assertEquals("0 Bytes", fileSizeText(0))
+        assertEquals("1023 Bytes", fileSizeText(1023))
+        assertEquals("1 KB", fileSizeText(1024))
+        assertEquals("1.5 KB", fileSizeText(1536))
+        assertEquals("2.1 MB", fileSizeText(2_202_010))
+        assertEquals("2.13 MB", fileSizeText(2_233_466))
+        assertEquals("10 MB", fileSizeText(10L * 1024 * 1024))
+        assertEquals("1 GB", fileSizeText(1L shl 30))
     }
 }

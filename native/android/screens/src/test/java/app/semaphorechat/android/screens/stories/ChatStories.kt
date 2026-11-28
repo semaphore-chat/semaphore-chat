@@ -32,6 +32,11 @@ import app.semaphorechat.android.screens.ChatScreen
 import app.semaphorechat.android.screens.JumpLabel
 import app.semaphorechat.android.screens.MessageState
 import app.semaphorechat.android.screens.QuoteItem
+import app.semaphorechat.android.screens.AttachmentLook
+import app.semaphorechat.android.screens.AttachmentModel
+import app.semaphorechat.android.screens.PickedFileModel
+import app.semaphorechat.android.screens.UploadModel
+import app.semaphorechat.android.kit.stories.WithImages
 
 /** Friday 18 September 2026, 20:30 UTC: "now" in every chat story. */
 private const val NOW = 1_789_763_400_000L
@@ -74,7 +79,9 @@ private val CONVERSATION: List<ChatMessage> = listOf(
         ),
     ).copy(mentionsMe = true),
     message(6, "Ivan", "u-ivan", 20, text("Looks good to me.")).copy(replyTo = QuoteItem("Priya Raman", "It's in the shared folder."), edited = true),
-    message(7, "Mae", "u-mae", 12, text("moodboard")).copy(extras = listOf("Attachment: moodboard.png, 2.1 MB")),
+    message(7, "Mae", "u-mae", 12, text("moodboard")).copy(
+        attachments = listOf(AttachmentModel("img-mood", "moodboard.png", "image/png", 2_202_010, AttachmentLook.Image, 320f, 180f, thumbnail = true)),
+    ),
     message(8, "Sam", "u-sam", 8, emptyList()).copy(removed = true),
     message(
         9,
@@ -97,9 +104,43 @@ private fun Chat(
     header: ChatHeaderModel = HEADER,
     draft: TextFieldValue = TextFieldValue(),
     composer: ComposerModel = ComposerModel(),
+    attaching: Boolean = false,
 ) {
-    ChatScreen(header, chat, FORMAT, ChatActions(), draft = draft, composer = composer)
+    WithImages { ChatScreen(header, chat, FORMAT, ChatActions(), draft = draft, composer = composer, attaching = attaching) }
 }
+
+/** Every kind of file on a row, and a send whose files are still on their way. */
+private val WITH_FILES: List<ChatMessage> = listOf(
+    message(30, "Priya Raman", "u-priya", 30, text("Shots from the shoot")).copy(
+        attachments = listOf(
+            AttachmentModel("img-1", "shoot-01.jpg", "image/jpeg", 3_400_000, AttachmentLook.Image, 320f, 180f, thumbnail = true),
+            AttachmentModel("img-tall", "shoot-02.jpg", "image/jpeg", 2_900_000, AttachmentLook.Image, 135f, 240f, thumbnail = true),
+        ),
+    ),
+    message(31, "Sam", "u-sam", 20, emptyList()).copy(
+        attachments = listOf(AttachmentModel("img-v", "walkthrough.mp4", "video/mp4", 8_800_000, AttachmentLook.Video, 320f, 180f, thumbnail = true)),
+    ),
+    message(32, "Sam", "u-sam", 19, text("And the brief")).copy(
+        attachments = listOf(
+            AttachmentModel("f-1", "Brief — final v3.pdf", "application/pdf", 1_250_000, AttachmentLook.File),
+            AttachmentModel("f-2", "theme.ogg", "audio/ogg", 640_000, AttachmentLook.File),
+            AttachmentModel("broken", "damaged.png", "image/png", 120, AttachmentLook.Image, 240f, 160f, thumbnail = true),
+        ),
+    ),
+    message(33, "You", "u-me", 1, text("Uploading mine"), MessageState.Pending).copy(
+        clientNonce = "n33",
+        uploads = listOf(
+            UploadModel("render.png", 4_000_000, 2_400_000),
+            UploadModel("archive.zip", 9_900_000, 0, failed = "The file is too large for this server"),
+        ),
+    ),
+)
+
+private val PICKED = listOf(
+    PickedFileModel("holiday.jpg", 4_200_000),
+    PickedFileModel("notes.txt", 12_000),
+    PickedFileModel("a file name long enough that it cannot fit on one phone line at all.tar.gz", 10L * 1024 * 1024),
+)
 
 private fun suggestion(kind: SuggestionKind, id: String, label: String, insert: String) = MentionSuggestion(kind, id, label, insert)
 
@@ -126,6 +167,15 @@ val CHAT_STORIES: List<Story> = listOf(
             ),
         )
     },
+    Story("screen-chat-attachments") { Chat(ready(WITH_FILES)) },
+    Story("screen-chat-attach-sheet") { Chat(ready(CONVERSATION), attaching = true) },
+    Story("screen-composer-files") {
+        Chat(ready(CONVERSATION), draft = TextFieldValue("Here they are", TextRange(13)), composer = ComposerModel(files = PICKED))
+    },
+    Story("screen-composer-files-refused") {
+        Chat(ready(CONVERSATION), composer = ComposerModel(files = PICKED.take(1), fileProblem = "Maximum 10 files per message"))
+    },
+    Story("screen-composer-attach-off") { Chat(ready(CONVERSATION), composer = ComposerModel(canAttach = false)) },
     Story("screen-chat-typing-jump") {
         Chat(ready(CONVERSATION).copy(typing = "Priya and Sam are typing…", jump = JumpLabel("3 new", "Jump to latest, 3 new messages", true)))
     },

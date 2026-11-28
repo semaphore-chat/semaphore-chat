@@ -32,6 +32,24 @@ import app.semaphorechat.android.kit.chat.PieceKind
 import app.semaphorechat.android.kit.chat.PieceStyle
 import app.semaphorechat.android.kit.chat.RowState
 import app.semaphorechat.android.kit.chat.TypingLine
+import androidx.compose.foundation.layout.Row
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.unit.dp
+import app.semaphorechat.android.kit.Kit
+import app.semaphorechat.android.kit.chat.AttachmentImages
+import app.semaphorechat.android.kit.chat.FileTile
+import app.semaphorechat.android.kit.chat.ImageLoad
+import app.semaphorechat.android.kit.chat.LocalAttachmentImages
+import app.semaphorechat.android.kit.chat.MediaTile
+import app.semaphorechat.android.kit.chat.UploadTile
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /** A chat surface: the list sits on an island with no padding of its own, as the chat screen's. */
 @Composable
@@ -71,6 +89,45 @@ val RICH_PIECES = listOf(
 )
 
 val CHAT_KIT_STORIES: List<Story> = listOf(
+    Story("kit-attachments") {
+        ChatPage {
+            WithImages {
+                Column(Modifier.padding(horizontal = Tokens.Space.Md), verticalArrangement = Arrangement.spacedBy(Tokens.Space.Sm)) {
+                    MediaTile("img-wide", "moodboard.png", "2.1 MB", 320.dp, 180.dp, video = false, thumbnail = true, onOpen = {})
+                    Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm)) {
+                        MediaTile("img-tall", "portrait.jpg", "800 KB", 135.dp, 240.dp, video = false, thumbnail = true, onOpen = {})
+                        MediaTile("slow-1", "loading.png", "1 MB", 135.dp, 240.dp, video = false, thumbnail = true, onOpen = {})
+                        MediaTile("img-strip", "strip.png", "10 KB", 48.dp, 240.dp, video = false, thumbnail = true, onOpen = {})
+                    }
+                    MediaTile("img-video", "launch.mp4", "8.4 MB", 320.dp, 180.dp, video = true, thumbnail = true, onOpen = {})
+                }
+            }
+        }
+    },
+    Story("kit-attachments-files") {
+        ChatPage {
+            WithImages {
+                Column(Modifier.padding(horizontal = Tokens.Space.Md), verticalArrangement = Arrangement.spacedBy(Tokens.Space.Sm)) {
+                    MediaTile("v-none", "no-still.mp4", "3 MB", 240.dp, 160.dp, video = true, thumbnail = false, onOpen = {})
+                    MediaTile("broken", "not-an-image.png", "12 Bytes", 240.dp, 160.dp, video = false, thumbnail = true, onOpen = {})
+                    FileTile("Q3 plan — final.pdf", "2.13 MB", Icons.Paperclip, onOpen = {})
+                    FileTile("a file name long enough that it cannot fit on one phone line at all.tar.gz", "10 MB", Icons.Paperclip, onOpen = {})
+                    FileTile("theme.ogg", "640 KB", Icons.Music, onOpen = {})
+                }
+            }
+        }
+    },
+    Story("kit-uploads") {
+        ChatPage {
+            Column(Modifier.padding(horizontal = Tokens.Space.Md), verticalArrangement = Arrangement.spacedBy(Tokens.Space.Sm)) {
+                UploadTile("notes.txt", "12 KB", onRemove = {})
+                UploadTile("holiday.jpg", "4.2 MB", progress = 0f, onRemove = {})
+                UploadTile("holiday-2.jpg", "4.2 MB", progress = 0.6f, onRemove = {})
+                UploadTile("big.zip", "9.9 MB", failed = "The file is too large for this server", onRetry = {}, onRemove = {})
+                UploadTile("a file name long enough that it cannot fit on one phone line at all.tar.gz", "10 MB", failed = "Something went wrong. Please try again.", onRetry = {}, onRemove = {})
+            }
+        }
+    },
     Story("kit-message-text") {
         ChatPage { Column(Modifier.padding(horizontal = Tokens.Space.Md)) { MessageText(RICH_PIECES) } }
     },
@@ -88,7 +145,9 @@ val CHAT_KIT_STORIES: List<Story> = listOf(
                 quote = MessageQuoteItem("Sam", "Yes, the type looks great."),
                 replyCount = 3,
             )
-            MessageRow("Mae", "u-mae", "8:24 PM", words("photo"), extras = listOf("Attachment: moodboard.png, 2.1 MB"))
+            MessageRow("Mae", "u-mae", "8:24 PM", words("photo"), attachments = {
+                WithImages { MediaTile("img-wide", "moodboard.png", "2.1 MB", 320.dp, 180.dp, video = false, thumbnail = true, onOpen = {}) }
+            })
             MessageRow("Sam", "u-sam", "8:25 PM", emptyList(), removed = true)
         }
     },
@@ -130,6 +189,8 @@ val CHAT_KIT_STORIES: List<Story> = listOf(
             Column(Modifier.padding(horizontal = Tokens.Space.Md), verticalArrangement = Arrangement.spacedBy(Tokens.Space.Sm)) {
                 ComposerField(TextFieldValue(), {}, ComposerText.placeholder("design"), maxLines = 4, canSend = false, onSend = {})
                 ComposerField(TextFieldValue("On it"), {}, ComposerText.placeholder("design"), maxLines = 4, canSend = true, onSend = {})
+                ComposerField(TextFieldValue(), {}, ComposerText.placeholder("design"), maxLines = 4, canSend = false, onSend = {}, onAttach = {})
+                ComposerField(TextFieldValue("With files"), {}, ComposerText.placeholder("design"), maxLines = 4, canSend = true, onSend = {}, onAttach = {})
                 ComposerField(
                     TextFieldValue("Line one\nLine two\nLine three\nLine four\nLine five, past the cap"),
                     {},

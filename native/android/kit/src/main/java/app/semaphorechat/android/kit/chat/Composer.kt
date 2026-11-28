@@ -74,7 +74,8 @@ object ComposerText {
 /**
  * The message field (the web kit's `Composer` at phone width): a rounded box in the stand-out
  * fill that grows with its lines up to [maxLines], then scrolls, with Send at its end. Enter adds a
- * new line, as on a phone keyboard; Send is enabled while [canSend].
+ * new line, as on a phone keyboard; Send is enabled while [canSend]. With [onAttach], a paperclip
+ * at the start picks files.
  */
 @Composable
 fun ComposerField(
@@ -85,6 +86,7 @@ fun ComposerField(
     canSend: Boolean,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
+    onAttach: (() -> Unit)? = null,
 ) {
     val palette = Kit.palette
     val interaction = remember { MutableInteractionSource() }
@@ -98,10 +100,11 @@ fun ComposerField(
             .clip(shape)
             .background(palette.standOutFill(Kit.surface))
             .border(Tokens.Border.Selected, if (focused) palette.focus else Color.Transparent, shape)
-            .padding(start = Tokens.Space.Lg, end = Tokens.Space.Xs),
+            .padding(start = if (onAttach != null) Tokens.Space.Xs else Tokens.Space.Lg, end = Tokens.Space.Xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Sm),
     ) {
+        onAttach?.let { IconButton(Icons.Paperclip, label = AttachmentText.ATTACH, onClick = it) }
         Box(Modifier.weight(1f).padding(vertical = Tokens.Space.Sm)) {
             if (value.text.isEmpty()) {
                 // A long channel name ends in an ellipsis rather than wrapping out of sight.

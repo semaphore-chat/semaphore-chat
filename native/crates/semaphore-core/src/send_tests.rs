@@ -148,3 +148,29 @@ fn an_ack_with_an_empty_id_is_not_a_delivery() {
     );
 }
 // --- end bug:empty-id ---
+
+#[test]
+fn a_message_of_files_alone_still_sends_one_empty_span() {
+    use crate::model::{DraftFile, MessageDraft};
+    let files = MessageDraft {
+        text: String::new(),
+        files: vec![DraftFile {
+            name: "a.txt".into(),
+            mime_type: "text/plain".into(),
+            bytes: vec![1],
+        }],
+        ..MessageDraft::default()
+    };
+    assert_eq!(
+        wire_spans(&files),
+        vec![serde_json::json!({ "type": "PLAINTEXT", "text": "" })]
+    );
+    let words = MessageDraft {
+        text: "hi".into(),
+        ..MessageDraft::default()
+    };
+    assert_eq!(
+        wire_spans(&words),
+        vec![serde_json::json!({ "type": "PLAINTEXT", "text": "hi" })]
+    );
+}

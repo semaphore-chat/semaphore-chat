@@ -150,6 +150,41 @@ pub fn composer_caps() -> ComposerCaps {
     }
 }
 
+/// What one message may carry (`semaphore_design::chat`, the web's `constants/messages.ts`): the
+/// composer refuses more files, or a bigger one, before anything is sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct AttachmentLimits {
+    pub max_files: u32,
+    pub max_file_bytes: u64,
+}
+
+#[uniffi::export]
+pub fn attachment_limits() -> AttachmentLimits {
+    use semaphore_design::chat::{MAX_FILE_BYTES, MAX_FILES_PER_MESSAGE};
+    AttachmentLimits {
+        max_files: u32::try_from(MAX_FILES_PER_MESSAGE).unwrap_or(u32::MAX),
+        max_file_bytes: MAX_FILE_BYTES,
+    }
+}
+
+/// The box an image attachment is drawn in, in density-independent pixels.
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct ImageBox {
+    pub width: f32,
+    pub height: f32,
+}
+
+/// `semaphore_design::chat::image_box` (the web's `imageBox`): the image's own size shrunk to fit
+/// 320×240, no side under 48, or 240×160 when the size isn't known.
+#[uniffi::export]
+pub fn image_box(width: Option<u32>, height: Option<u32>) -> ImageBox {
+    let size = semaphore_design::chat::image_box(width.map(f64::from), height.map(f64::from));
+    ImageBox {
+        width: size.width,
+        height: size.height,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,6 +199,31 @@ mod tests {
                 suggestions_shown: 6,
             }
         );
+    }
+
+    #[test]
+    fn attachment_limits_are_the_webs() {
+        assert_eq!(
+            attachment_limits(),
+            AttachmentLimits {
+                max_files: 10,
+                max_file_bytes: 10 * 1024 * 1024,
+            }
+        );
+    }
+
+    #[test]
+    fn image_boxes_follow_the_design_crate() {
+        let at = |w, h| {
+            let b = image_box(w, h);
+            (b.width, b.height)
+        };
+        assert_eq!(at(None, Some(10)), (240., 160.));
+        assert_eq!(at(Some(0), Some(10)), (240., 160.));
+        assert_eq!(at(Some(100), Some(50)), (100., 50.));
+        assert_eq!(at(Some(4000), Some(3000)), (320., 240.));
+        assert_eq!(at(Some(4000), Some(10)), (320., 48.));
+        assert_eq!(at(Some(10), Some(4000)), (48., 240.));
     }
 
     fn seg(end: usize, kind: SegKind) -> TextSeg {

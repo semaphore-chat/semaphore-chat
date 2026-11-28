@@ -7,7 +7,15 @@
 
 package app.semaphorechat.android
 
+import android.graphics.Bitmap
 import android.util.Log
+import androidx.core.content.FileProvider
+import app.semaphorechat.android.kit.chat.AttachmentText
+import app.semaphorechat.android.kit.chat.ImageLoad
+import app.semaphorechat.android.screens.MessageState
+import java.io.ByteArrayOutputStream
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import android.view.View
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
@@ -236,6 +244,68 @@ class DeviceChatTest {
         compose.waitUntilExactlyOneExists(hasText("retried from the device"), 30_000)
         closeAndAwaitDetach(scenario)
         runBlocking { SemaphoreHost.shutdownForTest() }
+    }
+
+    @Test
+    fun aPickedImageIsSentDrawnFromTheServerAndOpensThroughTheProvider() {
+        val server = argument("server")
+        val channel = argument("channel")
+        runBlocking { SemaphoreHost.shutdownForTest() }
+        listOf("core", "secrets", "last-community").forEach { File(context.noBackupFilesDir, it).deleteRecursively() }
+
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        waitFor(hasText(ConnectText.TITLE))
+        compose.onNode(hasSetTextAction()).performTextInput(server)
+        compose.onNode(hasText(ConnectText.CONNECT) and hasClickAction()).performClick()
+        waitFor(hasText(INSECURE_WARNING))
+        compose.onNode(hasText(ConnectText.CONTINUE) and hasClickAction()).performClick()
+        waitFor(hasText(SignInText.USERNAME))
+        val fields = compose.onAllNodes(hasSetTextAction())
+        fields[0].performTextInput("me")
+        fields[1].performTextInput("pw")
+        compose.onNode(hasText(SignInText.SIGN_IN) and hasClickAction()).performClick()
+        waitFor(hasText("general") and hasClickAction())
+        compose.onNode(hasText("general") and hasClickAction()).performClick()
+        waitFor(hasContentDescription(AttachmentText.ATTACH) and hasClickAction())
+
+        val session = checkNotNull(SemaphoreHost.current())
+        val core = session.host.core()
+        val communityId = core.communities().first { c -> core.channels(c.id).any { it.id == channel } }.id
+        // A real PNG, offered through a content URI as the pickers offer theirs.
+        val bitmap = Bitmap.createBitmap(64, 48, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.RED) }
+        val png = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        val source = File(context.cacheDir, "$OPEN_DIR/device-pick/red square.png").apply {
+            parentFile!!.mkdirs()
+            writeBytes(png)
+        }
+        val uri = FileProvider.getUriForFile(context, fileAuthority(context), source)
+        val picked = pickedFile(context.contentResolver, uri)
+        assertEquals("red square.png", picked.name)
+        assertEquals(png.size.toLong(), picked.sizeBytes)
+        assertEquals("image/png", picked.mimeType)
+        session.model.composer(communityId, channel).attach(listOf(picked))
+        waitFor(hasContentDescription(AttachmentText.remove("red square.png")))
+        val send = hasContentDescription(ComposerText.SEND) and hasClickAction()
+        waitFor(send and isEnabled())
+        compose.onNode(send).performClick()
+
+        val chat = session.model.chat(channel)
+        until("the image confirmed") {
+            chat.state.value.messages.lastOrNull()?.let { it.state == MessageState.Sent && it.attachments.singleOrNull()?.name == "red square.png" } == true
+        }
+        val sent = chat.state.value.messages.last().attachments.single()
+        waitFor(hasContentDescription("red square.png") or hasText("red square.png"))
+        // Decoded on a real runtime from core's authenticated fetch.
+        val full = session.images.image(sent.fileId, false)
+        until("the picture decoded") { full.value !is ImageLoad.Loading }
+        val image = (full.value as ImageLoad.Ready).image
+        assertEquals(64 to 48, image.width to image.height)
+        // Opening writes it where only the provider serves it, and the URI reads back the bytes.
+        val staged = runBlocking { session.files.stage(sent.fileId, "../../escape/${sent.name}") }
+        assertEquals(fileAuthority(context), staged.authority)
+        assertArrayEquals(png, context.contentResolver.openInputStream(staged)!!.use { it.readBytes() })
+        assertTrue(File(context.cacheDir, OPEN_DIR).walk().none { it.name == "escape" })
+        closeAndAwaitDetach(scenario)
     }
 
     private class MemorySecrets : SecretStore {

@@ -69,6 +69,16 @@ pub(crate) fn span_json(span: &SpanInput) -> Value {
     value
 }
 
+/// A draft's spans as sent. A message with no words (files only) still carries one empty
+/// `PLAINTEXT` span, as the web's `MessageInput` sends it: the backend requires at least one.
+pub(crate) fn wire_spans(draft: &MessageDraft) -> Vec<Value> {
+    let spans: Vec<Value> = draft_to_spans(draft).iter().map(span_json).collect();
+    if spans.is_empty() {
+        return vec![json!({ "type": "PLAINTEXT", "text": "" })];
+    }
+    spans
+}
+
 /// The event and payload for a send. `nonce` makes a retry safe.
 fn wire_send(
     conversation: &Conversation,
@@ -359,7 +369,7 @@ impl Core {
         let file_count = files.len();
         let nonce = uuid::Uuid::new_v4().to_string();
         let client_id = format!("{OPTIMISTIC_ID_PREFIX}{nonce}");
-        let spans: Vec<Value> = draft_to_spans(&draft).iter().map(span_json).collect();
+        let spans = wire_spans(&draft);
         let (event, mut payload) = wire_send(&conversation, &draft, &spans, &nonce);
         if file_count > 0 {
             payload["pendingAttachments"] = json!(file_count);

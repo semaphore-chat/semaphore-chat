@@ -66,6 +66,15 @@ import app.semaphorechat.android.kit.chat.MessageQuoteItem
 import app.semaphorechat.android.kit.chat.MessageRow
 import app.semaphorechat.android.kit.chat.RowState
 import app.semaphorechat.android.kit.chat.TypingLine
+import app.semaphorechat.android.kit.chat.FileTile
+import app.semaphorechat.android.kit.chat.MediaTile
+import app.semaphorechat.android.kit.chat.UploadTile
+import app.semaphorechat.android.kit.ListRow
+import app.semaphorechat.android.kit.Sheet
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.width
 import kotlinx.coroutines.launch
 
 /** The chat screen's texts, shared with the tests. */
@@ -79,8 +88,14 @@ object ChatText {
     const val RECONNECTING = "Reconnecting…"
     const val OFFLINE = "You're offline. New messages arrive once you're back."
     const val LIST_TAG = "chat-list"
+    const val ATTACH_TITLE = "Attach"
+    const val ATTACH_MEDIA = "Photos and videos"
+    const val ATTACH_FILES = "Files"
     fun start(name: String) = "This is the start of #$name."
 }
+
+/** A picked file's tile in the composer's tray. */
+private val TRAY_TILE = 220.dp
 
 /** Rows from the oldest loaded at which older ones are fetched, and from the newest for newer. */
 private const val PAGE_AHEAD = 10
@@ -108,6 +123,18 @@ class ChatActions(
     val onRetrySend: (String) -> Unit = {},
     /** Delete of a failed send, by its client nonce. */
     val onDiscardSend: (String) -> Unit = {},
+    /** Pick photos and videos (the system photo picker). */
+    val onAttachMedia: () -> Unit = {},
+    /** Pick any files (the system's document picker). */
+    val onAttachFiles: () -> Unit = {},
+    /** Remove a picked file from the composer, by its place in the tray. */
+    val onRemoveFile: (Int) -> Unit = {},
+    /** Open a sent file in another app. */
+    val onOpenAttachment: (AttachmentModel) -> Unit = {},
+    /** Retry a failed upload: the send's client nonce and core's upload index. */
+    val onRetryUpload: (String, Int) -> Unit = { _, _ -> },
+    /** Remove an upload from its message: the send's client nonce and core's upload index. */
+    val onRemoveUpload: (String, Int) -> Unit = { _, _ -> },
 )
 
 /**
@@ -126,7 +153,10 @@ fun ChatScreen(
     listState: LazyListState = rememberLazyListState(),
     draft: TextFieldValue = TextFieldValue(),
     composer: ComposerModel = ComposerModel(),
+    attaching: Boolean = false,
+    onAttachingChange: (Boolean) -> Unit = {},
 ) {
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().safeDrawingPadding().padding(Tokens.Space.Sm)) {
         Island(modifier = Modifier.fillMaxSize(), padding = SurfacePadding.None) {
             ChatHeader(header, actions.onBack)
@@ -147,13 +177,30 @@ fun ChatScreen(
             TypingLine(chat.typing)
             val scope = rememberCoroutineScope()
             // Sending needs the list loaded: the pending row is what carries the text once sent.
-            ComposerArea(header.name, draft, composer, actions, ready = chat.face == ChatFace.Ready) {
+            ComposerArea(header.name, draft, composer, actions, ready = chat.face == ChatFace.Ready, onAttach = { onAttachingChange(true) }) {
                 actions.onSend()
                 // What was sent lands at the bottom: go there, as Discord does. From history the
                 // store brings the newest rows back before it sends.
                 scope.launch { listState.scrollToItem(0) }
             }
         }
+    }
+    AttachSheet(attaching, onClose = { onAttachingChange(false) }, actions)
+    }
+}
+
+/** What to attach: photos and videos through the photo picker, or any file. */
+@Composable
+private fun AttachSheet(open: Boolean, onClose: () -> Unit, actions: ChatActions) {
+    Sheet(open = open, onClose = onClose, title = ChatText.ATTACH_TITLE) {
+        ListRow(ChatText.ATTACH_MEDIA, leading = { Icon(Icons.Image, size = IconSize.Md) }, onClick = {
+            onClose()
+            actions.onAttachMedia()
+        })
+        ListRow(ChatText.ATTACH_FILES, leading = { Icon(Icons.Paperclip, size = IconSize.Md) }, onClick = {
+            onClose()
+            actions.onAttachFiles()
+        })
     }
 }
 
@@ -164,6 +211,7 @@ private fun ComposerArea(
     composer: ComposerModel,
     actions: ChatActions,
     ready: Boolean,
+    onAttach: () -> Unit,
     onSend: () -> Unit,
 ) {
     Column(
@@ -201,6 +249,20 @@ private fun ComposerArea(
                     // left, and never squeezes the field and Send.
                     modifier = Modifier.weight(1f, fill = false),
                 )
+                if (composer.files.isNotEmpty()) {
+                    // A row that scrolls sideways: ten files never push the field off the screen.
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(Tokens.Space.Xs),
+                    ) {
+                        composer.files.forEachIndexed { index, file ->
+                            UploadTile(file.name, fileSizeText(file.sizeBytes), Modifier.width(TRAY_TILE), onRemove = { actions.onRemoveFile(index) })
+                        }
+                    }
+                }
+                composer.fileProblem?.let {
+                    Text(it, variant = TextVariant.Small, tone = TextTone.Danger, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                }
                 ComposerField(
                     value = draft,
                     onValueChange = actions.onDraftChange,
@@ -208,8 +270,9 @@ private fun ComposerArea(
                     // The keyboard is up when it takes room at the bottom (`isImeVisible` reads true
                     // where no insets are dispatched at all, as under Robolectric).
                     maxLines = if (WindowInsets.ime.getBottom(LocalDensity.current) > 0) ComposerCaps.KEYBOARD_ROWS else ComposerCaps.PHONE_ROWS,
-                    canSend = ready && draft.text.isNotBlank(),
+                    canSend = ready && (draft.text.isNotBlank() || composer.files.isNotEmpty()),
                     onSend = onSend,
+                    onAttach = onAttach.takeIf { composer.canAttach },
                 )
             }
         }
@@ -379,11 +442,50 @@ private fun MessageItem(entry: ChatEntry.Message, format: ChatFormat, actions: C
         quote = message.replyTo?.let { MessageQuoteItem(it.author, it.text, it.deleted) },
         replyCount = message.replyCount,
         extras = message.extras,
+        attachments = if (message.attachments.isEmpty() && message.uploads.isEmpty()) null else {
+            { Attachments(message, actions) }
+        },
         onLink = actions.onOpenLink,
         onMention = { target -> if (target is MentionTarget.Channel) actions.onOpenChannel(target.id) },
         onRetry = message.clientNonce?.takeIf { message.state is MessageState.Failed }?.let { nonce -> { actions.onRetrySend(nonce) } },
         onDelete = message.clientNonce?.takeIf { message.state is MessageState.Failed }?.let { nonce -> { actions.onDiscardSend(nonce) } },
     )
+}
+
+/** A message's files: what was sent, then what is still on its way, each with its own actions. */
+@Composable
+private fun Attachments(message: ChatMessage, actions: ChatActions) {
+    Column(verticalArrangement = Arrangement.spacedBy(Tokens.Space.Xs)) {
+        message.attachments.forEach { file ->
+            val open = { actions.onOpenAttachment(file) }
+            val size = fileSizeText(file.sizeBytes)
+            when (file.look) {
+                AttachmentLook.File -> FileTile(file.name, size, if (file.mimeType.startsWith("audio/")) Icons.Music else Icons.Paperclip, open)
+                else -> MediaTile(
+                    file.fileId,
+                    file.name,
+                    size,
+                    file.boxWidth.dp,
+                    file.boxHeight.dp,
+                    video = file.look == AttachmentLook.Video,
+                    // The row draws the small copy when there is one; opening fetches the file.
+                    thumbnail = file.thumbnail,
+                    onOpen = open,
+                )
+            }
+        }
+        val nonce = message.clientNonce
+        message.uploads.forEachIndexed { index, upload ->
+            UploadTile(
+                upload.name,
+                fileSizeText(upload.sizeBytes),
+                progress = if (upload.sizeBytes > 0) upload.sentBytes.toFloat() / upload.sizeBytes else 0f,
+                failed = upload.failed,
+                onRetry = nonce?.let { { actions.onRetryUpload(it, index) } },
+                onRemove = nonce?.let { { actions.onRemoveUpload(it, index) } },
+            )
+        }
+    }
 }
 
 /** The top of the list: the conversation's start, older rows on their way, or why they aren't. */

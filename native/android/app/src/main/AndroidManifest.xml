@@ -2,7 +2,8 @@
 <!-- Semaphore Chat's Android client. SPDX-License-Identifier: AGPL-3.0-only. See LICENSE.md.
      Two permissions, both normal (granted at install, no prompt): INTERNET for the server, and
      ACCESS_NETWORK_STATE for the connectivity callback that tells the core when the network
-     comes and goes. -->
+     comes and goes. Files are picked through the system's photo picker and document picker, which
+     need no storage permission; an opened file is shared read-only through the FileProvider. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -24,6 +25,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Serves only cache/open (res/xml/file_paths.xml), read-only, to the app an attachment
+             is opened in: FileOpener grants each URI per Intent. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>
