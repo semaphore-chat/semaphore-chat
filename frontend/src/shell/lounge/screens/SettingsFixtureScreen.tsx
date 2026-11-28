@@ -8,7 +8,7 @@
  * unsaved-changes bar (`useSettingsChrome().setFooter`), so the footer slot is exercised.
  */
 import { useEffect, useState, type JSX } from 'react';
-import { Button, ListRow, Stack, Switch, Text } from '../../../kit';
+import { Button, ListRow, Stack, Switch, Text, useWidthRange } from '../../../kit';
 import type { LoungeParams, LoungeScreenProps, SettingsScreen } from '../screen';
 import { useSettingsChrome } from '../screen';
 import { LOUNGE_SETTINGS_FIXTURE_PATH, loungeSettingsFixturePath } from '../../loungeRoutes';
@@ -26,6 +26,10 @@ function sectionOf(params: LoungeParams) {
 
 function FixtureNav({ params }: LoungeScreenProps): JSX.Element {
   const current = sectionOf(params);
+  // The list path names no section: a phone shows only the list, so nothing is chosen; beside the first section
+  // (compact and wide) that section is the chosen row.
+  const phone = useWidthRange() === 'phone';
+  const chosen = params.section !== undefined || !phone;
   return (
     <Stack gap="xs">
       <ListRow primary="Back to the app" href="#/" />
@@ -34,8 +38,7 @@ function FixtureNav({ params }: LoungeScreenProps): JSX.Element {
           key={section.id}
           primary={section.name}
           href={`#${loungeSettingsFixturePath(section.id)}`}
-          // The list path names no section: on a phone nothing is chosen yet.
-          selected={params.section !== undefined && section.id === current.id}
+          selected={chosen && section.id === current.id}
           chevron
         />
       ))}
