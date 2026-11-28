@@ -40,7 +40,7 @@ vi.mock('../../../utils/markConversationRead', () => ({
   },
 }));
 
-const panelControl = vi.hoisted(() => ({ open: null as null | ((open: boolean) => void), closed: 0 }));
+const panelControl = vi.hoisted(() => ({ open: null as null | ((open: boolean) => void), closed: 0, closedAll: 0, stacked: false }));
 /** Stands for `useComposerDraft`: the thread's field keeps its text outside the component, as the real one does. */
 const draftStore = vi.hoisted(() => ({ text: '' }));
 
@@ -73,6 +73,15 @@ function Centre(_props: LoungeScreenProps): React.JSX.Element {
               panelControl.closed += 1;
               setOpen(false);
             },
+            // A screen with panels stacked (a thread over a search): the members close them all, not just the top.
+            ...(panelControl.stacked
+              ? {
+                  closeAll: () => {
+                    panelControl.closedAll += 1;
+                    setOpen(false);
+                  },
+                }
+              : {}),
           }
         : null,
     );
@@ -109,6 +118,8 @@ describe('ThreeIslandsFrame: the right panel', () => {
   beforeEach(() => {
     membersMounts.count = 0;
     panelControl.closed = 0;
+    panelControl.closedAll = 0;
+    panelControl.stacked = false;
     draftStore.text = '';
   });
 
@@ -197,6 +208,18 @@ describe('ThreeIslandsFrame: the right panel', () => {
     expect(panelControl.closed).toBe(1);
     expect(await screen.findByRole('complementary', { name: 'Members' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'a member' })).toBeInTheDocument();
+  });
+
+  it('showRight asks for every stacked panel to close (closeAll) when the screen has one', async () => {
+    mockViewport(WIDTH.wide);
+    panelControl.stacked = true;
+    setup();
+    act(() => panelControl.open!(true));
+    await screen.findByRole('complementary', { name: 'Thread' });
+    fireEvent.click(screen.getByRole('button', { name: 'Show members' }));
+    expect(panelControl.closedAll).toBe(1);
+    expect(panelControl.closed).toBe(0);
+    expect(await screen.findByRole('complementary', { name: 'Members' })).toBeInTheDocument();
   });
 
   it('showRight opens the members at wide and moves focus into the island', async () => {

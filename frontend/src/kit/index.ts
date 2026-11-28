@@ -112,6 +112,8 @@ export { Stack } from './layout/Stack';
 export type { StackGap, StackProps } from './layout/Stack';
 export { ThreeIslands } from './layout/ThreeIslands';
 export { CallStack } from './layout/CallStack';
+export { PanelPane } from './layout/PanelPane';
+export type { PanelPaneProps } from './layout/PanelPane';
 export type { CallStackProps } from './layout/CallStack';
 export type { ThreeIslandsProps } from './layout/ThreeIslands';
 export { SettingsLayout } from './layout/SettingsLayout';

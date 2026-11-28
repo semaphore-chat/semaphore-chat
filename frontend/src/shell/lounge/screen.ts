@@ -67,6 +67,11 @@ export interface RightPanel {
   readonly fill?: boolean;
   /** The frame asks the screen to close the panel: Escape at wide, or the Sheet's Escape, scrim or Close below. */
   readonly onClose: () => void;
+  /**
+   * Closes every panel the screen has stacked in the right region (a thread over a search), not only this one. The
+   * frame uses it when the members are asked for, so they really show; absent, `onClose` is all there is.
+   */
+  readonly closeAll?: () => void;
 }
 
 /** Screen-to-frame state. */

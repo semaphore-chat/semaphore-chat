@@ -970,3 +970,71 @@ export const WideNotificationLevelsLight = story({
 
 /** Phone: the header's More has the channel's notification level too (the menu is at every width). */
 export const PhoneNotificationsInMore = story({ handlers: notificationHandlers, steps: [headerMore] });
+
+// --- Search (PR 10e, B9): the right island at desktop width, the right Sheet at tablet width (a phone keeps the old
+// search screen, so these are tablet and desktop only). ---
+
+const SEARCH_HITS = [
+  message('u-kwam3', at(1, 2), [text('ok that run was cursed, same time tomorrow?')]),
+  message('u-aiko', at(0, 18), [text('the run tomorrow is at 9, bring snacks for the long boss fight in the second half')]),
+  message('u-gracie', at(3, 40), [text('a run with a name that is far too long for anything')]),
+];
+const COMMUNITY_HITS = [
+  { ...message('u-dropbear', at(0, 5), [text('clip of the run: the boss went down in one go')], { channelId: 'ch-clips' }), channelName: 'clips' },
+  { ...SEARCH_HITS[0], channelName: 'general' },
+  { ...message('u-kwam3', at(2, 30), [text('lfg for a run tonight, 2 spots')], { channelId: 'ch-lfg' }), channelName: 'lfg' },
+];
+const searchHandlers = (channel: unknown[] | 'error' | 'slow', community: unknown[] = COMMUNITY_HITS): HttpHandler[] => [
+  http.get(`/api/messages/search/channel/${CHANNEL}`, async () => {
+    if (channel === 'slow') await delay('infinite');
+    if (channel === 'error') return HttpResponse.json({ statusCode: 500, message: 'nope' }, { status: 500 });
+    return HttpResponse.json(channel);
+  }),
+  http.get(`/api/messages/search/community/${LOUNGE_COMMUNITY_ID}`, () => HttpResponse.json(community)),
+];
+const openSearch = [headerMore, press('Search messages')];
+/** Types into the search field (as a user would: the input event React listens to). */
+const typeSearch = (query: string) => ({
+  find: () => document.querySelector<HTMLInputElement>('input[type="search"]'),
+  run: (el: HTMLElement) => {
+    const field = el as HTMLInputElement;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, query);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  },
+});
+const allChannels = {
+  find: () => [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find((tab) => tab.textContent === 'All channels') ?? null,
+  run: (el: HTMLElement) => el.click(),
+};
+
+/** Just opened: the field has focus, a line says what it searches. */
+export const SearchOpen = story({ handlers: searchHandlers(SEARCH_HITS), steps: openSearch });
+
+/** Results in this channel: who, when, the words (long ones cut). */
+export const SearchResults = story({ handlers: searchHandlers(SEARCH_HITS), steps: [...openSearch, typeSearch('run')] });
+
+/** Light: the results. */
+export const SearchResultsLight = story({ mode: 'light', handlers: searchHandlers(SEARCH_HITS), steps: [...openSearch, typeSearch('run')] });
+
+/** All channels: each result names its channel. */
+export const SearchAllChannels = story({ handlers: searchHandlers(SEARCH_HITS), steps: [...openSearch, typeSearch('run'), allChannels] });
+
+/** Twenty results (the most a search returns): only the list scrolls; the heading and the field stay. */
+export const SearchManyResults = story({
+  handlers: searchHandlers(Array.from({ length: 20 }, (_, i) => ({ ...SEARCH_HITS[i % SEARCH_HITS.length], id: `hit-${i}` }))),
+  steps: [...openSearch, typeSearch('run')],
+});
+
+/** Nothing in this channel: "Search all channels". */
+export const SearchNoResults = story({ handlers: searchHandlers([]), steps: [...openSearch, typeSearch('zebracorn')] });
+
+/** The search failed: Try again. */
+export const SearchError = story({ handlers: searchHandlers('error'), steps: [...openSearch, typeSearch('run')] });
+
+/** Still searching. */
+export const SearchLoading = story({ handlers: searchHandlers('slow'), steps: [...openSearch, typeSearch('run')] });
+
+// A phone's Search is the old search screen: these are tablet and desktop stories.
+for (const searchStory of [SearchOpen, SearchResults, SearchResultsLight, SearchAllChannels, SearchManyResults, SearchNoResults, SearchError, SearchLoading]) {
+  searchStory.meta = { viewports: ['tablet', 'desktop'] };
+}

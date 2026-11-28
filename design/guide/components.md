@@ -15,11 +15,11 @@ hyphens. The export `States` in `KitButton.stories.tsx` is `kit-button--states`.
 The stories show each component in dark, light and tinted colour, and in its
 states. Copy from them, not from a picture.
 
-Fifty-two components exist so far: Text, Button, Icon, IconButton, KeyCap,
+Fifty-three components exist so far: Text, Button, Icon, IconButton, KeyCap,
 Tabs, Switch, Checkbox, RadioGroup, Slider, TextField, SelectField, Avatar,
 AvatarStack, MediaTile, Badge, Pill, Spinner, LinearProgress, Skeleton, Alert, LoadState,
 Toast, ListRow, PickerGrid, Table, Menu, Popover, Tooltip, Dialog, ConfirmDialog, MediaViewer, Island,
-Card, Sheet, Dock, DockDivider, DockItem, Stack, CallStack, and the chat pieces
+Card, Sheet, Dock, DockDivider, DockItem, Stack, CallStack, PanelPane, and the chat pieces
 MessageRow, MessageText, ListSeparator, ReactionChip, Composer, JumpToLatest,
 ChatPane, MessageQuote, AttachmentTile, LinkCard, TypingLine and SuggestionList.
 
@@ -1488,6 +1488,32 @@ messages".
 
 Stories: `kit-jump-to-latest--states`, `kit-jump-to-latest--states-light`,
 `kit-jump-to-latest--states-tinted`.
+
+### PanelPane
+
+A screen's right panel that fills its region and is not a conversation (the
+chat's search): a header (its heading and Close) and an optional fixed `top`
+(a search field, a scope switch), then a body that is the only part that
+scrolls, so the heading and the field stay in view over a long list. It goes in
+the right region in `rightFill` mode (an island with no padding at wide, a
+filling Sheet below wide) and brings the padding itself, lined up with
+ChatPane's header.
+
+**Use it when** a right panel has a header and controls above a long list. **Do
+not use it** for a conversation (ChatPane) or for a short panel that can scroll
+whole in a padded island (the pinned messages).
+
+|Prop|Values|Default|Meaning|
+|---|---|---|---|
+|`header`|kit pieces|none (required)|The panel's header: its heading and Close.|
+|`top`|kit pieces|none|Fixed under the header: a field, Tabs.|
+|`children`|kit pieces|none (required)|The body. Only it scrolls.|
+
+Stories: `kit-panel-pane--scrolling`, `kit-panel-pane--scrolling-light`,
+`kit-panel-pane--short`.
+
+**Native.** Not built yet; the native search panel will need the same three
+parts (a fixed head and top over a scrolling `list`).
 
 ### ChatPane
 

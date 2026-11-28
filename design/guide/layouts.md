@@ -326,7 +326,14 @@ The members stay mounted under the panel, hidden and inert, so they come back
 as they were. Closing the panel (its own Close, Escape at wide, or the Sheet's
 close request) brings back what the user had. In the web shell the screen sets
 the panel with `ScreenChrome.setPanel` and renders its content into
-`panelTarget`; the template's `rightFill` and the Sheet's `fill` draw it.
+`panelTarget`; the template's `rightFill` and the Sheet's `fill` draw it. A
+filling panel that is not a conversation (the chat's search: a heading, a field,
+then a long list) uses `PanelPane`, so only its list scrolls. In the chat, a
+thread, the pinned messages and the search share the region: a thread opened
+from a pin or a search result takes it, and closing the thread brings back the
+pins or the search; pins and search replace each other. The search's text and
+scope belong to the screen above the channel's chat, so a jump to a result in
+another channel opens that channel with the search still open.
 
 **How the phone panes behave.** The screen chooses which pane a phone shows:
 the centre (the default) or the left. The pane that is not shown stays alive
