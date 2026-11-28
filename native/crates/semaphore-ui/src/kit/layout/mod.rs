@@ -1,6 +1,6 @@
 //! The layout templates, the native side of `frontend/src/kit/layout/`
 //! (`design/guide/layouts.md`): AppFrame, ThreeIslands, SettingsLayout, StageLayout, CallStack
-//! and the three width ranges.
+//! PanelPane and the three width ranges.
 //!
 //! How the web's pieces map onto GPUI:
 //! - **Width ranges** come from the window's width ([`WidthRange::current`]), as the web's
@@ -25,6 +25,7 @@ mod call_stack;
 pub(crate) mod focus;
 mod frame;
 mod kept;
+mod panel_pane;
 mod settings;
 mod stage;
 mod three_islands;
@@ -32,6 +33,7 @@ mod width;
 
 pub use call_stack::{CallSlot, CallStack, PANE_MIN};
 pub use frame::{AppFrame, ToastAnchor, WithoutToastAnchor};
+pub use panel_pane::PanelPane;
 pub use settings::{SettingsLayout, SettingsPane};
 pub use stage::StageLayout;
 pub use three_islands::{PhonePane, ThreeIslands};

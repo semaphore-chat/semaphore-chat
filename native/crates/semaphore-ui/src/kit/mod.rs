@@ -80,8 +80,8 @@ pub use display::{
 pub use fields::{FieldShape, SelectField, TextField, select_state, text_state};
 pub(crate) use fields::{floating_label, notched};
 pub use layout::{
-    AppFrame, CallSlot, CallStack, PANE_MIN, PhonePane, SettingsLayout, SettingsPane, StageLayout,
-    ThreeIslands, ToastAnchor, WidthRange, WithoutToastAnchor,
+    AppFrame, CallSlot, CallStack, PANE_MIN, PanelPane, PhonePane, SettingsLayout, SettingsPane,
+    StageLayout, ThreeIslands, ToastAnchor, WidthRange, WithoutToastAnchor,
 };
 pub use list_separator::{ListSeparator, ListSeparatorVariant};
 pub use lists::{Align, ListRow, RowSize, Table, TableColumn, TableRow};

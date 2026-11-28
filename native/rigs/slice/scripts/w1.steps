@@ -90,8 +90,10 @@ wait core thread-rows >= 1
 expect core no-element thread-no-replies
 wait idle
 shot 14-thread-first-reply
-click thread-close
+# Escape with only a thread open closes it, and the caret goes back to the conversation's composer.
+press escape
 wait core side-panel none
+expect focused "Message #general"
 
 # 3. Delete my own: the toolbar asks "Delete?" in place, then it's gone for everyone.
 type "this one is a mistake"
@@ -129,9 +131,12 @@ click message-action-pin
 wait core pinned "found this from last time"
 wait core requests ModerationController_pinMessage >= 1
 wait core pinned-count 1
-click header-pins
+click header-more
+click header-more-pins
 wait core side-panel pins
-wait core label "Unpin message"
+wait core element unpin-$MSG(sc-cc-pit-caption)
+# The panel opened from More keeps its focus: on its first pin, once the pins are listed.
+expect focused-id pin-$MSG(sc-cc-pit-caption)
 wait idle
 shot 08-pins
 click pin-$MSG(sc-cc-pit-caption)
@@ -141,8 +146,9 @@ click unpin-$MSG(sc-cc-pit-caption)
 wait core unpinned "found this from last time"
 wait core requests ModerationController_unpinMessage >= 1
 wait core pinned-count 0
-click header-pins
+click pins-close
 wait core side-panel none
+expect focused "More"
 
 # 6. React from the picker, and who reacted in the tooltip. The composer's emoji button inserts.
 hover-row message "found this from last time"
@@ -168,7 +174,8 @@ wait core composer-text "🔥"
 press backspace
 
 # 7. Search: the field has the caret; a hit in a thread opens it there, tinted.
-click header-search
+click header-more
+click header-more-search
 wait core side-panel search
 expect focused "Search messages"
 type "hop in voice"
@@ -184,8 +191,27 @@ wait idle
 shot 16-search-jumped
 click thread-close
 wait core side-panel search
-click header-search
+expect focused-id search-hit-$MSG(sc-thread-ok-9)
+# Again, closed with Escape: the search comes back with focus on the result.
+click search-hit-$MSG(sc-thread-ok-9)
+wait core side-panel thread
+wait core thread-rows >= 5
+press escape
+wait core side-panel search
+expect focused-id search-hit-$MSG(sc-thread-ok-9)
+# The pins and the search take each other's place, each with its focus.
+click header-more
+click header-more-pins
+wait core side-panel pins
+wait core element pins-empty
+expect focused "Pinned messages"
+click header-more
+click header-more-search
+wait core side-panel search
+expect focused "Search messages"
+click search-close
 wait core side-panel none
+expect focused "More"
 
 # 8. A message link in the web's form opens its channel at the message, not the browser.
 server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"the lfg post: $SERVER/#/community/$ID(c-couch)/channel/$ID(cc-lfg)?highlight=$MSG(sc-msg-24)\"}"
@@ -208,3 +234,19 @@ wait core unread-after "Lunch spot recommendations"
 expect label "4 NEW MESSAGES"
 wait idle
 shot 18-unread-divider
+
+# 10. A search result whose message can't be opened: the jump fails, and nothing is left waiting to
+# mark the next thread as opened from it. ch-dev was never opened, so its rows are fetched.
+click header-more
+click header-more-search
+wait core side-panel search
+click search-scope-1
+type "mobile pass"
+tick 400
+wait core search-hits >= 1
+server fail_route "{\"operationId\": \"MessagesController_findAroundForChannel\", \"status\": 404, \"code\": \"NOT_FOUND\"}"
+click search-hit-$MSG(sc-msg-36)
+wait core requests MessagesController_findAroundForChannel >= 1
+wait idle
+expect core from-result none
+expect core side-panel search

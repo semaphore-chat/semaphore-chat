@@ -183,6 +183,18 @@ impl Driver {
                     bail!("expected {label:?} to have keyboard focus");
                 }
             }
+            Step::ExpectFocusedId { id } => {
+                self.settle()?;
+                let target = id.clone();
+                let focused = self.query(move |window| {
+                    window
+                        .try_find(target)
+                        .is_some_and(|element| element.focused() == Some(true))
+                })?;
+                if !focused {
+                    bail!("expected the element {id:?} to have keyboard focus");
+                }
+            }
             Step::Audit => {
                 self.settle()?;
                 self.audit()?;

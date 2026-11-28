@@ -4,7 +4,6 @@
 use super::search::{DEBOUNCE, SearchModel, Shown};
 use super::*;
 // `gpui_kit::*` brings GPUI's `test` attribute in too, and it would win.
-use crate::messages::NoMedia;
 use crate::messages::fixture::{self, Body, NOW_MS};
 use core::prelude::v1::test;
 use gpui_kit::test::TestWindowExt as _;
@@ -284,7 +283,7 @@ fn the_scope_toggle_searches_at_once(cx: &mut TestAppContext) {
     rig.typed(cx, "deploy");
     cx.executor().advance_clock(DEBOUNCE);
     cx.run_until_parked();
-    rig.with(cx, |_, window, cx| window.click("scope-community", cx));
+    rig.with(cx, |_, window, cx| window.click("search-scope-1", cx));
     assert_eq!(
         rig.searches(),
         vec![
@@ -321,14 +320,12 @@ fn arrows_and_enter_in_the_field_move_through_and_open_hits(cx: &mut TestAppCont
             panel.focus_field(window, cx);
         })
     });
+    // Down from the field takes focus to the first result; then the list's own arrows move,
+    // stopping at the last.
     rig.with(cx, |_, window, cx| window.press("down", cx));
     rig.with(cx, |_, window, cx| window.press("down", cx));
     rig.with(cx, |_, window, cx| window.press("down", cx));
-    assert_eq!(
-        cx.update(|cx| rig.panel.read(cx).selected()),
-        2,
-        "stops at the last"
-    );
+    rig.with(cx, |_, window, cx| window.press("down", cx));
     rig.with(cx, |_, window, cx| window.press("up", cx));
     rig.with(cx, |_, window, cx| window.press("enter", cx));
     let jumped = rig.events.borrow().iter().find_map(|event| match event {
@@ -433,6 +430,7 @@ fn more_results_emits_more(cx: &mut TestAppContext) {
 
 struct PinsRig {
     window: AnyWindowHandle,
+    panel: Entity<PinsPanel>,
     events: std::rc::Rc<RefCell<Vec<PinsPanelEvent>>>,
 }
 
@@ -440,10 +438,12 @@ fn pins_rig(cx: &mut TestAppContext, can_unpin: bool) -> PinsRig {
     init(cx);
     let events = std::rc::Rc::new(RefCell::new(Vec::new()));
     let log = events.clone();
+    let made = std::rc::Rc::new(RefCell::new(None));
+    let keep = made.clone();
     let window = cx.update(|cx| {
         gpui_kit::open_window(window_options(), cx, |_, cx| {
             let panel = cx.new(|cx| {
-                let mut panel = PinsPanel::new(std::rc::Rc::new(NoMedia), cx);
+                let mut panel = PinsPanel::new(cx);
                 let rows = vec![
                     PinnedRow {
                         row: row(1, "first"),
@@ -468,12 +468,18 @@ fn pins_rig(cx: &mut TestAppContext, can_unpin: bool) -> PinsRig {
                 log.borrow_mut().push(event.clone());
             })
             .detach();
+            *keep.borrow_mut() = Some(panel.clone());
             panel
         })
         .expect("window")
         .0
     });
-    PinsRig { window, events }
+    let panel = made.borrow_mut().take().expect("built");
+    PinsRig {
+        window,
+        panel,
+        events,
+    }
 }
 
 impl PinsRig {
@@ -534,4 +540,359 @@ fn escape_in_pins_closes_the_panel(cx: &mut TestAppContext) {
     cx.simulate_keystrokes(rig.window, "escape");
     rig.with(cx, |_, _| {});
     assert_eq!(rig.events.borrow().as_slice(), [PinsPanelEvent::Close]);
+}
+
+// ---- What the rows say. ----
+
+/// A message whose words hold a link, as typed.
+fn with_link(seq: i64) -> MessageRow {
+    fixture::message(
+        seq,
+        fixture::user("u-ava", "ava", Some("Ava Chen")),
+        NOW_MS - seq * 60_000,
+        Body::default().text("log in at ").link(
+            "https://\u{0430}pple.com/login",
+            "https://\u{0430}pple.com/login",
+        ),
+    )
+}
+
+#[test]
+fn previews_show_links_the_way_messages_do() {
+    let hit = SearchHit {
+        row: with_link(1),
+        ..hit(1)
+    };
+    assert_eq!(
+        super::search::result_words(&hit),
+        "log in at https://xn--pple-43d.com/login"
+    );
+    let pin = PinnedRow {
+        row: with_link(2),
+        parent_message_id: None,
+    };
+    assert_eq!(
+        super::pins::pin_secondary(&pin),
+        "log in at https://xn--pple-43d.com/login"
+    );
+}
+
+#[test]
+fn a_pin_without_words_says_its_files_or_no_text() {
+    let pin = |row: MessageRow| PinnedRow {
+        row,
+        parent_message_id: None,
+    };
+    let file = semaphore_core::model::AttachmentView {
+        file_id: "f1".into(),
+        filename: "notes.txt".into(),
+        mime_type: "text/plain".into(),
+        size_bytes: 10,
+        kind: semaphore_core::model::AttachmentKind::Other,
+        has_thumbnail: false,
+        width: None,
+        height: None,
+    };
+    let mut row = row(3, "");
+    assert_eq!(super::pins::pin_secondary(&pin(row.clone())), "No text");
+    row.attachments = vec![file.clone()];
+    assert_eq!(super::pins::pin_secondary(&pin(row.clone())), "1 file");
+    let mut row = self::row(4, "see these");
+    row.attachments = vec![file.clone(), file];
+    assert_eq!(super::pins::pin_secondary(&pin(row)), "see these · 2 files");
+}
+
+#[test]
+fn the_results_announcement_says_how_many_and_where() {
+    use super::search::results_announcement;
+    assert_eq!(results_announcement(0, Here, true), "No messages found");
+    assert_eq!(
+        results_announcement(1, Here, true),
+        "1 message found in this channel"
+    );
+    assert_eq!(
+        results_announcement(4, Community, true),
+        "4 messages found in all channels"
+    );
+    assert_eq!(
+        results_announcement(2, Here, false),
+        "2 messages found in this conversation",
+        "a DM is a conversation, not a channel"
+    );
+    assert_eq!(results_announcement(0, Here, false), "No messages found");
+}
+
+#[test]
+fn the_field_says_what_it_searches() {
+    use super::search::field_placeholder;
+    assert_eq!(field_placeholder(Here, true), "Search this channel");
+    assert_eq!(field_placeholder(Community, true), "Search all channels");
+    assert_eq!(field_placeholder(Here, false), "Search this conversation");
+}
+
+#[gpui_kit::test]
+fn enter_in_the_field_opens_the_first_result(cx: &mut TestAppContext) {
+    let rig = SearchRig::new(cx);
+    rig.typed(cx, "deploy");
+    cx.executor().advance_clock(DEBOUNCE);
+    cx.run_until_parked();
+    rig.with(cx, |panel, window, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_results(Here, "deploy".into(), ready(vec![hit(1), hit(2)]), cx);
+            panel.focus_field(window, cx);
+        })
+    });
+    rig.with(cx, |_, window, cx| window.press("enter", cx));
+    assert!(matches!(
+        rig.events.borrow().last(),
+        Some(SearchPanelEvent::Jump(hit)) if hit.row.seq == 1
+    ));
+}
+
+#[gpui_kit::test]
+fn no_results_here_offers_all_channels(cx: &mut TestAppContext) {
+    let rig = SearchRig::new(cx);
+    rig.typed(cx, "deploy");
+    cx.executor().advance_clock(DEBOUNCE);
+    cx.run_until_parked();
+    rig.with(cx, |panel, _, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_results(Here, "deploy".into(), ready(vec![]), cx)
+        })
+    });
+    rig.with(cx, |_, window, cx| window.click("search-all", cx));
+    assert_eq!(
+        rig.searches().last(),
+        search(Community, "deploy").as_ref(),
+        "Search all channels asks the community at once"
+    );
+}
+
+#[gpui_kit::test]
+fn focus_comes_back_to_the_result_a_thread_was_opened_from(cx: &mut TestAppContext) {
+    let rig = SearchRig::new(cx);
+    rig.typed(cx, "deploy");
+    cx.executor().advance_clock(DEBOUNCE);
+    cx.run_until_parked();
+    rig.with(cx, |panel, _, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_results(Here, "deploy".into(), ready(vec![hit(1), hit(2)]), cx)
+        })
+    });
+    let id = hit(2).row.id.unwrap();
+    rig.with(cx, |panel, _, cx| {
+        panel.update(cx, |panel, cx| panel.focus_result(&id, cx))
+    });
+    let focused = rig.with(cx, |_, window, _| {
+        window.find(format!("search-hit-{id}")).focused()
+    });
+    assert_eq!(focused, Some(true));
+}
+
+#[gpui_kit::test]
+fn an_unpinned_rows_neighbour_takes_focus(cx: &mut TestAppContext) {
+    let rig = pins_rig(cx, true);
+    let (first, second) = (row(1, "").id.unwrap(), row(2, "").id.unwrap());
+    rig.with(cx, |window, cx| window.click(format!("unpin-{first}"), cx));
+    // The list without it, as core sends once the server agreed.
+    let panel = rig.panel.clone();
+    rig.with(cx, |_, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_pins(
+                PinnedList {
+                    state: LoadState::Ready,
+                    rows: vec![PinnedRow {
+                        row: row(2, "in a thread"),
+                        parent_message_id: Some("parent-9".into()),
+                    }],
+                },
+                true,
+                cx,
+            )
+        });
+    });
+    rig.with(cx, |_, _| {});
+    let focused = rig.with(cx, |window, _| {
+        window.find(format!("pin-{second}")).focused()
+    });
+    assert_eq!(focused, Some(true));
+}
+
+#[gpui_kit::test]
+fn enter_and_escape_belong_to_an_input_method_while_it_composes(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestInput;
+    use gpui_kit::{ElementId, ElementInputHandler};
+    let rig = SearchRig::new(cx);
+    rig.typed(cx, "deploy");
+    cx.executor().advance_clock(DEBOUNCE);
+    cx.run_until_parked();
+    rig.with(cx, |panel, window, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_results(Here, "deploy".into(), ready(vec![hit(1), hit(2)]), cx);
+            panel.focus_field(window, cx);
+        })
+    });
+    let field = cx.update(|cx| rig.panel.read(cx).field.clone());
+    let id: ElementId = "input-state".into();
+    let before = rig.events.borrow().len();
+    for key in ["enter", "escape"] {
+        let field = field.clone();
+        let id = id.clone();
+        let marked = rig.with(cx, move |_, window, cx| {
+            let bounds = window.find(id).bounds();
+            let mut input = TestInput::new(ElementInputHandler::new(bounds, field), window);
+            input.compose_text(None, "にほん", Some(3..3), cx);
+            input.marked_text_range(cx)
+        });
+        assert!(marked.is_some(), "the field holds marked text");
+        rig.with(cx, |_, window, cx| window.press(key, cx));
+        assert_eq!(
+            rig.events.borrow()[before..],
+            [],
+            "{key} while composing neither opens a result nor closes the panel"
+        );
+    }
+    // Committed, Escape closes the panel again.
+    rig.with(cx, |panel, window, cx| {
+        panel.update(cx, |panel, cx| {
+            panel
+                .field
+                .update(cx, |field, cx| field.unmark_text(window, cx))
+        })
+    });
+    rig.with(cx, |_, window, cx| window.press("escape", cx));
+    assert_eq!(rig.events.borrow().last(), Some(&SearchPanelEvent::Close));
+}
+
+#[gpui_kit::test]
+fn focus_in_puts_focus_on_the_first_pin_once_the_pins_are_listed(cx: &mut TestAppContext) {
+    let rig = pins_rig(cx, true);
+    let panel = rig.panel.clone();
+    // Opened while the pins load: the panel holds focus until they come.
+    rig.with(cx, |window, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_pins(
+                PinnedList {
+                    state: LoadState::Loading,
+                    rows: Vec::new(),
+                },
+                true,
+                cx,
+            );
+            panel.focus_in(window, cx);
+        })
+    });
+    let container = rig.with(cx, |window, cx| panel.read(cx).focus.is_focused(window));
+    assert!(container, "the panel itself while loading");
+    let label = rig.with(cx, |window, _| {
+        window.find("pins-panel").label().map(str::to_owned)
+    });
+    assert_eq!(label.as_deref(), Some("Pinned messages"));
+    rig.with(cx, |_, cx| {
+        panel.update(cx, |panel, cx| panel.set_pins(two_pins(), true, cx))
+    });
+    rig.with(cx, |_, _| {});
+    let first = row(1, "").id.unwrap();
+    let focused = rig.with(cx, |window, _| {
+        window.find(format!("pin-{first}")).focused()
+    });
+    assert_eq!(focused, Some(true), "the first pin");
+    // Only the first time: the pins read again leave focus where it is.
+    rig.with(cx, |_, cx| {
+        panel.update(cx, |panel, cx| panel.set_pins(two_pins(), true, cx))
+    });
+    let still = rig.with(cx, |window, _| {
+        window.find(format!("pin-{first}")).focused()
+    });
+    assert_eq!(still, Some(true));
+}
+
+#[gpui_kit::test]
+fn focus_in_with_no_pins_leaves_focus_on_the_panel(cx: &mut TestAppContext) {
+    let rig = pins_rig(cx, true);
+    let panel = rig.panel.clone();
+    rig.with(cx, |window, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_pins(
+                PinnedList {
+                    state: LoadState::Ready,
+                    rows: Vec::new(),
+                },
+                true,
+                cx,
+            );
+            panel.focus_in(window, cx);
+        })
+    });
+    rig.with(cx, |_, _| {});
+    let container = rig.with(cx, |window, cx| panel.read(cx).focus.is_focused(window));
+    assert!(container);
+}
+
+/// The list without the first pin, as core sends it once the server agreed to unpin it.
+fn second_pin_only() -> PinnedList {
+    PinnedList {
+        state: LoadState::Ready,
+        rows: vec![PinnedRow {
+            row: row(2, "in a thread"),
+            parent_message_id: Some("parent-9".into()),
+        }],
+    }
+}
+
+fn two_pins() -> PinnedList {
+    PinnedList {
+        state: LoadState::Ready,
+        rows: vec![
+            PinnedRow {
+                row: row(1, "first"),
+                parent_message_id: None,
+            },
+            PinnedRow {
+                row: row(2, "in a thread"),
+                parent_message_id: Some("parent-9".into()),
+            },
+        ],
+    }
+}
+
+#[gpui_kit::test]
+fn after_unpin_focus_moved_out_of_the_panel_stays_where_it_went(cx: &mut TestAppContext) {
+    let rig = pins_rig(cx, true);
+    let first = row(1, "").id.unwrap();
+    let elsewhere = cx.update(|cx| cx.focus_handle());
+    rig.with(cx, |window, cx| window.click(format!("unpin-{first}"), cx));
+    // While the server answers, the user goes on to something else.
+    rig.with(cx, |window, cx| window.focus(&elsewhere, cx));
+    let panel = rig.panel.clone();
+    rig.with(cx, |_, cx| {
+        panel.update(cx, |panel, cx| panel.set_pins(second_pin_only(), true, cx))
+    });
+    rig.with(cx, |_, _| {});
+    let stayed = rig.with(cx, |window, _| elsewhere.is_focused(window));
+    assert!(stayed, "the unpin does not pull focus back into the panel");
+}
+
+#[gpui_kit::test]
+fn a_failed_unpin_moves_no_focus_later(cx: &mut TestAppContext) {
+    let rig = pins_rig(cx, true);
+    let (first, second) = (row(1, "").id.unwrap(), row(2, "").id.unwrap());
+    rig.with(cx, |window, cx| window.click(format!("unpin-{first}"), cx));
+    let panel = rig.panel.clone();
+    rig.with(cx, |_, cx| {
+        panel.update(cx, |panel, _| panel.unpin_failed(&first))
+    });
+    // Then the pin goes some other way (another moderator unpins it).
+    rig.with(cx, |_, cx| {
+        panel.update(cx, |panel, cx| panel.set_pins(second_pin_only(), true, cx))
+    });
+    rig.with(cx, |_, _| {});
+    let focused = rig.with(cx, |window, _| {
+        window.find(format!("pin-{second}")).focused()
+    });
+    assert_ne!(
+        focused,
+        Some(true),
+        "the failed unpin left nothing armed to move focus"
+    );
 }

@@ -18,21 +18,23 @@ mod tests;
 
 pub use common::PanelClock;
 
-use crate::messages::{Media, MediaSource};
 use gpui_kit::component::input::InputState;
 use gpui_kit::*;
 use search::SearchModel;
 use semaphore_core::model::{PinnedList, SearchHit};
-use std::rc::Rc;
 
 /// The pinned messages of a channel.
 pub struct PinsPanel {
-    #[allow(dead_code)]
-    media: Rc<dyn MediaSource>,
     pins: PinnedList,
     can_unpin: bool,
-    images: Media,
     clock: PanelClock,
+    scroll: ScrollHandle,
+    focus: FocusHandle,
+    /// The pin Unpin was pressed on, and where it was: focus goes to its neighbour once it's gone,
+    /// if it is still in the panel then. Cleared when focus leaves the panel or the unpin fails.
+    unpinned: Option<(String, usize)>,
+    /// `focus_in` was asked: the first frame with the pins listed puts focus on the first one.
+    focus_first: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,14 +54,35 @@ pub enum PinsPanelEvent {
 }
 
 impl PinsPanel {
-    pub fn new(media: Rc<dyn MediaSource>, cx: &mut Context<Self>) -> Self {
-        let images = Media::new(media.clone(), cx);
+    pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
-            media,
             pins: PinnedList::default(),
             can_unpin: false,
-            images,
             clock: PanelClock::default(),
+            scroll: ScrollHandle::new(),
+            focus: cx.focus_handle(),
+            unpinned: None,
+            focus_first: false,
+        }
+    }
+
+    /// Moves focus into the panel, as the web's panel does when it opens: its first pin, else
+    /// the panel itself. While the pins load, the panel holds focus; the first frame that lists
+    /// them moves it to the first pin, unless focus has left the panel by then.
+    pub fn focus_in(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus(&self.focus, cx);
+        self.focus_first = true;
+        cx.notify();
+    }
+
+    /// The unpin the panel last asked for failed: the pin stays, and so does focus.
+    pub fn unpin_failed(&mut self, message_id: &str) {
+        if self
+            .unpinned
+            .as_ref()
+            .is_some_and(|(asked, _)| asked == message_id)
+        {
+            self.unpinned = None;
         }
     }
 
@@ -79,6 +102,12 @@ impl PinsPanel {
 }
 
 impl EventEmitter<PinsPanelEvent> for PinsPanel {}
+
+impl Focusable for PinsPanel {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus.clone()
+    }
+}
 
 /// The web's scope toggle: "This channel" (or this DM) and "All channels".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -128,8 +157,12 @@ pub struct SearchPanel {
     field: Entity<InputState>,
     /// The pending debounce; replacing it cancels the one before.
     debounce: Option<Task<()>>,
-    /// The keyboard-highlighted hit, as the web's `selectedIndex`.
-    selected: usize,
+    /// The result last opened: the list's Tab stop, and where focus goes back to.
+    chosen: Option<String>,
+    /// A result to move focus to in the next frame, once its row's handle exists.
+    focus_next: Option<String>,
+    /// What to announce in the next frame: how many results came back.
+    announce: Option<String>,
     scroll: ScrollHandle,
     clock: PanelClock,
     focus: FocusHandle,
@@ -152,7 +185,8 @@ impl SearchPanel {
         }
     }
 
-    /// `community_scope`: offer "All channels" (false in a DM).
+    /// `community_scope`: offer "All channels"; false in a DM, where the panel searches "this
+    /// conversation".
     pub fn new(community_scope: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let field = cx.new(|cx| InputState::new(window, cx).placeholder("Search messages..."));
         let subscriptions = vec![cx.subscribe_in(&field, window, Self::on_field_event)];
@@ -161,7 +195,9 @@ impl SearchPanel {
             model: SearchModel::default(),
             field,
             debounce: None,
-            selected: 0,
+            chosen: None,
+            focus_next: None,
+            announce: None,
             scroll: ScrollHandle::new(),
             clock: PanelClock::default(),
             focus: cx.focus_handle(),
@@ -180,8 +216,23 @@ impl SearchPanel {
         results: SearchResults,
         cx: &mut Context<Self>,
     ) {
+        let ready = match &results {
+            SearchResults::Ready { hits, .. } => Some(hits.len()),
+            _ => None,
+        };
+        let before = matches!(self.model.shown(), search::Shown::Ready { .. })
+            .then(|| self.model.hits().len());
         if self.model.accept(scope, &query, results) {
-            self.selected = 0;
+            // Once per answer: core sends the same page again on every change to its view.
+            if let Some(count) = ready
+                && before != Some(count)
+            {
+                self.announce = Some(search::results_announcement(
+                    count,
+                    scope,
+                    self.community_scope,
+                ));
+            }
             cx.notify();
         }
     }
@@ -197,9 +248,19 @@ impl SearchPanel {
         self.model.hits()
     }
 
+    /// Focus back on the result `message_id` was opened from (a thread over the search closed),
+    /// or the field when it is no longer listed.
+    pub fn focus_result(&mut self, message_id: &str, cx: &mut Context<Self>) {
+        let id = format!("search-hit-{message_id}");
+        self.chosen = Some(id.clone());
+        self.focus_next = Some(id);
+        cx.notify();
+    }
+
     /// Puts the caret in the search field, as the web does when the panel opens.
-    pub fn focus_field(&self, window: &mut Window, cx: &mut App) {
+    pub fn focus_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.field.update(cx, |field, cx| field.focus(window, cx));
+        cx.notify();
     }
 }
 

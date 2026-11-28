@@ -5,7 +5,7 @@ use super::common::PanelClock;
 use super::search::SearchModel;
 use super::{PinsPanel, SearchPanel, SearchResults, SearchScopeChoice};
 use crate::kit::{Variant, text};
-use crate::messages::fixture::{self, Body, FixtureMedia, NOW_MS};
+use crate::messages::fixture::{self, Body, NOW_MS};
 use crate::shell::{PHONE, SIDE_PANEL_WIDTH};
 use crate::stories::Story;
 use crate::theme::SemTheme;
@@ -15,7 +15,6 @@ use semaphore_core::model::{
     AttachmentKind, AttachmentView, Conversation, ErrorView, LoadState, MessageRow, PinnedList,
     PinnedRow, SearchHit,
 };
-use std::rc::Rc;
 
 const MINUTE: i64 = 60_000;
 const HOUR: i64 = 60 * MINUTE;
@@ -161,14 +160,77 @@ fn long_pins() -> Vec<PinnedRow> {
     pins
 }
 
-fn pins_story(state: LoadState, rows: Vec<PinnedRow>, can_unpin: bool, cx: &mut App) -> AnyView {
-    let panel = cx.new(|cx| {
-        let mut panel = PinsPanel::new(Rc::new(FixtureMedia::new()), cx);
+fn pins_panel(state: LoadState, rows: Vec<PinnedRow>, can_unpin: bool, cx: &mut App) -> AnyView {
+    cx.new(|cx| {
+        let mut panel = PinsPanel::new(cx);
         panel.set_clock(PanelClock::fixed(NOW_MS), cx);
         panel.set_pins(PinnedList { state, rows }, can_unpin, cx);
         panel
-    });
-    framed(panel.into(), cx)
+    })
+    .into()
+}
+
+fn pins_story(state: LoadState, rows: Vec<PinnedRow>, can_unpin: bool, cx: &mut App) -> AnyView {
+    let panel = pins_panel(state, rows, can_unpin, cx);
+    framed(panel, cx)
+}
+
+/// A moderator's pins, for the shell's side panel stories.
+pub(crate) fn pins_view(cx: &mut App) -> AnyView {
+    pins_panel(LoadState::Ready, some_pins(), true, cx)
+}
+
+/// A community search with results, for the shell's side panel stories.
+pub(crate) fn search_view(window: &mut Window, cx: &mut App) -> AnyView {
+    search_panel(
+        true,
+        SearchScopeChoice::Community,
+        "deploy",
+        Some(SearchResults::Ready {
+            hits: some_hits(),
+            at_limit: false,
+        }),
+        window,
+        cx,
+    )
+}
+
+/// The same in the light theme.
+fn light(cx: &mut App) {
+    crate::theme::apply(
+        crate::theme::ThemeInput::new(
+            crate::theme::DEFAULT_BASE,
+            semaphore_design::Mode::Light,
+            semaphore_design::Intensity::Minimal,
+        ),
+        cx,
+    );
+}
+
+/// Messages whose words hold a link, as previews show them.
+fn link_rows() -> Vec<MessageRow> {
+    vec![
+        fixture::message(
+            40,
+            fixture::user(AVA.0, AVA.1, AVA.2),
+            NOW_MS - 2 * HOUR,
+            Body::default()
+                .text("sign in at ")
+                .link(
+                    "https://\u{0430}pple.com/login",
+                    "https://\u{0430}pple.com/login",
+                )
+                .text(" before Friday"),
+        ),
+        fixture::message(
+            41,
+            fixture::user(BEN.0, BEN.1, BEN.2),
+            NOW_MS - 3 * HOUR,
+            Body::default()
+                .text("docs: ")
+                .link("https://example.com/deploy", "https://example.com/deploy"),
+        ),
+    ]
 }
 
 fn failed() -> LoadState {
@@ -238,6 +300,18 @@ fn search_story(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
+    let panel = search_panel(community_scope, scope, query, results, window, cx);
+    framed(panel, cx)
+}
+
+fn search_panel(
+    community_scope: bool,
+    scope: SearchScopeChoice,
+    query: &str,
+    results: Option<SearchResults>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
     let panel = cx.new(|cx| {
         let mut panel = SearchPanel::new(community_scope, window, cx);
         panel.set_clock(PanelClock::fixed(NOW_MS), cx);
@@ -247,7 +321,7 @@ fn search_story(
         }
         panel
     });
-    framed(panel.into(), cx)
+    panel.into()
 }
 
 impl SearchPanel {
@@ -389,6 +463,67 @@ pub fn stories() -> Vec<Story> {
             };
             search_story(
                 false,
+                SearchScopeChoice::Here,
+                "deploy",
+                Some(results),
+                window,
+                cx,
+            )
+        }),
+        Story::new("pins-moderator-light", |_, _, cx| {
+            light(cx);
+            pins_story(LoadState::Ready, some_pins(), true, cx)
+        }),
+        Story::new("pins-links", |_, _, cx| {
+            let rows = link_rows()
+                .into_iter()
+                .map(|row| PinnedRow {
+                    row,
+                    parent_message_id: None,
+                })
+                .collect();
+            pins_story(LoadState::Ready, rows, false, cx)
+        }),
+        Story::new("search-links", |_, window, cx| {
+            let hits = link_rows()
+                .into_iter()
+                .map(|row| hit(row, Some("general"), None))
+                .collect();
+            let results = SearchResults::Ready {
+                hits,
+                at_limit: false,
+            };
+            search_story(
+                true,
+                SearchScopeChoice::Here,
+                "sign",
+                Some(results),
+                window,
+                cx,
+            )
+        }),
+        Story::new("search-results-light", |_, window, cx| {
+            light(cx);
+            let results = SearchResults::Ready {
+                hits: some_hits(),
+                at_limit: false,
+            };
+            search_story(
+                true,
+                SearchScopeChoice::Community,
+                "deploy",
+                Some(results),
+                window,
+                cx,
+            )
+        }),
+        Story::new("search-here-results", |_, window, cx| {
+            let results = SearchResults::Ready {
+                hits: some_hits(),
+                at_limit: false,
+            };
+            search_story(
+                true,
                 SearchScopeChoice::Here,
                 "deploy",
                 Some(results),

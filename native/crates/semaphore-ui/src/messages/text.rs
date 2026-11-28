@@ -83,6 +83,15 @@ pub fn blocks(row: &MessageRow) -> Vec<Block> {
 /// and a link as it is drawn, its checked label (`check_link`), as on the web. Part of a link copies
 /// as that part when the label reads as the link was written, else as the whole label. Blocks are separated by one newline, as they read on screen.
 pub fn copy_range(row: &MessageRow, range: Range<u32>) -> String {
+    copy_marking_links(row, range, None)
+}
+
+/// [`copy_range`], also noting where in what it gives each link's label is, in `links`.
+fn copy_marking_links(
+    row: &MessageRow,
+    range: Range<u32>,
+    mut links: Option<&mut Vec<Range<usize>>>,
+) -> String {
     let display = row.display.as_str();
     // Outward, so a range inside a placeholder or a character still means that whole thing.
     let start = display.floor_char_boundary((range.start as usize).min(display.len())) as u32;
@@ -107,6 +116,7 @@ pub fn copy_range(row: &MessageRow, range: Range<u32>) -> String {
                 out.push(':');
             }
             SegKind::Link { url } => {
+                let at = out.len();
                 let written = &display[span.range.start as usize..span.range.end as usize];
                 let label = semaphore_core::links::check_link(url).map_or_else(
                     || semaphore_design::chat::strip_bidi(url),
@@ -116,6 +126,9 @@ pub fn copy_range(row: &MessageRow, range: Range<u32>) -> String {
                     out.push_str(&display[from as usize..to as usize]);
                 } else {
                     out.push_str(&label);
+                }
+                if let Some(links) = links.as_deref_mut() {
+                    links.push(at..out.len());
                 }
             }
             _ => {
@@ -142,6 +155,14 @@ pub fn copy_range(row: &MessageRow, range: Range<u32>) -> String {
 /// The whole message as text. What copy gives, and what a screen reader hears.
 pub fn plain_text(row: &MessageRow) -> String {
     copy_range(row, 0..row.display.len() as u32)
+}
+
+/// [`plain_text`], with the byte range each link's label takes in it: a preview cut short must
+/// not cut one.
+pub fn plain_text_with_links(row: &MessageRow) -> (String, Vec<Range<usize>>) {
+    let mut links = Vec::new();
+    let text = copy_marking_links(row, 0..row.display.len() as u32, Some(&mut links));
+    (text, links)
 }
 
 /// Whether the row addresses this user, which highlights it. Alias mentions are left out: whether

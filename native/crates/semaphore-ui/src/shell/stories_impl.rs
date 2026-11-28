@@ -2,7 +2,9 @@
 
 use super::fixtures::{Fake, Fixture, FixtureSource};
 use super::*;
-use crate::kit::{Button as KitButton, ButtonSize, on_core_event as subscribe, spacing};
+use crate::kit::{
+    Button as KitButton, ButtonSize, Paper, Variant, on_core_event as subscribe, spacing, text,
+};
 use crate::stories::{Story, StoryEnv};
 use semaphore_core::model::CommunityCaps;
 use semaphore_core::model::{Conversation, ListOp, MessageRow};
@@ -181,6 +183,8 @@ pub(crate) struct Options {
     pub dm_route: bool,
     /// A stand-in in the channel header's level button slot.
     pub header_accessory: bool,
+    /// The channel header's More menu open.
+    pub more_open: bool,
     /// W13: the update card over the bottom-left notice corner.
     pub update: Option<AnyView>,
     /// Real views in place of the stand-ins, for the W2 stories that show them in the shell.
@@ -204,6 +208,7 @@ impl Default for Options {
             side_panel: false,
             dm_route: false,
             header_accessory: false,
+            more_open: false,
             update: None,
             route_sidebar: None,
             accessory: None,
@@ -266,6 +271,7 @@ pub(crate) fn shell_view(
     );
     cx.set_global(GlobalStub(stub));
 
+    let more_open = options.more_open;
     let (connection, members_open, phone_content, side_panel) = (
         options.connection,
         options.members_open,
@@ -309,6 +315,7 @@ pub(crate) fn shell_view(
             crate::kit::PhonePane::Left
         };
         shell.pinned_count = 1;
+        shell.more_open = more_open;
         shell.side_panel = panel;
         shell
     })
@@ -693,6 +700,25 @@ pub fn stories() -> Vec<Story> {
         }),
         shell_story!("shell-route-sidebar", dm_route: true),
         shell_story!("shell-header-accessory", header_accessory: true, phone_content: true),
+        shell_story!("shell-header-more", more_open: true, phone_content: true),
+        Story::new("shell-side-panel-pins", |env, window, cx| {
+            let panel = crate::panel::stories::pins_view(cx);
+            let options = Options {
+                panel: Some(panel),
+                phone_content: true,
+                ..Options::default()
+            };
+            shell_view(env, options, window, cx)
+        }),
+        Story::new("shell-side-panel-search", |env, window, cx| {
+            let panel = crate::panel::stories::search_view(window, cx);
+            let options = Options {
+                panel: Some(panel),
+                phone_content: true,
+                ..Options::default()
+            };
+            shell_view(env, options, window, cx)
+        }),
         shell_story!("shell-long-content", edit: long_names),
         shell_story!("shell-voice-connected", edit: connect_hangout),
         shell_story!("shell-voice-server-muted", edit: connect_hangout_moderated),

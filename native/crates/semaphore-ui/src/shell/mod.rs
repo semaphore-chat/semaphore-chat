@@ -23,7 +23,7 @@ use crate::kit::PhonePane;
 use frame::pane_for;
 pub use source::{CoreSource, Load, MemberRow, RailCounts, ShellSource};
 
-use crate::kit::{Icon, IconButton, Paper, Variant, on_core_event, text};
+use crate::kit::{Icon, IconButton, Menu, MenuCloseReason, MenuItem, on_core_event};
 use crate::nav::{NavModel, Route};
 use crate::theme::SemTheme;
 pub(crate) use faces::{community_avatar, user_avatar};
@@ -35,6 +35,8 @@ use semaphore_core::model::{
 };
 use semaphore_core::{ConnectionState, CoreEvent};
 use semaphore_design::Icon as IconName;
+use semaphore_design::LoungeIcon;
+use semaphore_design::lounge::{LAYOUT_GUTTER, SPACE_SM, SPACE_XS, TEXT_TITLE};
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -162,6 +164,10 @@ pub struct Shell {
     pub(crate) sheet_open: bool,
     /// The community header's menu is open.
     pub(crate) menu_open: bool,
+    /// The channel header's More menu is open.
+    pub(crate) more_open: bool,
+    /// The channel header's More button: where focus goes back to when a panel it opened closes.
+    pub(crate) more_focus: FocusHandle,
     /// The sheet's filter field.
     pub(crate) filter: Entity<InputState>,
     /// The left island's and the right content's scrolling parts.
@@ -215,6 +221,8 @@ impl Shell {
             pane_back: Vec::new(),
             sheet_open: false,
             menu_open: false,
+            more_open: false,
+            more_focus: cx.focus_handle(),
             filter,
             left_scroll: ScrollHandle::new(),
             right_scroll: ScrollHandle::new(),
@@ -272,6 +280,12 @@ impl Shell {
         cx.notify();
     }
 
+    /// Focus on the channel header's More, the opener of the pins and search panels: where it
+    /// goes back to when one of them closes, as on the web.
+    pub fn focus_more(&self, window: &mut Window, cx: &mut App) {
+        window.focus(&self.more_focus, cx);
+    }
+
     pub fn side_panel_open(&self) -> bool {
         self.side_panel.is_some()
     }
@@ -290,6 +304,7 @@ impl Shell {
         self.settle_route();
         self.sheet_open = false;
         self.menu_open = false;
+        self.more_open = false;
         self.focus_content.set(true);
         cx.emit(ShellEvent::Navigated(self.nav.current().clone()));
         cx.notify();
@@ -498,10 +513,6 @@ impl Shell {
         }
     }
 
-    /// The channel header, or `None` when the route has no channel.
-    /// The channel header. On a phone it leads with Back to the left pane; its Members button
-    /// shows or hides the members at every width (`right_shown`: whether they are showing), and
-    /// replaces an open side panel with them.
     /// Shows the members, the action of the header's Members button and the community header's
     /// members button. They replace an open side panel, as on the web: the owner closes it.
     pub(crate) fn show_members(&mut self, cx: &mut Context<Self>) {
@@ -512,6 +523,12 @@ impl Shell {
         cx.notify();
     }
 
+    /// The channel header, or `None` when the route has no channel, as the web Lounge's
+    /// `ChatHeader`: Back on a phone, the channel's name as the screen's heading (a lock when it
+    /// is private), the notification level, Members (pressed while the members show; it hides
+    /// them, or replaces an open side panel with them) and, in a text channel, More with Search
+    /// messages and Pinned messages. More is the opener: focus goes back to it when the panel it
+    /// opened closes.
     pub(crate) fn header(
         &self,
         phone: bool,
@@ -520,35 +537,71 @@ impl Shell {
     ) -> Option<impl IntoElement + use<>> {
         let channel = self.channel()?;
         let sem = cx.sem();
-        let pinned = self.pinned_count;
-        let (secondary, primary_badge, on_primary_badge) =
-            (sem.text_secondary, sem.primary, sem.primary_contrast);
+        let secondary = sem.text_secondary;
+        let voice = channel.kind == ChannelKind::Voice;
+        let title = header_title(channel.kind, &channel.name);
+        let members = {
+            let view = cx.entity().downgrade();
+            IconButton::new("members-toggle", IconName::People, "Members")
+                .lounge_icon(LoungeIcon::Users)
+                .selected(right_shown)
+                .on_click(move |_, _, cx| {
+                    view.update(cx, |shell, cx| {
+                        if shell.side_panel.is_some() || !right_shown {
+                            shell.show_members(cx);
+                        } else {
+                            shell.right_open = Some(false);
+                            cx.notify();
+                        }
+                    })
+                    .ok();
+                })
+        };
+        let more = (!voice).then(|| self.more_menu(cx));
+        let notifications = match self.header_accessory.clone() {
+            Some(accessory) => accessory.into_any_element(),
+            // Until the app's level menu is ready, a stand-in drawn exactly as that menu's
+            // button for the default level, so which arrives first never shows.
+            None => IconButton::new(
+                "header-notifications",
+                IconName::AlternateEmail,
+                "Channel notifications",
+            )
+            .small()
+            .into_any_element(),
+        };
         Some(
-            Paper::new()
+            div()
+                .id("channel-header")
+                .test_support()
                 .w_full()
                 .flex_shrink_0()
-                .px(px(16.))
-                .py(px(8.))
+                .px(px(SPACE_SM))
+                .pt(px(SPACE_SM))
+                .pb(px(SPACE_XS))
                 .flex()
                 .items_center()
-                .justify_between()
-                .gap(px(8.))
+                .gap(px(SPACE_SM))
                 .when(phone, |header| header.child(self.phone_back(cx)))
                 .child(
                     div()
                         .flex()
                         .items_center()
-                        .gap(px(6.))
+                        .gap(px(SPACE_XS))
                         .min_w_0()
                         .flex_1()
-                        .when(channel.kind == ChannelKind::Voice, |row| {
+                        .when(voice, |row| {
                             // A voice channel's header, as the web's pre-join: the voice
                             // icon, not the text channel's hash.
                             row.child(Icon::new(IconName::VolumeUp).size(18.).color(secondary))
                         })
                         .child(
-                            text(Variant::H6, header_title(channel.kind, &channel.name))
-                                .font_weight(FontWeight(600.))
+                            crate::kit::type_text(TEXT_TITLE, title.clone())
+                                .id("channel-header-title")
+                                .test_support()
+                                .role(Role::Heading)
+                                .aria_label(title)
+                                .min_w_0()
                                 .truncate(),
                         )
                         .when(channel.is_private, |row| {
@@ -560,76 +613,102 @@ impl Shell {
                         .flex()
                         .flex_shrink_0()
                         .items_center()
-                        .gap(px(8.))
-                        .child(
-                            div()
-                                .relative()
-                                .child(
-                                    IconButton::new(
-                                        "header-pins",
-                                        IconName::PushPin,
-                                        format!("Pinned messages ({pinned})"),
-                                    )
-                                    .small()
-                                    .on_click(
-                                        cx.listener(|_, _, _, cx| cx.emit(ShellEvent::OpenPins)),
-                                    ),
-                                )
-                                .when(pinned > 0, |this| {
-                                    this.child(
-                                        div()
-                                            .absolute()
-                                            .top(px(-5.))
-                                            .right(px(-5.))
-                                            .h(px(20.))
-                                            .min_w(px(20.))
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .rounded_full()
-                                            .bg(primary_badge)
-                                            .text_color(on_primary_badge)
-                                            .child(text(Variant::Caption, pinned.to_string())),
-                                    )
-                                }),
-                        )
-                        .child(
-                            IconButton::new("header-search", IconName::Search, "Search messages")
-                                .small()
-                                .on_click(
-                                    cx.listener(|_, _, _, cx| cx.emit(ShellEvent::OpenSearch)),
-                                ),
-                        )
-                        .child(match self.header_accessory.clone() {
-                            Some(accessory) => accessory.into_any_element(),
-                            None => IconButton::new(
-                                "header-notifications",
-                                IconName::AlternateEmail,
-                                "Channel notifications",
-                            )
-                            .small()
-                            .into_any_element(),
-                        })
-                        .child({
-                            let view = cx.entity().downgrade();
-                            IconButton::new("members-toggle", IconName::People, "Members")
-                                .small()
-                                .selected(right_shown)
-                                .on_click(move |_, _, cx| {
-                                    view.update(cx, |shell, cx| {
-                                        if shell.side_panel.is_some() || !right_shown {
-                                            shell.show_members(cx);
-                                        } else {
-                                            shell.right_open = Some(false);
-                                            cx.notify();
-                                        }
-                                    })
-                                    .ok();
-                                })
-                        }),
+                        .gap(px(SPACE_XS))
+                        .child(notifications)
+                        .child(members)
+                        .children(more),
                 ),
         )
     }
+
+    /// The header's More and, while open, its menu: Search messages and Pinned messages (with
+    /// their count), anchored under the button's end as the web's `placement="bottom-end"`.
+    fn more_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+        let pinned = self.pinned_count;
+        let toggle = cx.entity().downgrade();
+        let button = IconButton::new("header-more", IconName::MoreHoriz, "More")
+            .lounge_icon(LoungeIcon::Ellipsis)
+            .selected(self.more_open)
+            .track_focus(&self.more_focus)
+            .on_click(move |_, _, cx| {
+                toggle
+                    .update(cx, |shell, cx| {
+                        shell.more_open = !shell.more_open;
+                        cx.notify();
+                    })
+                    .ok();
+            });
+        let open = self.more_open.then(|| {
+            let (search, pins, close) = (
+                cx.entity().downgrade(),
+                cx.entity().downgrade(),
+                cx.entity().downgrade(),
+            );
+            let items = vec![
+                MenuItem::new("header-more-search", "Search messages", move |_, cx| {
+                    open_from_menu(&search, ShellEvent::OpenSearch, cx);
+                })
+                .icon(IconName::Search),
+                MenuItem::new(
+                    "header-more-pins",
+                    if pinned > 0 {
+                        format!("Pinned messages ({pinned})")
+                    } else {
+                        "Pinned messages".to_owned()
+                    },
+                    move |_, cx| {
+                        open_from_menu(&pins, ShellEvent::OpenPins, cx);
+                    },
+                )
+                .icon(IconName::PushPin),
+            ];
+            let menu = Menu::new("Channel menu", items)
+                .id("header-more-menu")
+                .on_close(move |reason, window, cx| {
+                    close
+                        .update(cx, |shell, cx| {
+                            shell.more_open = false;
+                            // A choice opens a panel, which takes focus itself.
+                            if reason != MenuCloseReason::Selected {
+                                shell.focus_more(window, cx);
+                            }
+                            cx.notify();
+                        })
+                        .ok();
+                });
+            div()
+                .absolute()
+                .top_full()
+                .right_0()
+                .mt(px(crate::kit::ANCHOR_GAP))
+                .child(
+                    deferred(
+                        anchored()
+                            .anchor(Anchor::TopRight)
+                            .snap_to_window_with_margin(px(LAYOUT_GUTTER))
+                            .child(div().occlude().child(menu)),
+                    )
+                    .with_priority(1),
+                )
+        });
+        div()
+            .relative()
+            .flex_none()
+            .child(button)
+            .children(open)
+            .into_any_element()
+    }
+}
+
+/// A More item: the menu closes and the shell asks for the item's panel.
+fn open_from_menu(shell: &WeakEntity<Shell>, event: ShellEvent, cx: &mut App) {
+    shell
+        .update(cx, |shell, cx| {
+            shell.more_open = false;
+            cx.emit(event);
+            cx.notify();
+        })
+        .ok();
 }
 
 #[cfg(feature = "stories")]

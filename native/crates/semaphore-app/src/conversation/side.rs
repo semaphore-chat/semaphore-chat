@@ -53,6 +53,8 @@ pub(crate) struct ThreadView {
     pub parent_row: Vec<MessageRow>,
     /// A reply to tint once it arrives (a jump to a thread reply).
     pub flash: Option<String>,
+    /// The search result this thread was opened from: closing the thread gives it focus back.
+    pub from_result: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -122,6 +124,11 @@ impl ConversationPane {
         }
     }
 
+    /// The search result a jump in progress came from, to mark the thread it opens (the rig).
+    pub fn jump_from_result(&self) -> Option<&str> {
+        self.from_result.as_deref()
+    }
+
     /// The open thread's replies, as core sent them.
     pub fn thread_rows(&self) -> &[MessageRow] {
         self.rows_of(Which::Thread)
@@ -167,21 +174,42 @@ impl ConversationPane {
         self.sync_side(cx);
     }
 
+    /// A panel's Close, or Escape: the panel goes and focus goes back to its opener (B9).
+    pub(crate) fn close_side_by_hand(&mut self, cx: &mut Context<Self>) {
+        let had = self.side.is_some() || self.thread.is_some();
+        self.close_side(cx);
+        if had {
+            cx.emit(PaneEvent::FocusOpener);
+        }
+    }
+
     /// The header's pin button: the pins panel, or closed again if it's what shows.
     pub fn toggle_pins(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.side_panel_kind() == "pins" {
-            self.close_side(cx);
+            self.close_side_by_hand(cx);
+            return;
+        }
+        self.show_pins(window, cx);
+    }
+
+    /// More's Pinned messages: the pins panel in the side panel's place (it replaces the search
+    /// and a thread, B9), with focus in it.
+    pub fn show_pins(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(Side::Pins { panel, .. }) = &self.side
+            && self.thread.is_none()
+        {
+            panel.update(cx, |panel, cx| panel.focus_in(window, cx));
             return;
         }
         if self.channel_id().is_none() {
             return;
         }
-        let media: std::rc::Rc<dyn semaphore_ui::messages::MediaSource> = self.media.clone();
         let panel = cx.new(|cx| {
-            let mut panel = PinsPanel::new(media, cx);
+            let mut panel = PinsPanel::new(cx);
             panel.set_clock(self.panel_clock, cx);
             panel
         });
+        panel.update(cx, |panel, cx| panel.focus_in(window, cx));
         let subscription = cx.subscribe_in(&panel, window, Self::on_pins_event);
         self.thread = None;
         self.side = Some(Side::Pins {
@@ -192,10 +220,22 @@ impl ConversationPane {
         self.sync_side(cx);
     }
 
-    /// The header's search button: the search panel with the caret in its field.
+    /// A DM header's search button: the search panel, or closed again if it's what shows.
     pub fn toggle_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.side_panel_kind() == "search" {
-            self.close_side(cx);
+            self.close_side_by_hand(cx);
+            return;
+        }
+        self.show_search(window, cx);
+    }
+
+    /// More's Search messages: the search panel with the caret in its field. Chosen again while
+    /// it shows, the caret goes back to its field.
+    pub fn show_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(Side::Search { panel, .. }) = &self.side
+            && self.thread.is_none()
+        {
+            panel.update(cx, |panel, cx| panel.focus_field(window, cx));
             return;
         }
         let community_scope = self.community_id.is_some();
@@ -276,15 +316,27 @@ impl ConversationPane {
             }
             PinsPanelEvent::Unpin { message_id } => {
                 let core = self.core.clone();
-                self.command("unpinning the message", window, cx, async move {
-                    core.unpin_message(message_id, None).await
-                });
+                let asked = message_id.clone();
+                self.exec.run(
+                    window,
+                    cx,
+                    async move { core.unpin_message(message_id, None).await },
+                    move |this, result, _, cx| {
+                        if let Err(error) = result {
+                            // The pin stays: the panel moves no focus for it.
+                            if let Some(Side::Pins { panel, .. }) = &this.side {
+                                panel.update(cx, |panel, _| panel.unpin_failed(&asked));
+                            }
+                            this.report("unpinning the message", &error, cx);
+                        }
+                    },
+                );
             }
             PinsPanelEvent::Retry => {
                 self.core.retry_failed();
                 self.refresh_pins(cx);
             }
-            PinsPanelEvent::Close => self.close_side(cx),
+            PinsPanelEvent::Close => self.close_side_by_hand(cx),
         }
     }
 
@@ -339,6 +391,8 @@ impl ConversationPane {
                     return;
                 };
                 let community_id = self.community_id.clone();
+                // A reply opens its thread over the search; closing it comes back to this result.
+                self.from_result = hit.parent_message_id.is_some().then(|| message_id.clone());
                 self.jump(
                     hit.conversation.clone(),
                     community_id,
@@ -348,7 +402,7 @@ impl ConversationPane {
                     cx,
                 );
             }
-            SearchPanelEvent::Close => self.close_side(cx),
+            SearchPanelEvent::Close => self.close_side_by_hand(cx),
         }
     }
 
@@ -467,6 +521,7 @@ impl ConversationPane {
             rows: Vec::new(),
             parent_row,
             flash: None,
+            from_result: None,
             _subscriptions: subscriptions,
         });
         self.apply_permissions(cx);
@@ -503,10 +558,15 @@ impl ConversationPane {
         {
             self.finish_edit(window, cx);
         }
-        if self.thread.take().is_some() {
+        if let Some(thread) = self.thread.take() {
             self.sync_side(cx);
-            // The caret goes back to the conversation's own composer, where the user was.
-            if let Some(composer) = &self.composer {
+            // Opened from a search result, the search comes back with focus on that result (B9);
+            // else the caret goes back to the conversation's own composer, where the user was.
+            if let (Some(result), Some(Side::Search { panel, .. })) =
+                (thread.from_result.as_deref(), &self.side)
+            {
+                panel.update(cx, |panel, cx| panel.focus_result(result, cx));
+            } else if let Some(composer) = &self.composer {
                 composer.update(cx, |composer, cx| composer.focus(window, cx));
             }
         }

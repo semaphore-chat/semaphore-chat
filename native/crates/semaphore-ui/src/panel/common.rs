@@ -1,7 +1,7 @@
-//! What the side panels share: the header, the empty and error blocks, relative times and icon
+//! What the side panels share: the heading, the empty and error blocks, relative times and icon
 //! buttons with the web's MUI icons. The thread pane uses these too.
 
-use crate::kit::{Button, LiveElement, Variant, icon_path, spacing, text};
+use crate::kit::{Button, IconButton, LiveElement, Variant, icon_path, spacing, text};
 use crate::shell::PHONE;
 use crate::theme::SemTheme;
 use gpui_kit::accesskit::Live;
@@ -9,7 +9,11 @@ use gpui_kit::base;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use semaphore_core::model::MessageRow;
 use semaphore_design::Icon as DesignIcon;
+use semaphore_design::LoungeIcon;
+use semaphore_design::lounge::{SPACE_SM, TEXT_TITLE};
+use std::ops::Range;
 
 /// `TOUCH_TARGETS.MINIMUM`.
 pub(crate) const TOUCH_TARGET: f32 = 44.;
@@ -54,7 +58,40 @@ pub(crate) fn icon_button(
         .child(design_icon(icon, 20., color))
 }
 
-/// The header every panel draws: a primary-coloured icon, the title, then `actions` at the end.
+/// A panel's header, as the web's PanelPane headers and the thread's: the heading (`title`, an
+/// h2 under the screen's own) and Close at the end.
+pub(crate) fn panel_heading(
+    id: &'static str,
+    title: impl Into<SharedString>,
+    close_id: &'static str,
+    close_label: &'static str,
+    on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Div {
+    let title: SharedString = title.into();
+    div()
+        .flex()
+        .items_center()
+        .gap(px(SPACE_SM))
+        .min_w_0()
+        .child(
+            crate::kit::type_text(TEXT_TITLE, title.clone())
+                .id(id)
+                .test_support()
+                .role(Role::Heading)
+                .aria_label(title)
+                .flex_1()
+                .min_w_0()
+                .truncate(),
+        )
+        .child(
+            IconButton::new(close_id, DesignIcon::Close, close_label)
+                .lounge_icon(LoungeIcon::X)
+                .on_click(on_close),
+        )
+}
+
+/// The old panels' header: a primary-coloured icon, the title, then `actions` at the end. Only
+/// the notification centre still draws it (B14).
 pub(crate) fn panel_header(
     icon: DesignIcon,
     title: impl Into<SharedString>,
@@ -239,17 +276,57 @@ pub(crate) fn relative_time(now_ms: i64, then_ms: i64) -> String {
     }
 }
 
+/// A message's words as a panel previews them: as the row draws them (an emoji as its `:name:`,
+/// a link as its drawn label), on one line and without bidi controls. Cut short, a preview never
+/// ends inside a link: the cut goes before it, so no link reads as a shorter address.
+pub(crate) fn message_preview(row: &MessageRow, max_chars: Option<usize>) -> String {
+    let (display, links) = crate::messages::plain_text_with_links(row);
+    preview_cut(&display, &links, max_chars)
+}
+
 /// The message text a panel previews: the display string on one line, as the web joins spans,
 /// without bidi controls, so nothing in a message can reorder how its preview reads.
 pub(crate) fn preview_text(display: &str, max_chars: Option<usize>) -> String {
-    let plain = semaphore_design::chat::strip_bidi(display);
-    let joined = plain.split_whitespace().collect::<Vec<_>>().join(" ");
-    match max_chars {
-        Some(max) if joined.chars().count() > max => {
-            let cut: String = joined.chars().take(max).collect();
-            format!("{cut}...")
+    preview_cut(display, &[], max_chars)
+}
+
+/// [`preview_text`] for a display string whose `links` (byte ranges) are kept whole or left out.
+fn preview_cut(display: &str, links: &[Range<usize>], max_chars: Option<usize>) -> String {
+    // Each character kept, with the link it belongs to: whitespace runs fold into one space and
+    // bidi controls go, as `strip_bidi` and the web's join do.
+    let mut kept: Vec<(char, Option<usize>)> = Vec::new();
+    let mut gap = false;
+    for (at, c) in display.char_indices() {
+        if semaphore_design::chat::is_bidi_control(c) {
+            continue;
         }
-        _ => joined,
+        if c.is_whitespace() {
+            gap = !kept.is_empty();
+            continue;
+        }
+        if gap {
+            kept.push((' ', None));
+            gap = false;
+        }
+        let link = links.iter().position(|link| link.contains(&at));
+        kept.push((c, link));
+    }
+    match max_chars {
+        Some(max) if kept.len() > max => {
+            let mut cut = max;
+            // The cut falls inside a link: it goes before the link instead.
+            if let Some(link) = kept[cut].1
+                && cut > 0
+                && kept[cut - 1].1 == Some(link)
+            {
+                while cut > 0 && kept[cut - 1].1 == Some(link) {
+                    cut -= 1;
+                }
+            }
+            let words: String = kept[..cut].iter().map(|(c, _)| *c).collect();
+            format!("{}...", words.trim_end())
+        }
+        _ => kept.into_iter().map(|(c, _)| c).collect(),
     }
 }
 
@@ -345,6 +422,47 @@ mod tests {
         assert_eq!(preview_text("a\n\nb  c", None), "a b c");
         assert_eq!(preview_text("abcdef", Some(3)), "abc...");
         assert_eq!(preview_text("abc", Some(3)), "abc");
+    }
+
+    #[test]
+    fn a_cut_never_falls_inside_a_link() {
+        use crate::messages::fixture::{self, Body, NOW_MS};
+        let row = fixture::message(
+            1,
+            fixture::user("u-ava", "ava", Some("Ava Chen")),
+            NOW_MS,
+            Body::default()
+                .text("see ")
+                .link(
+                    "https://example.com/a/long/path",
+                    "https://example.com/a/long/path",
+                )
+                .text(" for more"),
+        );
+        // "see https://exa" would end inside the link: the cut goes before it.
+        assert_eq!(message_preview(&row, Some(15)), "see...");
+        // A cut after the link keeps it whole.
+        assert_eq!(
+            message_preview(&row, Some(38)),
+            "see https://example.com/a/long/path fo..."
+        );
+        // Right at its end, or long enough for everything: whole.
+        assert_eq!(
+            message_preview(&row, Some(35)),
+            "see https://example.com/a/long/path..."
+        );
+        assert_eq!(
+            message_preview(&row, None),
+            "see https://example.com/a/long/path for more"
+        );
+        // A message that is all link, cut: nothing of the link.
+        let only = fixture::message(
+            2,
+            fixture::user("u-ava", "ava", Some("Ava Chen")),
+            NOW_MS,
+            Body::default().link("https://example.com/x", "https://example.com/x"),
+        );
+        assert_eq!(message_preview(&only, Some(10)), "...");
     }
 }
 

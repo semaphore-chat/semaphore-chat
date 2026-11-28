@@ -1512,8 +1512,11 @@ whole in a padded island (the pinned messages).
 Stories: `kit-panel-pane--scrolling`, `kit-panel-pane--scrolling-light`,
 `kit-panel-pane--short`.
 
-**Native.** Not built yet; the native search panel will need the same three
-parts (a fixed head and top over a scrolling `list`).
+**Native.** `PanelPane::new(id, header)` with `.top(...)`, `.child(...)` and
+`.track_scroll(&handle)` (for bringing a focused row into view), and
+`.list_label(...)` to make the body a named list. `ThreeIslands::right_fill`
+is `rightFill`. The native pinned messages use it too: below wide the side panel
+is a Drawer whose body needs the panel to bring its own scrolling region.
 
 ### ChatPane
 

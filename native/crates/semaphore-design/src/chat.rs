@@ -12,7 +12,7 @@ use crate::lounge::SPACE_2XL;
 // Segments (`messageSegments.ts`)
 
 /// Bidi controls: embeddings, overrides, isolates and marks. They reorder what is drawn.
-fn is_bidi_control(c: char) -> bool {
+pub fn is_bidi_control(c: char) -> bool {
     matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
 }
 

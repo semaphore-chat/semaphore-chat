@@ -418,7 +418,7 @@ impl Shared {
     }
 }
 
-fn author_name(row: &MessageRow) -> SharedString {
+pub(crate) fn author_name(row: &MessageRow) -> SharedString {
     if row.author.id.is_empty() && row.author.username.is_empty() {
         return "[Deleted User]".into();
     }

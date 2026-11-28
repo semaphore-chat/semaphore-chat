@@ -251,7 +251,8 @@ wait core channel $ID(cc-lfg)
 # (nothing selected): the pins panel closes and the conversation stays where it is.
 navigate /community/$ID(c-couch)/channel/$ID(cc-general)
 wait core channel $ID(cc-general)
-click header-pins
+click header-more
+click header-more-pins
 wait core side-panel pins
 click composer/field
 press escape
@@ -373,14 +374,15 @@ server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\",
 navigate /community/$ID(c-lumen)/channel/$ID(ch-dev)
 wait core channel $ID(ch-dev)
 wait core w9 unread $ID(ch-dev) 0
-click header-search
+click header-more
+click header-more-search
 wait core side-panel search
 type "Afternoon"
 tick 400
 wait core search-hits >= 1
 click search-hit-$MSG(sc-msg-28)
 wait core detached
-click header-search
+click search-close
 wait core side-panel none
 server post_as "{\"channelId\": \"$ID(ch-dev)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"w9 unread on screen\"}"
 wait core w9 unread $ID(ch-dev) 1
