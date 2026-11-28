@@ -605,15 +605,29 @@ fn a_pin_without_words_says_its_files_or_no_text() {
 #[test]
 fn the_results_announcement_says_how_many_and_where() {
     use super::search::results_announcement;
-    assert_eq!(results_announcement(0, Here), "No messages found");
+    assert_eq!(results_announcement(0, Here, true), "No messages found");
     assert_eq!(
-        results_announcement(1, Here),
+        results_announcement(1, Here, true),
         "1 message found in this channel"
     );
     assert_eq!(
-        results_announcement(4, Community),
+        results_announcement(4, Community, true),
         "4 messages found in all channels"
     );
+    assert_eq!(
+        results_announcement(2, Here, false),
+        "2 messages found in this conversation",
+        "a DM is a conversation, not a channel"
+    );
+    assert_eq!(results_announcement(0, Here, false), "No messages found");
+}
+
+#[test]
+fn the_field_says_what_it_searches() {
+    use super::search::field_placeholder;
+    assert_eq!(field_placeholder(Here, true), "Search this channel");
+    assert_eq!(field_placeholder(Community, true), "Search all channels");
+    assert_eq!(field_placeholder(Here, false), "Search this conversation");
 }
 
 #[gpui_kit::test]
@@ -705,26 +719,180 @@ fn an_unpinned_rows_neighbour_takes_focus(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_panel_that_just_opened_takes_its_focus_back_once(cx: &mut TestAppContext) {
+fn enter_and_escape_belong_to_an_input_method_while_it_composes(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestInput;
+    use gpui_kit::{ElementId, ElementInputHandler};
     let rig = SearchRig::new(cx);
-    let elsewhere = cx.update(|cx| cx.focus_handle());
+    rig.typed(cx, "deploy");
+    cx.executor().advance_clock(DEBOUNCE);
+    cx.run_until_parked();
     rig.with(cx, |panel, window, cx| {
-        panel.update(cx, |panel, cx| panel.focus_field(window, cx));
-        // What the overlay stack does as a menu closes: focus back to the menu's button.
-        window.focus(&elsewhere, cx);
+        panel.update(cx, |panel, cx| {
+            panel.set_results(Here, "deploy".into(), ready(vec![hit(1), hit(2)]), cx);
+            panel.focus_field(window, cx);
+        })
     });
-    let in_field = rig.with(cx, |panel, window, cx| {
-        panel
-            .read(cx)
-            .field
-            .read(cx)
-            .focus_handle(cx)
-            .is_focused(window)
+    let field = cx.update(|cx| rig.panel.read(cx).field.clone());
+    let id: ElementId = "input-state".into();
+    let before = rig.events.borrow().len();
+    for key in ["enter", "escape"] {
+        let field = field.clone();
+        let id = id.clone();
+        let marked = rig.with(cx, move |_, window, cx| {
+            let bounds = window.find(id).bounds();
+            let mut input = TestInput::new(ElementInputHandler::new(bounds, field), window);
+            input.compose_text(None, "にほん", Some(3..3), cx);
+            input.marked_text_range(cx)
+        });
+        assert!(marked.is_some(), "the field holds marked text");
+        rig.with(cx, |_, window, cx| window.press(key, cx));
+        assert_eq!(
+            rig.events.borrow()[before..],
+            [],
+            "{key} while composing neither opens a result nor closes the panel"
+        );
+    }
+    // Committed, Escape closes the panel again.
+    rig.with(cx, |panel, window, cx| {
+        panel.update(cx, |panel, cx| {
+            panel
+                .field
+                .update(cx, |field, cx| field.unmark_text(window, cx))
+        })
     });
-    assert!(in_field, "the field took focus back");
-    // The hold is over: focus moved by the user stays where they put it.
-    rig.with(cx, |_, window, cx| window.focus(&elsewhere, cx));
-    rig.with(cx, |_, _, _| {});
-    let stayed = rig.with(cx, |_, window, _| elsewhere.is_focused(window));
-    assert!(stayed, "no hold after the first draws");
+    rig.with(cx, |_, window, cx| window.press("escape", cx));
+    assert_eq!(rig.events.borrow().last(), Some(&SearchPanelEvent::Close));
+}
+
+#[gpui_kit::test]
+fn focus_in_puts_focus_on_the_first_pin_once_the_pins_are_listed(cx: &mut TestAppContext) {
+    let rig = pins_rig(cx, true);
+    let panel = rig.panel.clone();
+    // Opened while the pins load: the panel holds focus until they come.
+    rig.with(cx, |window, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_pins(
+                PinnedList {
+                    state: LoadState::Loading,
+                    rows: Vec::new(),
+                },
+                true,
+                cx,
+            );
+            panel.focus_in(window, cx);
+        })
+    });
+    let container = rig.with(cx, |window, cx| panel.read(cx).focus.is_focused(window));
+    assert!(container, "the panel itself while loading");
+    let label = rig.with(cx, |window, _| {
+        window.find("pins-panel").label().map(str::to_owned)
+    });
+    assert_eq!(label.as_deref(), Some("Pinned messages"));
+    rig.with(cx, |_, cx| {
+        panel.update(cx, |panel, cx| panel.set_pins(two_pins(), true, cx))
+    });
+    rig.with(cx, |_, _| {});
+    let first = row(1, "").id.unwrap();
+    let focused = rig.with(cx, |window, _| {
+        window.find(format!("pin-{first}")).focused()
+    });
+    assert_eq!(focused, Some(true), "the first pin");
+    // Only the first time: the pins read again leave focus where it is.
+    rig.with(cx, |_, cx| {
+        panel.update(cx, |panel, cx| panel.set_pins(two_pins(), true, cx))
+    });
+    let still = rig.with(cx, |window, _| {
+        window.find(format!("pin-{first}")).focused()
+    });
+    assert_eq!(still, Some(true));
+}
+
+#[gpui_kit::test]
+fn focus_in_with_no_pins_leaves_focus_on_the_panel(cx: &mut TestAppContext) {
+    let rig = pins_rig(cx, true);
+    let panel = rig.panel.clone();
+    rig.with(cx, |window, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.set_pins(
+                PinnedList {
+                    state: LoadState::Ready,
+                    rows: Vec::new(),
+                },
+                true,
+                cx,
+            );
+            panel.focus_in(window, cx);
+        })
+    });
+    rig.with(cx, |_, _| {});
+    let container = rig.with(cx, |window, cx| panel.read(cx).focus.is_focused(window));
+    assert!(container);
+}
+
+/// The list without the first pin, as core sends it once the server agreed to unpin it.
+fn second_pin_only() -> PinnedList {
+    PinnedList {
+        state: LoadState::Ready,
+        rows: vec![PinnedRow {
+            row: row(2, "in a thread"),
+            parent_message_id: Some("parent-9".into()),
+        }],
+    }
+}
+
+fn two_pins() -> PinnedList {
+    PinnedList {
+        state: LoadState::Ready,
+        rows: vec![
+            PinnedRow {
+                row: row(1, "first"),
+                parent_message_id: None,
+            },
+            PinnedRow {
+                row: row(2, "in a thread"),
+                parent_message_id: Some("parent-9".into()),
+            },
+        ],
+    }
+}
+
+#[gpui_kit::test]
+fn after_unpin_focus_moved_out_of_the_panel_stays_where_it_went(cx: &mut TestAppContext) {
+    let rig = pins_rig(cx, true);
+    let first = row(1, "").id.unwrap();
+    let elsewhere = cx.update(|cx| cx.focus_handle());
+    rig.with(cx, |window, cx| window.click(format!("unpin-{first}"), cx));
+    // While the server answers, the user goes on to something else.
+    rig.with(cx, |window, cx| window.focus(&elsewhere, cx));
+    let panel = rig.panel.clone();
+    rig.with(cx, |_, cx| {
+        panel.update(cx, |panel, cx| panel.set_pins(second_pin_only(), true, cx))
+    });
+    rig.with(cx, |_, _| {});
+    let stayed = rig.with(cx, |window, _| elsewhere.is_focused(window));
+    assert!(stayed, "the unpin does not pull focus back into the panel");
+}
+
+#[gpui_kit::test]
+fn a_failed_unpin_moves_no_focus_later(cx: &mut TestAppContext) {
+    let rig = pins_rig(cx, true);
+    let (first, second) = (row(1, "").id.unwrap(), row(2, "").id.unwrap());
+    rig.with(cx, |window, cx| window.click(format!("unpin-{first}"), cx));
+    let panel = rig.panel.clone();
+    rig.with(cx, |_, cx| {
+        panel.update(cx, |panel, _| panel.unpin_failed(&first))
+    });
+    // Then the pin goes some other way (another moderator unpins it).
+    rig.with(cx, |_, cx| {
+        panel.update(cx, |panel, cx| panel.set_pins(second_pin_only(), true, cx))
+    });
+    rig.with(cx, |_, _| {});
+    let focused = rig.with(cx, |window, _| {
+        window.find(format!("pin-{second}")).focused()
+    });
+    assert_ne!(
+        focused,
+        Some(true),
+        "the failed unpin left nothing armed to move focus"
+    );
 }

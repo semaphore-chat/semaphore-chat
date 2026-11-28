@@ -124,6 +124,11 @@ impl ConversationPane {
         }
     }
 
+    /// The search result a jump in progress came from, to mark the thread it opens (the rig).
+    pub fn jump_from_result(&self) -> Option<&str> {
+        self.from_result.as_deref()
+    }
+
     /// The open thread's replies, as core sent them.
     pub fn thread_rows(&self) -> &[MessageRow] {
         self.rows_of(Which::Thread)
@@ -311,9 +316,21 @@ impl ConversationPane {
             }
             PinsPanelEvent::Unpin { message_id } => {
                 let core = self.core.clone();
-                self.command("unpinning the message", window, cx, async move {
-                    core.unpin_message(message_id, None).await
-                });
+                let asked = message_id.clone();
+                self.exec.run(
+                    window,
+                    cx,
+                    async move { core.unpin_message(message_id, None).await },
+                    move |this, result, _, cx| {
+                        if let Err(error) = result {
+                            // The pin stays: the panel moves no focus for it.
+                            if let Some(Side::Pins { panel, .. }) = &this.side {
+                                panel.update(cx, |panel, _| panel.unpin_failed(&asked));
+                            }
+                            this.report("unpinning the message", &error, cx);
+                        }
+                    },
+                );
             }
             PinsPanelEvent::Retry => {
                 self.core.retry_failed();

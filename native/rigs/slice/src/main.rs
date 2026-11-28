@@ -109,7 +109,8 @@
 //! `reaction S EMOJI COUNT` (with mine among them), `thread-rows >= N`, `thread-sent S`,
 //! `subscribed yes|no` (the open thread), `unread-after S` (the divider follows that row),
 //! `notice S`, `no-notice`, `pinned-count N` (the header's badge), `composer-text S`,
-//! `composer-placeholder S` (exactly), `search-hits >= N`, `element ID`, `no-element ID`.
+//! `composer-placeholder S` (exactly), `search-hits >= N`, `element ID`, `no-element ID`,
+//! `from-result none|set` (a search result's jump, waiting to mark the thread it opens).
 
 mod thumbs;
 mod w13;
@@ -331,6 +332,8 @@ enum Condition {
     /// The image viewer is open.
     Viewer(bool),
     SidePanel(String),
+    /// `from-result set`: a search result's jump is waiting to mark its thread as from it.
+    FromResult(bool),
     Editing(bool),
     Picker(bool),
     Pinned(String, bool),
@@ -703,6 +706,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["side-panel", kind @ ("none" | "pins" | "search" | "thread")] => {
             Condition::SidePanel((*kind).into())
         }
+        ["from-result", state @ ("none" | "set")] => Condition::FromResult(*state == "set"),
         ["editing", "yes"] => Condition::Editing(true),
         ["editing", "no"] => Condition::Editing(false),
         ["picker", "open"] => Condition::Picker(true),
@@ -2014,6 +2018,7 @@ impl Rig {
             | Condition::FileReady(_)
             | Condition::Viewer(_)
             | Condition::SidePanel(_)
+            | Condition::FromResult(_)
             | Condition::Editing(_)
             | Condition::Picker(_)
             | Condition::Pinned(..)
@@ -2137,6 +2142,7 @@ impl Rig {
             };
             Some(match condition {
                 Condition::SidePanel(kind) => pane.side_panel_kind() == kind,
+                Condition::FromResult(set) => pane.jump_from_result().is_some() == *set,
                 Condition::Editing(yes) => pane.editing_message().is_some() == *yes,
                 Condition::Picker(open) => pane.picker_open() == *open,
                 Condition::Pinned(text, pinned) => {
@@ -2299,6 +2305,7 @@ fn w1_condition(condition: &Condition) -> bool {
     matches!(
         condition,
         Condition::SidePanel(_)
+            | Condition::FromResult(_)
             | Condition::Editing(_)
             | Condition::Picker(_)
             | Condition::Pinned(..)

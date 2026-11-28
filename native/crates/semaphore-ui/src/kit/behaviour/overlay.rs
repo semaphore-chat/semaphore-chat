@@ -485,14 +485,23 @@ fn flush_released(host: &Entity<BehaviourHost>, window: &mut Window, cx: &mut Ap
             let host = host.read(cx);
             let overlay = &host.overlay;
             // The web's `focusPosition`: lost when nothing has focus, focus is parked (the
-            // sink, the root's own handle) or on an element no longer drawn.
+            // sink, the root's own handle) or on an element no longer drawn. Focus the owner moved
+            // since the last frame, to a control not drawn yet (a menu item that mounts a panel
+            // and puts the caret in its field, as the layer goes), is outside: it was put there
+            // on purpose, and the layer's opener does not take it back.
             let focused = window.focused(cx);
+            let moved_since_frame = |handle: &FocusHandle| {
+                host.last_focus
+                    .as_ref()
+                    .and_then(WeakFocusHandle::upgrade)
+                    .is_none_or(|last| last != *handle)
+            };
             let lost = match &focused {
                 None => true,
                 Some(handle) => {
                     Some(handle) == host.sink().as_ref()
                         || *handle == host.root
-                        || !host.drawn(handle, window)
+                        || (!host.drawn(handle, window) && !moved_since_frame(handle))
                 }
             };
             let focus = if lost {

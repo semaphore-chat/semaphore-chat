@@ -743,6 +743,8 @@ impl ConversationPane {
             async move { core.open_conversation_at(opening, at).await },
             move |this, result, window, cx| {
                 if let Err(error) = result {
+                    // No thread opened: the next one is not from this result.
+                    this.from_result = None;
                     this.report("opening the message", &error, cx);
                     return;
                 }

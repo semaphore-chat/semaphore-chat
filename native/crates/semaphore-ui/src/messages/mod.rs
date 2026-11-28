@@ -60,7 +60,7 @@ pub use media::{
 pub use row::ReplyPreview;
 pub(crate) use row::author_name;
 pub use selection::{Pos, Selection};
-pub(crate) use text::plain_text;
+pub(crate) use text::plain_text_with_links;
 pub use view::{
     ClearSelection, CopySelection, ListData, ListOptions, ListStatus, MessageList,
     MessageListEvent, SelectAll, init, with_list_frame_policy,

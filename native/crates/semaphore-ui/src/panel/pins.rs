@@ -215,6 +215,12 @@ impl Render for PinsPanel {
             window,
             cx,
         );
+        // Focus in the panel, or lost (on the Unpin of a row now gone): the panel may move it.
+        // Anywhere else, it was moved on purpose and stays.
+        let ours = window.focused(cx).is_none() || self.focus.contains_focused(window, cx);
+        if !ours {
+            self.unpinned = None;
+        }
         // An unpinned row has gone: its neighbour takes focus.
         if let Some((gone, index)) = self.unpinned.clone()
             && self.pins.state == LoadState::Ready
@@ -231,8 +237,17 @@ impl Render for PinsPanel {
                 window.focus(&self.focus, cx);
             }
         }
-        let focus = self.focus.clone();
-        super::hold_focus(&mut self.hold_focus, &focus, window, cx);
+        // Opened with `focus_in`: the first pin takes focus once the pins are listed, if the
+        // panel itself still has it.
+        if self.focus_first && self.pins.state == LoadState::Ready {
+            self.focus_first = false;
+            if self.focus.is_focused(window)
+                && let Some(first) = listed.first()
+                && let Some((handle, _)) = rows.focus(&row_id(first))
+            {
+                window.focus(&handle, cx);
+            }
+        }
         let body = match &self.pins.state {
             LoadState::Loading => self.loading(),
             LoadState::Failed { .. } => self.failed(cx),
@@ -251,6 +266,8 @@ impl Render for PinsPanel {
         div()
             .id("pins-panel")
             .test_support()
+            .role(Role::Complementary)
+            .aria_label("Pinned messages")
             .track_focus(&self.focus)
             .size_full()
             .on_key_down(cx.listener(|_, event: &KeyDownEvent, _, cx| {

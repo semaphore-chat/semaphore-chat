@@ -822,12 +822,14 @@ impl ConversationPane {
     /// layer (a thread over the search or pins, else the panel) closes, else the conversation is marked
     /// read to its newest message, whatever is on screen.
     fn escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        // One layer per press: a thread over the search goes back to the search.
-        if self.thread.is_some() && self.side.is_some() {
+        // One layer per press: a thread closes to what it was opened from (a thread over the
+        // search goes back to the search, focus on its result; else the caret goes back to the
+        // composer), and the pins or the search alone close to More, which opened them.
+        if self.thread.is_some() {
             self.close_thread(window, cx);
             return;
         }
-        if self.thread.is_some() || self.side.is_some() {
+        if self.side.is_some() {
             self.close_side_by_hand(cx);
             return;
         }

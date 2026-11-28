@@ -23,6 +23,8 @@ pub(crate) mod stories;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_menu_mounts;
+#[cfg(test)]
 mod tests_queue;
 #[cfg(test)]
 mod tests_review;

@@ -22,6 +22,7 @@
 //! expect label "Direct Messages"                    # fails unless that accessible name exists
 //! expect no-label "Members"                         # fails if it does
 //! expect focused "Username"                         # fails unless it has keyboard focus
+//! expect focused-id search-hit-42                   # the same, for the element with that id
 //! audit                                             # roles and names; fails on a nameless control
 //! ```
 
@@ -98,6 +99,9 @@ pub enum Step {
     },
     ExpectFocused {
         label: String,
+    },
+    ExpectFocusedId {
+        id: String,
     },
     Audit,
 }
@@ -210,6 +214,7 @@ pub fn step(words: &[&str]) -> Result<Step, String> {
         ["expect", "focused", label] => Step::ExpectFocused {
             label: (*label).into(),
         },
+        ["expect", "focused-id", id] => Step::ExpectFocusedId { id: (*id).into() },
         ["audit"] => Step::Audit,
         ["shot", name] => Step::Shot {
             name: (*name).into(),
@@ -258,11 +263,13 @@ mod tests {
             expect label "A name"
             expect no-label B
             expect focused C
+            expect focused-id d-1
             audit
             "#,
         )
         .unwrap();
-        assert_eq!(steps.len(), 19);
+        assert_eq!(steps.len(), 20);
+        assert_eq!(steps[18], Step::ExpectFocusedId { id: "d-1".into() });
         assert_eq!(steps[3], Step::Hover { id: "row-2".into() });
         assert_eq!(steps[4], Step::RightClick { id: "row-3".into() });
         assert_eq!(

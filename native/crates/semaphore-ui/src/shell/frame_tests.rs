@@ -13,7 +13,7 @@ use crate::messages::{ListData, ListOptions, ListStatus, MessageList, NoMedia};
 use crate::nav::Route;
 use core::prelude::v1::test;
 use gpui_kit::base::TestSupportExt as _;
-use gpui_kit::test::TestWindowExt as _;
+use gpui_kit::test::{TestEventExt as _, TestWindowExt as _};
 use gpui_kit::*;
 use semaphore_core::ConnectionState;
 use semaphore_core::model::{
@@ -999,4 +999,96 @@ fn the_home_has_the_load_faces_while_the_communities_load_or_fail(cx: &mut TestA
         count(&events, |event| matches!(event, ShellEvent::Retry)),
         1
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The header's More
+
+/// A press and a release at the centre of `id`, dispatched as the platform does: no frame is
+/// forced between them, the app settles after each.
+fn raw_click(cx: &mut VisualTestContext, id: &str) {
+    let at = bounds_of(cx, id).center();
+    cx.update(|window, cx| window.pointer_down(at, MouseButton::Left, cx));
+    cx.run_until_parked();
+    cx.update(|window, cx| window.pointer_up(at, MouseButton::Left, cx));
+    cx.run_until_parked();
+}
+
+fn more_focused(view: &Entity<Shell>, cx: &mut VisualTestContext) -> bool {
+    cx.update(|window, cx| view.read(cx).more_focus.is_focused(window))
+}
+
+/// More's menu closed by Escape or by Tab gives focus back to More.
+#[gpui_kit::test]
+fn more_closed_by_escape_or_tab_gives_focus_back_to_more(cx: &mut TestAppContext) {
+    let (view, cx, _, _) = shell(cx, 1280., general());
+    for key in ["escape", "tab"] {
+        cx.update(|window, cx| {
+            let more = view.read(cx).more_focus.clone();
+            window.focus(&more, cx);
+        });
+        draw(cx);
+        click(cx, "header-more");
+        assert!(has(cx, "header-more-menu"), "{key}: the menu is open");
+        assert!(!more_focused(&view, cx), "{key}: focus is in the menu");
+        cx.update(|window, cx| window.press(key, cx));
+        draw(cx);
+        assert!(!has(cx, "header-more-menu"), "{key} closes the menu");
+        assert!(more_focused(&view, cx), "{key}: focus back on More");
+    }
+}
+
+/// More's Search messages and Pinned messages: the owner mounts the panel and moves focus into
+/// it as it hears the event, and focus stays there as the menu goes, with no frame forced, at
+/// every width the header has More.
+#[gpui_kit::test]
+fn a_panel_opened_from_more_keeps_the_focus_its_owner_gave_it(cx: &mut TestAppContext) {
+    for width in [900., 1280.] {
+        for item in ["header-more-search", "header-more-pins"] {
+            let (view, cx, _, _) = shell(cx, width, general());
+            let inner: Rc<RefCell<Option<FocusHandle>>> = Rc::default();
+            let mounted = inner.clone();
+            let _subscription = cx.update(|window, cx| {
+                window.subscribe(&view, cx, move |shell, event: &ShellEvent, window, cx| {
+                    if !matches!(event, ShellEvent::OpenSearch | ShellEvent::OpenPins) {
+                        return;
+                    }
+                    let (root, field, second) = (
+                        cx.focus_handle(),
+                        cx.focus_handle().tab_stop(true),
+                        cx.focus_handle().tab_stop(true),
+                    );
+                    let panel = cx.new(|_| FocusPanel {
+                        root,
+                        inner: field.clone(),
+                        second,
+                    });
+                    shell.update(cx, |shell, cx| shell.set_side_panel(Some(panel.into()), cx));
+                    window.focus(&field, cx);
+                    *mounted.borrow_mut() = Some(field);
+                })
+            });
+            cx.update(|window, cx| {
+                let more = view.read(cx).more_focus.clone();
+                window.focus(&more, cx);
+            });
+            draw(cx);
+            raw_click(cx, "header-more");
+            assert!(has(cx, "header-more-menu"));
+            raw_click(cx, item);
+            let field = inner.borrow().clone().expect("the panel was mounted");
+            assert!(
+                cx.update(|window, _| field.is_focused(window)),
+                "{item} at {width}: focus stays in the panel"
+            );
+            // Frames that have nothing to do with it leave it there.
+            for _ in 0..4 {
+                draw(cx);
+            }
+            assert!(
+                cx.update(|window, _| field.is_focused(window)),
+                "{item} at {width}: still in the panel later"
+            );
+        }
+    }
 }

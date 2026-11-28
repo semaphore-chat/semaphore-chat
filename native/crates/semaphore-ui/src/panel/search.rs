@@ -239,15 +239,32 @@ impl SearchPanel {
     /// Up in the field belongs to the field.
     fn on_up(&mut self, _: &MoveUp, _: &mut Window, _: &mut Context<Self>) {}
 
+    /// An input method has marked text in the field: Enter and Escape are its, to commit or
+    /// cancel the composition. The panel does nothing with them, and nothing past it (the
+    /// pane's Escape) sees them either.
+    fn composing(&self, window: &mut Window, cx: &mut App) -> bool {
+        self.field
+            .update(cx, |field, cx| field.marked_text_range(window, cx))
+            .is_some()
+    }
+
     /// Enter in the field opens the first result.
     fn on_enter(&mut self, _: &Enter, window: &mut Window, cx: &mut Context<Self>) {
+        if self.composing(window, cx) {
+            cx.stop_propagation();
+            return;
+        }
         if self.field_focused(window, cx) && !self.model.hits().is_empty() {
             self.jump(0, cx);
             cx.stop_propagation();
         }
     }
 
-    fn on_escape(&mut self, _: &Escape, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_escape(&mut self, _: &Escape, window: &mut Window, cx: &mut Context<Self>) {
+        if self.composing(window, cx) {
+            cx.stop_propagation();
+            return;
+        }
         cx.emit(SearchPanelEvent::Close);
         cx.stop_propagation();
     }
@@ -259,10 +276,7 @@ impl SearchPanel {
 
     fn top(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let scope = self.model.scope();
-        let placeholder = match scope {
-            SearchScopeChoice::Here => "Search this channel",
-            SearchScopeChoice::Community => "Search all channels",
-        };
+        let placeholder = field_placeholder(scope, self.community_scope);
         let view = cx.entity().downgrade();
         let tabs = self.community_scope.then(|| {
             Tabs::new(
@@ -511,12 +525,28 @@ pub(crate) fn result_words(hit: &SearchHit) -> String {
     }
 }
 
-/// What a screen reader hears when results arrive, as the web's.
-pub(crate) fn results_announcement(count: usize, scope: SearchScopeChoice) -> String {
+/// The search field's placeholder. `community_scope` false: a DM, which has no channels to choose
+/// from and searches "this conversation".
+pub(crate) fn field_placeholder(scope: SearchScopeChoice, community_scope: bool) -> &'static str {
+    match scope {
+        SearchScopeChoice::Here if !community_scope => "Search this conversation",
+        SearchScopeChoice::Here => "Search this channel",
+        SearchScopeChoice::Community => "Search all channels",
+    }
+}
+
+/// What a screen reader hears when results arrive, as the web's. `community_scope` false: a DM,
+/// "in this conversation".
+pub(crate) fn results_announcement(
+    count: usize,
+    scope: SearchScopeChoice,
+    community_scope: bool,
+) -> String {
     if count == 0 {
         return "No messages found".to_owned();
     }
     let place = match scope {
+        SearchScopeChoice::Here if !community_scope => "in this conversation",
         SearchScopeChoice::Here => "in this channel",
         SearchScopeChoice::Community => "in all channels",
     };
@@ -532,8 +562,6 @@ impl Render for SearchPanel {
         if let Some(words) = self.announce.take() {
             announce(words, Politeness::Polite, window, cx);
         }
-        let field = self.field.read(cx).focus_handle(cx);
-        super::hold_focus(&mut self.hold_focus, &field, window, cx);
         let header = panel_heading(
             "search-heading",
             "Search messages",
