@@ -971,9 +971,8 @@ export const WideNotificationLevelsLight = story({
 /** Phone: the header's More has the channel's notification level too (the menu is at every width). */
 export const PhoneNotificationsInMore = story({ handlers: notificationHandlers, steps: [headerMore] });
 
-// --- Search (PR 10e, B9): the right island at desktop width, the right Sheet at tablet width. A phone keeps the old
-// search screen, so at phone width these stories show the chat with More's menu closed (Search leaves for that screen,
-// which the story frame does not follow). ---
+// --- Search (PR 10e, B9): the right island at desktop width, the right Sheet at tablet width (a phone keeps the old
+// search screen, so these are tablet and desktop only). ---
 
 const SEARCH_HITS = [
   message('u-kwam3', at(1, 2), [text('ok that run was cursed, same time tomorrow?')]),
@@ -1034,3 +1033,8 @@ export const SearchError = story({ handlers: searchHandlers('error'), steps: [..
 
 /** Still searching. */
 export const SearchLoading = story({ handlers: searchHandlers('slow'), steps: [...openSearch, typeSearch('run')] });
+
+// A phone's Search is the old search screen: these are tablet and desktop stories.
+for (const searchStory of [SearchOpen, SearchResults, SearchResultsLight, SearchAllChannels, SearchManyResults, SearchNoResults, SearchError, SearchLoading]) {
+  searchStory.meta = { viewports: ['tablet', 'desktop'] };
+}
