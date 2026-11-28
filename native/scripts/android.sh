@@ -19,7 +19,8 @@
 # - The image tag hashes the base tag, the Dockerfile and the uid, so a change rebuilds it and an
 #   unchanged one never does.
 # - The cargo registry, the per-checkout target directory, Gradle's caches and HOME are named
-#   volumes. HOME carries ~/.android/debug.keystore, so every build signs the APK with the same
+#   volumes (NATIVE_CARGO_CACHE and NATIVE_GRADLE_CACHE: another volume, or a host path, which CI
+#   caches). HOME carries ~/.android/debug.keystore, so every build signs the APK with the same
 #   debug key and a sideloaded update is not rejected for a changed signature.
 # - The repo is mounted at its own path, so paths in output work on the host too.
 # - ANDROID_ABIS is a comma-separated list of ABIs, arm64-v8a by default. The x86_64 emulator
@@ -33,7 +34,8 @@ HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
 
 if [ "${1:-}" != --inner ]; then
-  base="$("$NATIVE_DIR/scripts/in-image.sh" --print-image)"
+  # The base's name only: it is pulled or built below only if this image has to be built.
+  base="$("$NATIVE_DIR/scripts/in-image.sh" --print-name)"
   # Everything the image is built from: the Dockerfile, the base, the ids it chowns to, and the
   # uniffi version it installs uniffi-bindgen at (read from Cargo.lock, as the Dockerfile does).
   # The whole lockfile isn't hashed: any other dependency change would rebuild the image for nothing.
@@ -42,17 +44,23 @@ if [ "${1:-}" != --inner ]; then
             echo "$HOST_GID"; echo "uniffi=$uniffi_version"; } | sha256sum | cut -c1-12)"
   image="semaphore-native-android:$tag"
 
-  if ! docker image inspect "$image" >/dev/null 2>&1; then
+  # Prints the tag without pulling or building, for images layered on this one
+  # (native/scripts/android-device-test.sh adds the emulator).
+  if [ "${1:-}" = --print-name ]; then echo "$image"; exit 0; fi
+
+  # shellcheck source=image-cache.sh
+  . "$NATIVE_DIR/scripts/image-cache.sh"
+  if ! native_image_fetch "$image"; then
+    "$NATIVE_DIR/scripts/in-image.sh" --print-image >/dev/null
     echo "android: building $image (first use of this toolchain: JDK, SDK, NDK, Gradle) ..." >&2
-    docker build -q -f "$NATIVE_DIR/docker/Dockerfile.android" \
+    native_image_build "$image" -f "$NATIVE_DIR/docker/Dockerfile.android" \
       --build-arg "BASE=$base" \
       --build-arg "HOST_UID=$HOST_UID" \
       --build-arg "HOST_GID=$HOST_GID" \
-      -t "$image" "$NATIVE_DIR" >/dev/null
+      "$NATIVE_DIR"
   fi
 
-  # Prints the image it would run, for images layered on this one
-  # (native/scripts/android-device-test.sh adds the emulator).
+  # Prints the image it would run, pulled or built first.
   if [ "${1:-}" = --print-image ]; then echo "$image"; exit 0; fi
 
   "$ROOT/scripts/test-net.sh" >/dev/null
@@ -63,9 +71,9 @@ if [ "${1:-}" != --inner ]; then
     --network semaphore-test \
     --user "$HOST_UID:$HOST_GID" \
     -v "$ROOT:$ROOT" \
-    -v semaphore-native-cargo:/cache/cargo \
+    -v "$(native_cache_mount "${NATIVE_CARGO_CACHE:-semaphore-native-cargo}" /cache/cargo)" \
     -v "semaphore-native-target-android-$checkout:/cache/target" \
-    -v semaphore-android-gradle:/cache/gradle \
+    -v "$(native_cache_mount "${NATIVE_GRADLE_CACHE:-semaphore-android-gradle}" /cache/gradle)" \
     -v semaphore-android-home:/cache/home \
     -e "CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0}" \
     -e "ANDROID_ABIS=${ANDROID_ABIS:-arm64-v8a}" \

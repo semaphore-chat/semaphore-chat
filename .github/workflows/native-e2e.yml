@@ -17,6 +17,11 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # The build image is pulled from GHCR by its content-hash tag (native/scripts/image-cache.sh,
+  # #887), with no login; a miss builds it locally. Only native-images.yml pushes it.
+  NATIVE_IMAGE_REGISTRY: ghcr.io/semaphore-chat
+  
 jobs:
   slice-e2e:
     name: Headless end to end (fake server, lavapipe)
@@ -26,13 +31,27 @@ jobs:
     # `scripts/in-image.sh scripts/slice-e2e.sh`, which builds or reuses the image on
     # `semaphore-test`. The suite needs the image (Arch's glib2, lavapipe, clang/lld from the
     # pinned snapshot); on the bare runner the .cargo/config.toml link args find no glib and the
-    # run is not the deterministic one the shot comparison expects. There is no separate cache:
-    # the per-checkout target volume lives inside the container.
+    # run is not the deterministic one the shot comparison expects. The cargo registry is restored
+    # from the copy native-spike.yml saves on main; the target directory is not cached.
     defaults:
       run:
         working-directory: native
     steps:
       - uses: actions/checkout@v7
+      # actions/cache refuses paths with `..`, and a job's env can't read the runner context, so
+      # the cache directory under the runner's temp directory is set here.
+      - name: Point the caches at the runner's temp directory
+        run: |
+          echo "NATIVE_CARGO_CACHE=$RUNNER_TEMP/native-cache/cargo" >> "$GITHUB_ENV"
+      - name: Restore the cargo registry
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ env.NATIVE_CARGO_CACHE }}/registry/index
+            ${{ env.NATIVE_CARGO_CACHE }}/registry/cache
+            ${{ env.NATIVE_CARGO_CACHE }}/git/db
+          key: native-cargo-desktop-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: native-cargo-desktop-
       - name: Run the default suite
         run: scripts/in-image.sh scripts/slice-e2e.sh
       # The rig's own log, the steps, the fake server's log and the shots: what a failing run

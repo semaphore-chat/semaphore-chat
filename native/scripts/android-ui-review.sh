@@ -87,6 +87,8 @@ REGEN="native/scripts/android-ui-review.sh --base $BASE_REF"
 if [[ -n "$PR" ]]; then REGEN+=" --pr $PR --update-pr"; fi
 
 IMAGE="$("$NATIVE/scripts/android.sh" --print-image)"
+# shellcheck source=image-cache.sh
+. "$NATIVE/scripts/image-cache.sh"
 "$REPO_ROOT/scripts/test-net.sh" >/dev/null
 HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
@@ -101,7 +103,7 @@ in_image() { # <dir> <command...>
     --network semaphore-test \
     --user "$HOST_UID:$HOST_GID" \
     -v "$REPO_ROOT:$REPO_ROOT" \
-    -v semaphore-android-gradle:/cache/gradle \
+    -v "$(native_cache_mount "${NATIVE_GRADLE_CACHE:-semaphore-android-gradle}" /cache/gradle)" \
     -v semaphore-android-home:/cache/home \
     -w "$dir" \
     "$IMAGE" "$@"

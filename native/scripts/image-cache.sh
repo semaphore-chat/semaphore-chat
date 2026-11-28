@@ -1,0 +1,95 @@
+# shellcheck shell=bash
+# Sourced by the scripts that build native/'s pinned images (in-image.sh, android.sh,
+# android-device-test.sh, package-linux.sh, package-windows.sh, test-package-windows.sh,
+# desktop-probe.sh, rigs/sysaudio/image.sh).
+#
+# Each image keeps its local name, semaphore-native-<kind>:<hash>, where the hash covers every
+# file the image is built from. With NATIVE_IMAGE_REGISTRY set (CI sets ghcr.io/semaphore-chat),
+# an image missing locally is pulled from <registry>/<local name>-<generation> before it is built; any failed
+# pull (a miss, an outage) falls back to a local build. Pulls need no login: the packages are
+# public.
+#
+# Pushing (NATIVE_IMAGE_PUSH=1) is for .github/workflows/native-images.yml only, which runs on
+# pushes to main, builds nothing but the images, and pushes each from exactly one job. A tag is
+# pushed only when the registry answers "manifest unknown" for it; one that exists, or an answer
+# that is neither, is left alone. GHCR tags are mutable, so this is not a lock: it relies on that
+# workflow being the only pusher and on its runs not overlapping (one concurrency group). There is
+# no `latest`; a changed input is a new hash, so a new tag.
+#
+#   native_image_fetch <image>          0 if <image> is here, locally or pulled; 1 if it must be built
+#   native_image_build <image> <docker build args...>   builds it as <image> (-q), then pushes it
+#
+# Neither set: nothing is pulled or pushed, and the scripts build locally exactly as before.
+
+NATIVE_IMAGE_SOURCE_URL="https://github.com/semaphore-chat/semaphore-chat"
+
+# The registry tag is <local tag>-<generation>. Bumping the generation orphans every tag pushed
+# before it: nothing pulls them again and native-images.yml pushes fresh ones from main. g2 drops
+# the tags that pull-request runs pushed while #887 was in review, before only main could push.
+NATIVE_IMAGE_CACHE_GEN=g2
+
+native_image_remote() { # <image> -> <registry>/<image>-<generation>
+  printf '%s/%s-%s' "$NATIVE_IMAGE_REGISTRY" "$1" "$NATIVE_IMAGE_CACHE_GEN"
+}
+
+native_image_fetch() {
+  local image="$1" remote
+  docker image inspect "$image" >/dev/null 2>&1 && return 0
+  [ -n "${NATIVE_IMAGE_REGISTRY:-}" ] || return 1
+  remote="$(native_image_remote "$image")"
+  echo "image-cache: pulling $remote ..." >&2
+  # A miss and a registry outage both fall back to a build: the run is never worse than without
+  # the registry.
+  if docker pull -q "$remote" >/dev/null 2>&1; then
+    docker tag "$remote" "$image" || return 1
+    echo "image-cache: pulled $remote" >&2
+    return 0
+  fi
+  echo "image-cache: $remote is not in the registry (or the pull failed); building it" >&2
+  return 1
+}
+
+native_image_build() {
+  local image="$1" remote
+  shift
+  # The source label links a pushed package to this repository on GHCR.
+  docker build -q --label "org.opencontainers.image.source=$NATIVE_IMAGE_SOURCE_URL" \
+    -t "$image" "$@" >/dev/null || return 1
+  [ -n "${NATIVE_IMAGE_REGISTRY:-}" ] && [ "${NATIVE_IMAGE_PUSH:-0}" = 1 ] || return 0
+  remote="$(native_image_remote "$image")"
+  # Only a definite "not there" leads to a push: an existing tag is never pushed over, and an
+  # error (network, auth) is not taken to mean absent.
+  local answer
+  if answer="$(docker manifest inspect "$remote" 2>&1 >/dev/null)"; then
+    echo "image-cache: $remote already exists; not pushing" >&2
+    return 0
+  fi
+  case "$answer" in
+    *"manifest unknown"*|*"no such manifest"*) ;;
+    *)
+      echo "image-cache: can't tell whether $remote exists ($answer); not pushing" >&2
+      [ -z "${GITHUB_ACTIONS:-}" ] || echo "::warning title=Image cache::not pushing $remote: $answer"
+      return 0
+      ;;
+  esac
+  echo "image-cache: pushing $remote ..." >&2
+  docker tag "$image" "$remote"
+  # A failed push only costs the next run a build, so it warns and does not fail the job.
+  if docker push -q "$remote" >/dev/null; then
+    echo "image-cache: pushed $remote" >&2
+  else
+    echo "image-cache: pushing $remote failed; the next run builds it again" >&2
+    [ -z "${GITHUB_ACTIONS:-}" ] || echo "::warning title=Image cache::pushing $remote failed"
+  fi
+  return 0
+}
+
+# A cache mount for `docker run -v`: a named volume, or an absolute host path (CI points these at
+# directories actions/cache saves and restores). A path is created first, so Docker does not
+# create it owned by root.
+native_cache_mount() { # <volume-or-absolute-path> <container path>
+  case "$1" in
+    /*) mkdir -p "$1" ;;
+  esac
+  printf '%s:%s' "$1" "$2"
+}

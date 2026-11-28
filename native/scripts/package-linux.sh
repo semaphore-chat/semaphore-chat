@@ -524,8 +524,11 @@ if [ "${1:-}" = "--finish-artifacts" ]; then
   exit 0
 fi
 
+PRINT_IMAGE=0
 case "${1:-}" in
   -h|--help) usage; exit 0 ;;
+  # Pulls or builds the image, prints its tag and builds nothing (.github/workflows/native-images.yml).
+  --print-image) PRINT_IMAGE=1 ;;
   "") ;;
   *) die "unknown argument '$1' (try --help)" ;;
 esac
@@ -535,11 +538,14 @@ command -v docker >/dev/null 2>&1 || die "docker is required"
 tag="$(cat "$NATIVE_DIR/docker/Dockerfile.package" "$NATIVE_DIR/rust-toolchain.toml" \
   | { cat; echo "$HOST_UID"; } | sha256sum | cut -c1-12)"
 IMAGE="semaphore-native-package:$tag"
-if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+# shellcheck source=image-cache.sh
+. "$NATIVE_DIR/scripts/image-cache.sh"
+if ! native_image_fetch "$IMAGE"; then
   echo "package-linux: building $IMAGE (first use of the package toolchain) ..." >&2
-  docker build -q -f "$NATIVE_DIR/docker/Dockerfile.package" \
-    --build-arg "HOST_UID=$HOST_UID" -t "$IMAGE" "$NATIVE_DIR" >/dev/null
+  native_image_build "$IMAGE" -f "$NATIVE_DIR/docker/Dockerfile.package" \
+    --build-arg "HOST_UID=$HOST_UID" "$NATIVE_DIR"
 fi
+if [ "$PRINT_IMAGE" = 1 ]; then echo "$IMAGE"; exit 0; fi
 
 "$ROOT/scripts/test-net.sh" >/dev/null
 

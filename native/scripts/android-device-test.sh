@@ -47,17 +47,26 @@ HOST_GID="$(id -g)"
 
 if [ "${1:-}" != --inner ]; then
   # The Android image, built if this is its first use: the emulator image is layered on it.
-  android_image="$(bash "$NATIVE_DIR/scripts/android.sh" --print-image)"
-  tag="$( { cat "$NATIVE_DIR/docker/Dockerfile.android-emulator"; echo "$android_image"; } \
-    | sha256sum | cut -c1-12)"
+  # Its name only: it is pulled or built below only if the emulator image has to be built.
+  android_image="$(bash "$NATIVE_DIR/scripts/android.sh" --print-name)"
+  # Everything the image is built from: the Dockerfile, the package XML files it copies, the base.
+  tag="$( { cat "$NATIVE_DIR/docker/Dockerfile.android-emulator" \
+              "$NATIVE_DIR/docker/android-emulator/emulator-package.xml" \
+              "$NATIVE_DIR/docker/android-emulator/system-image-package.xml";
+            echo "$android_image"; } | sha256sum | cut -c1-12)"
   image="semaphore-native-android-emulator:$tag"
 
-  if ! docker image inspect "$image" >/dev/null 2>&1; then
+  # shellcheck source=image-cache.sh
+  . "$NATIVE_DIR/scripts/image-cache.sh"
+  if ! native_image_fetch "$image"; then
+    bash "$NATIVE_DIR/scripts/android.sh" --print-image >/dev/null
     echo "android-device-test: building $image (the emulator and its system image) ..." >&2
-    docker build -q -f "$NATIVE_DIR/docker/Dockerfile.android-emulator" \
+    native_image_build "$image" -f "$NATIVE_DIR/docker/Dockerfile.android-emulator" \
       --build-arg "BASE=$android_image" \
-      -t "$image" "$NATIVE_DIR" >/dev/null
+      "$NATIVE_DIR"
   fi
+  # Prints the image, pulled or built first, and runs nothing (.github/workflows/native-images.yml).
+  if [ "${1:-}" = --print-image ]; then echo "$image"; exit 0; fi
 
   if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
     echo "android-device-test: /dev/kvm must be readable and writable: the emulator needs it" >&2
@@ -90,9 +99,9 @@ if [ "${1:-}" != --inner ]; then
     --group-add "$(stat -c %g /dev/kvm)" \
     --user "$HOST_UID:$HOST_GID" \
     -v "$ROOT:$ROOT" \
-    -v semaphore-native-cargo:/cache/cargo \
+    -v "$(native_cache_mount "${NATIVE_CARGO_CACHE:-semaphore-native-cargo}" /cache/cargo)" \
     -v "semaphore-native-target-android-$checkout:/cache/target" \
-    -v semaphore-android-gradle:/cache/gradle \
+    -v "$(native_cache_mount "${NATIVE_GRADLE_CACHE:-semaphore-android-gradle}" /cache/gradle)" \
     -v semaphore-android-home:/cache/home \
     -e "CARGO_INCREMENTAL=${CARGO_INCREMENTAL:-0}" \
     -w "$NATIVE_DIR" \
