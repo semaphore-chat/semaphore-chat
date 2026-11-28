@@ -16,6 +16,7 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -200,15 +201,24 @@ class DeviceChatTest {
         compose.onNode(hasText(SignInText.SIGN_IN) and hasClickAction()).performClick()
         waitFor(hasText("Couch Co-op"))
         waitFor(hasText("general") and hasClickAction())
-        compose.onNode(hasText("general") and hasClickAction()).performClick()
         val field = hasTestTag(ComposerText.FIELD_TAG)
-        waitFor(field)
         val send = hasContentDescription(ComposerText.SEND) and hasClickAction()
+        // Send stays disabled until the list's first page is there (no row could carry the text
+        // yet), and a tap on it then does nothing. The first page is held back a moment so the
+        // field is typed into while the list still loads, as on a slow device, every run.
+        control(server, "delay_route", """{"operationId":"MessagesController_findAllForChannel","ms":2000}""")
+        try {
+            compose.onNode(hasText("general") and hasClickAction()).performClick()
+            waitFor(field)
+            compose.onNode(field).performTextInput("sent from the device")
+            waitFor(send and isEnabled())
+        } finally {
+            control(server, "delay_route", """{"operationId":"MessagesController_findAllForChannel","ms":0}""")
+        }
 
         // Sent: the field clears at once, and the row is confirmed (no longer "Sending…").
-        compose.onNode(field).performTextInput("sent from the device")
         compose.onNode(send).performClick()
-        waitFor(hasText("sent from the device"))
+        waitFor(hasText("sent from the device") and !field)
         compose.waitUntil(30_000) {
             compose.onAllNodes(hasText(ChatKitText.SENDING)).fetchSemanticsNodes().isEmpty() &&
                 compose.onAllNodes(field and hasText("sent from the device")).fetchSemanticsNodes().isEmpty()
@@ -217,6 +227,7 @@ class DeviceChatTest {
         // Not sent: the row says so, and Retry sends it.
         control(server, "fail_next_send", """{"code":"UNKNOWN"}""")
         compose.onNode(field).performTextInput("retried from the device")
+        waitFor(send and isEnabled())
         compose.onNode(send).performClick()
         waitFor(hasText(ChatKitText.NOT_SENT))
         compose.onNode(hasText(ChatKitText.RETRY) and hasClickAction()).performClick()
