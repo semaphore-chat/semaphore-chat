@@ -187,7 +187,7 @@ press enter
 wait core upload-failed "too big at first" within 15
 wait idle
 shot 21-upload-failed
-click-row upload-retry "too big at first" 0
+click-row upload/retry "too big at first" 0
 wait core attachments "too big at first" 1 within 15
 wait core uploads "too big at first" 0
 server fail_route "{\"operationId\": \"FileUploadController_uploadFile\", \"status\": 413, \"code\": \"PAYLOAD_TOO_LARGE\"}"
@@ -195,7 +195,7 @@ attach rigs/slice/fixtures/notes.txt
 type "never mind the file"
 press enter
 wait core upload-failed "never mind the file" within 15
-click-row upload-remove "never mind the file" 0
+click-row upload/remove "never mind the file" 0
 wait core uploads "never mind the file" 0
 wait core pending-files "never mind the file" 0 within 15
 click-row image "two files" 0

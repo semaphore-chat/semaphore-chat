@@ -29,7 +29,7 @@ mod media_stories;
 #[cfg(test)]
 mod media_tests;
 mod modal;
-mod overlays;
+pub(crate) mod overlays;
 mod sheet;
 #[cfg(feature = "stories")]
 mod stories;
@@ -41,7 +41,7 @@ mod stories_layout;
 mod stories_lists_overlays;
 #[cfg(feature = "stories")]
 mod stories_lounge;
-mod surface;
+pub(crate) mod surface;
 mod tabs;
 #[cfg(test)]
 mod tests_layout;

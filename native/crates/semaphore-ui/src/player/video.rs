@@ -116,6 +116,11 @@ impl VideoPlayer {
         self.size
     }
 
+    /// Takes the box of the kit `AttachmentTile` it is drawn in.
+    pub fn set_size(&mut self, size: (f32, f32)) {
+        self.size = size;
+    }
+
     pub fn focus_handle(&self) -> &FocusHandle {
         &self.focus
     }
@@ -288,8 +293,11 @@ impl VideoPlayer {
     }
 
     fn center(&self, center: Center, radius: Pixels, cx: &mut Context<Self>) -> Option<AnyElement> {
+        // In a message row that is not the list's Tab stop, Tab skips it, as the kit's controls.
+        let row_tab = crate::kit::chat::RowTabScope::active(cx);
         let round = |id: &'static str, icon: IconName, label: &'static str| {
             base::Button::new(id)
+                .when(!row_tab, |button| button.tab_stop(false))
                 .accessibility_label(label)
                 .size(px(64.))
                 .flex()

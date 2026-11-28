@@ -9,8 +9,8 @@
 
 use super::text;
 use crate::kit::chat::{
-    LRI, MentionKind, MentionSegment, MessageSegment, PDI, Planned, SegmentStyle, planned, shown,
-    unpaired_bidi,
+    LRI, MENTION_PAD, MentionKind, MentionSegment, MessageSegment, PDI, Planned, SegmentStyle,
+    planned, shown, unpaired_bidi,
 };
 use semaphore_core::model::{MessageRow, SegKind};
 use std::ops::Range;
@@ -157,6 +157,15 @@ fn fit(segment: &MessageSegment, written: &str, drawn: &str, start: u32) -> Fit 
             inner: LRI.len_utf8() as u32,
         };
     }
+    // A mention: its name between the pads that make the chip's room.
+    let padded = isolated
+        .and_then(|rest| rest.strip_prefix(MENTION_PAD))
+        .and_then(|rest| rest.strip_suffix(MENTION_PAD));
+    if padded == Some(written) {
+        return Fit::Same {
+            inner: (LRI.len_utf8() + MENTION_PAD.len_utf8()) as u32,
+        };
+    }
     if matches!(
         segment,
         MessageSegment::Text { .. } | MessageSegment::Code(_) | MessageSegment::CodeBlock(_)
@@ -259,6 +268,7 @@ mod tests {
     use std::prelude::rust_2024::test;
 
     const ISO: u32 = 3; // LRI or PDI, in UTF-8
+    const PAD: u32 = 3; // MENTION_PAD, in UTF-8
 
     fn row_styled(display: &str, segs: Vec<(u32, SegKind, TextStyle)>) -> MessageRow {
         MessageRow {
@@ -436,13 +446,15 @@ mod tests {
             &text.segments[0],
             MessageSegment::Mention(mention) if mention.me
         ));
-        // The mention is isolated: everything after it sits two marks later.
-        assert_eq!(text.map.to_drawn(2), 2 + ISO);
+        // The mention is isolated and padded: everything after it sits two marks and two pads
+        // later.
+        let marks = 2 * ISO + 2 * PAD;
+        assert_eq!(text.map.to_drawn(2), 2 + ISO + PAD);
         for byte in 4..=display.len() as u32 {
-            assert_eq!(text.map.to_drawn(byte), byte + 2 * ISO, "{byte}");
-            assert_eq!(text.map.to_display(byte + 2 * ISO), byte, "{byte}");
+            assert_eq!(text.map.to_drawn(byte), byte + marks, "{byte}");
+            assert_eq!(text.map.to_display(byte + marks), byte, "{byte}");
         }
-        assert_eq!(text.plan.starts, [0, (code_end + 2 * ISO) as usize]);
+        assert_eq!(text.plan.starts, [0, (code_end + marks) as usize]);
     }
 
     /// An unpaired override or embedding in the words is not drawn, so it can't reorder the link

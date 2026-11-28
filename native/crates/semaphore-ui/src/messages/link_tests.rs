@@ -8,7 +8,8 @@
 //!
 //! - In the UI nothing calls `open_url`, `is_web_url`, `link_parts` or `extract_urls`, and
 //!   `MessageListEvent::OpenLink` is built in exactly two places in `messages/row.rs`: from
-//!   `check_link`'s `link.href`, and from `MessageText::on_link`'s `href` (the checked address).
+//!   `check_link`'s `link.href`, and from the `href` that `MessageText`'s and `LinkCard`'s
+//!   `on_link` hand over (the checked address). `LinkCard` hands over only `check_link`'s.
 //! - In the app, `open_url(` appears only in the files listed in `APP_OPENERS`, and a message link
 //!   opens in one place, `conversation/actions.rs`, as `check_link`'s address.
 
@@ -129,11 +130,49 @@ fn violations(ui: &[(String, String)], app: &[(String, String)]) -> Vec<String> 
         .unwrap_or_default();
     for needle in [
         "if let Some(link) = check_link(url)",
-        ".on_link(move |href, _, cx|",
+        ".on_link(move |href, _, cx| link_shared.open_href(href, cx))",
     ] {
         if !row.contains(needle) {
             found.push(format!("ui/messages/row.rs lacks `{needle}`"));
         }
+    }
+    // `open_href` emits what it is given: only the two `on_link` closures (words and preview
+    // cards) may call it, besides its definition.
+    let closures = row
+        .matches(".on_link(move |href, _, cx| link_shared.open_href(href, cx))")
+        .count();
+    if closures != 2 {
+        found.push(format!(
+            "ui/messages/row.rs has the `on_link` line {closures} times, not 2"
+        ));
+    }
+    let calls = row.matches("open_href(").count();
+    if calls != 3 {
+        found.push(format!(
+            "ui/messages/row.rs has `open_href(` {calls} times, not 3 (its definition and the two `on_link`s)"
+        ));
+    }
+    // A preview card (`LinkCard`) hands its `on_link` only `check_link`'s address, and opens
+    // nothing itself.
+    let card = ui
+        .iter()
+        .find(|(path, _)| path == "kit/chat/link_card.rs")
+        .map(|(_, source)| code(source))
+        .unwrap_or_default();
+    for needle in [
+        "let link = check_link(&self.href)",
+        "let href = link.href;",
+        "handler(&href, window, cx)",
+    ] {
+        if !card.contains(needle) {
+            found.push(format!("ui/kit/chat/link_card.rs lacks `{needle}`"));
+        }
+    }
+    if card.matches("href =").count() != 1 {
+        found.push("ui/kit/chat/link_card.rs binds `href` more than once".into());
+    }
+    if card.matches("handler(").count() != 1 {
+        found.push("ui/kit/chat/link_card.rs calls its handler more than once".into());
     }
 
     let openers: BTreeMap<&str, usize> = APP_OPENERS.iter().copied().collect();
@@ -238,6 +277,53 @@ fn the_check_sees_new_files_and_code_after_a_url_literal() {
     let found = violations(&ui, &app);
     assert!(
         found.iter().any(|v| v.contains("not a checked address")),
+        "{found:?}"
+    );
+
+    let (mut ui, app) = tree();
+    let row = ui
+        .iter_mut()
+        .find(|(path, _)| path == "messages/row.rs")
+        .unwrap();
+    row.1.push_str(
+        "\nfn probe(shared: &Shared, url: &str, cx: &mut App) { shared.open_href(url, cx); }\n",
+    );
+    let found = violations(&ui, &app);
+    assert!(
+        found.iter().any(|v| v.contains("open_href(` 4 times")),
+        "{found:?}"
+    );
+
+    let (mut ui, app) = tree();
+    let row = ui
+        .iter_mut()
+        .find(|(path, _)| path == "messages/row.rs")
+        .unwrap();
+    row.1 = row.1.replacen(
+        ".on_link(move |href, _, cx| link_shared.open_href(href, cx))",
+        ".on_link(move |_, _, cx| link_shared.open_href(&preview.url, cx))",
+        1,
+    );
+    let found = violations(&ui, &app);
+    assert!(
+        found.iter().any(|v| v.contains("`on_link` line 1 times")),
+        "{found:?}"
+    );
+
+    let (mut ui, app) = tree();
+    let card = ui
+        .iter_mut()
+        .find(|(path, _)| path == "kit/chat/link_card.rs")
+        .unwrap();
+    card.1 = card.1.replace(
+        "let href = link.href;",
+        "let href = link.href;\n let href = self.href.to_string();",
+    );
+    let found = violations(&ui, &app);
+    assert!(
+        found
+            .iter()
+            .any(|v| v.contains("binds `href` more than once")),
         "{found:?}"
     );
 

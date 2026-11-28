@@ -14,7 +14,7 @@
 //!
 //! Built-in emoji draw in the system's emoji font, through GPUI's fallback: the app bundles none.
 
-mod data;
+pub(crate) mod data;
 mod grid;
 #[cfg(feature = "stories")]
 mod stories;

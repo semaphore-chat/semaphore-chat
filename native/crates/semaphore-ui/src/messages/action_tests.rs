@@ -278,3 +278,154 @@ fn hovering_a_reaction_asks_who_reacted_once(cx: &mut TestAppContext) {
         .count();
     assert_eq!(asked, 1);
 }
+
+/// How many toolbars hold this button now.
+fn buttons(cx: &mut VisualTestContext, id: &'static str) -> usize {
+    use gpui_kit::test::TestWindowExt as _;
+    cx.update(|window, _| window.find_all(id).len())
+}
+
+/// W1: the toolbar's Edit is pressed with the pointer (its button keeps focus), the row turns
+/// into the editor and back, and the pointer moves to another row: only that row's toolbar shows.
+#[gpui_kit::test]
+fn a_toolbar_taken_away_under_the_pointer_does_not_come_back(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let (view, cx, _) = open(cx);
+    let at = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 2, byte: 1 }))
+        .expect("row 2 is painted");
+    cx.simulate_mouse_move(at, None, Modifiers::default());
+    draw(cx);
+    cx.update(|window, cx| window.click("message-action-edit", cx));
+    draw(cx);
+    let editor: AnyView = cx.update(|_, cx| cx.new(|_| EmptyView).into());
+    view.update(cx, |list, cx| list.set_editing(Some((2, editor)), cx));
+    draw(cx);
+    view.update(cx, |list, cx| list.set_editing(None, cx));
+    draw(cx);
+    let other = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 3, byte: 1 }))
+        .expect("row 3 is painted");
+    cx.simulate_mouse_move(other, None, Modifiers::default());
+    draw(cx);
+    assert_eq!(buttons(cx, "message-action-reply"), 1);
+}
+
+/// The same, with Edit pressed on its top part, which overhangs the row above: the row has the
+/// pointer again when it comes back onto its words, and shows its toolbar.
+#[gpui_kit::test]
+fn a_press_on_the_toolbars_overhang_does_not_swallow_the_next_hover(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let (view, cx, _) = open(cx);
+    let at = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 2, byte: 1 }))
+        .expect("row 2 is painted");
+    cx.simulate_mouse_move(at, None, Modifiers::default());
+    draw(cx);
+    let button = cx.update(|window, _| window.find("message-action-edit").bounds());
+    let top = point(button.center().x, button.top() + px(2.));
+    cx.simulate_mouse_move(top, None, Modifiers::default());
+    draw(cx);
+    cx.simulate_mouse_down(top, MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(top, MouseButton::Left, Modifiers::default());
+    draw(cx);
+    let editor: AnyView = cx.update(|_, cx| cx.new(|_| EmptyView).into());
+    view.update(cx, |list, cx| list.set_editing(Some((2, editor)), cx));
+    draw(cx);
+    view.update(cx, |list, cx| list.set_editing(None, cx));
+    draw(cx);
+    let at = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 2, byte: 1 }))
+        .expect("row 2 is painted");
+    cx.simulate_mouse_move(at, None, Modifiers::default());
+    draw(cx);
+    assert_eq!(view.read_with(cx, |view, _| view.hovered()), Some(2));
+    assert_eq!(buttons(cx, "message-action-reply"), 1);
+}
+
+fn list_is_focused(view: &Entity<MessageList>, cx: &mut VisualTestContext) -> bool {
+    let list = view.read_with(cx, |view, _| view.focus_handle().clone());
+    cx.update(|window, _| list.is_focused(window))
+}
+
+/// A pointer press on a toolbar button, or on a reaction chip, leaves focus on the list: the
+/// toolbar goes when the pointer leaves, and the list's shortcuts must keep working.
+#[gpui_kit::test]
+fn pressing_a_toolbar_button_or_a_chip_leaves_focus_on_the_list(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let (view, cx, events) = open(cx);
+    let at = view
+        .read_with(cx, |view, _| view.point_of(Pos { seq: 1, byte: 1 }))
+        .expect("row 1 is painted");
+    cx.simulate_mouse_move(at, None, Modifiers::default());
+    draw(cx);
+    let pin = cx.update(|window, _| window.find("message-action-pin").bounds().center());
+    cx.simulate_mouse_move(pin, None, Modifiers::default());
+    cx.simulate_mouse_down(pin, MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(pin, MouseButton::Left, Modifiers::default());
+    draw(cx);
+    assert!(
+        events
+            .borrow()
+            .contains(&MessageListEvent::Pin { message_id: id(1) })
+    );
+    assert!(list_is_focused(&view, cx), "after the toolbar");
+
+    let mut with_reaction = rows()[2].clone();
+    with_reaction.reactions = vec![semaphore_core::model::ReactionView {
+        emoji: "\u{1F44D}".into(),
+        count: 1,
+        me: false,
+        user_ids: vec!["u-sam".into()],
+        custom_emoji_id: None,
+    }];
+    with_reaction.revision += 1;
+    view.update(cx, |list, cx| {
+        list.apply(
+            semaphore_core::model::ListOp::Replace {
+                index: 2,
+                rows: vec![with_reaction],
+            },
+            cx,
+        )
+    });
+    draw(cx);
+    cx.update(|window, cx| window.blur(cx));
+    let chip = cx.update(|window, _| {
+        window
+            .find(ElementId::NamedInteger("reaction".into(), 3u64 << 8))
+            .bounds()
+            .center()
+    });
+    cx.simulate_mouse_move(chip, None, Modifiers::default());
+    cx.simulate_mouse_down(chip, MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(chip, MouseButton::Left, Modifiers::default());
+    draw(cx);
+    assert!(list_is_focused(&view, cx), "after a chip");
+}
+
+/// Below 600 px the keyboard still gets every action as a button (and Copy), not "More actions",
+/// whose sheet takes no keys.
+#[gpui_kit::test]
+fn a_narrow_list_gives_the_keyboard_the_whole_toolbar(cx: &mut TestAppContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let (view, cx, _) = open(cx);
+    cx.simulate_resize(size(px(380.), px(700.)));
+    draw(cx);
+    draw(cx);
+    cx.update(|window, cx| window.focus_next(cx));
+    draw(cx);
+    // A key on the newest row: it stays there, and the last input is now the keyboard's.
+    cx.simulate_keystrokes("down");
+    draw(cx);
+    assert_eq!(view.read_with(cx, |view, _| view.focused_row()), Some(3));
+    let has = |cx: &mut VisualTestContext, id: &'static str| {
+        cx.update(|window, _| window.try_find(id).is_some())
+    };
+    assert!(has(cx, "message-action-reply"), "the actions as buttons");
+    assert!(has(cx, "message-action-copy"), "Copy for the keyboard");
+    assert!(
+        !has(cx, "message-action-more"),
+        "no sheet the keyboard can't use"
+    );
+}

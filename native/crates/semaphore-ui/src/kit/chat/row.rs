@@ -80,8 +80,10 @@ pub struct MessageRow {
     reactions: Vec<AnyElement>,
     footer: Option<AnyElement>,
     actions: Vec<AnyElement>,
+    actions_shown: bool,
     on_open_actions: Option<ValueAction<OpenActionsRequest>>,
     on_open_author: Option<crate::kit::Action>,
+    on_hover: Option<ValueAction<bool>>,
     on_retry: Option<crate::kit::Action>,
     on_delete: Option<crate::kit::Action>,
     focus: Option<RowFocus>,
@@ -116,8 +118,10 @@ impl MessageRow {
             reactions: Vec::new(),
             footer: None,
             actions: Vec::new(),
+            actions_shown: false,
             on_open_actions: None,
             on_open_author: None,
+            on_hover: None,
             on_retry: None,
             on_delete: None,
             focus: None,
@@ -229,6 +233,13 @@ impl MessageRow {
         self
     }
 
+    /// Keeps the toolbar shown without hover or focus: while a Menu opened from it is open, or
+    /// while one of its buttons asks to confirm.
+    pub fn actions_shown(mut self, shown: bool) -> Self {
+        self.actions_shown = shown;
+        self
+    }
+
     /// The row's actions were asked for: a right-click, or Enter, the Menu key or Shift+F10 on the
     /// row itself.
     pub fn on_open_actions(
@@ -236,6 +247,14 @@ impl MessageRow {
         handler: impl Fn(OpenActionsRequest, &mut Window, &mut App) + 'static,
     ) -> Self {
         self.on_open_actions = Some(Rc::new(handler));
+        self
+    }
+
+    /// The pointer came onto the row or its toolbar, or left both. The toolbar is not inside the
+    /// row's own hit area (it occludes what is under it), so a screen that keeps hover state of
+    /// its own listens here rather than on an element around the row.
+    pub fn on_hover(mut self, handler: impl Fn(bool, &mut Window, &mut App) + 'static) -> Self {
+        self.on_hover = Some(Rc::new(handler));
         self
     }
 
@@ -327,7 +346,41 @@ impl RenderOnce for MessageRow {
             })
             .read(cx)
             .clone();
+        // Row or toolbar under the pointer, as `on_hover` last told it.
+        let told = window
+            .use_keyed_state(child_id(&self.id, "hover-told"), cx, |_, _| {
+                Rc::new(Cell::new(false))
+            })
+            .read(cx)
+            .clone();
+        // A toolbar taken away under the pointer (the row went into editing) never hears the
+        // pointer leave: forget it, or the toolbar would come back shown for good.
+        if self.actions.is_empty() && toolbar_hovered.replace(false) {
+            // And tell the screen if that leaves neither row nor toolbar under the pointer, or
+            // the row's next real hover is swallowed as no change.
+            let now = hovered.get();
+            if told.replace(now) != now
+                && let Some(handler) = self.on_hover.clone()
+            {
+                window.defer(cx, move |window, cx| handler(now, window, cx));
+            }
+        }
         let revealed = hovered.get() || toolbar_hovered.get() || focus_within;
+        let tell: crate::kit::Action = {
+            let (hovered, toolbar_hovered) = (hovered.clone(), toolbar_hovered.clone());
+            let handler = self.on_hover.clone();
+            Rc::new(move |window, cx| {
+                window.refresh();
+                let now = hovered.get() || toolbar_hovered.get();
+                if told.replace(now) != now
+                    && let Some(handler) = &handler
+                {
+                    handler(now, window, cx);
+                }
+            })
+        };
+        let tell_toolbar = tell.clone();
+        let toolbar_shown = revealed || self.actions_shown;
         // Its controls are Tab stops in the list's Tab stop row and in a row focus is in.
         let tab_active = !joins_list || tab_stop || focus_within;
 
@@ -521,7 +574,7 @@ impl RenderOnce for MessageRow {
             })
             .children(self.footer.map(slot));
 
-        let toolbar = (!self.actions.is_empty() && revealed).then(|| {
+        let toolbar = (!self.actions.is_empty() && toolbar_shown).then(|| {
             div()
                 .id(child_id(&self.id, "toolbar"))
                 .test_support()
@@ -529,9 +582,9 @@ impl RenderOnce for MessageRow {
                 .aria_label(format!("Actions for {}'s message", self.author))
                 .absolute()
                 .occlude()
-                .on_hover(move |is_hovered, window, _| {
+                .on_hover(move |is_hovered, window, cx| {
                     if toolbar_hovered.replace(*is_hovered) != *is_hovered {
-                        window.refresh();
+                        tell_toolbar(window, cx);
                     }
                 })
                 .top(px(-SPACE_MD))
@@ -575,9 +628,9 @@ impl RenderOnce for MessageRow {
             .rounded(px(RADIUS_MD))
             .when_some(rest, |row, rest| row.bg(rest))
             .hover(move |style| style.bg(hover))
-            .on_hover(move |is_hovered, window, _| {
+            .on_hover(move |is_hovered, window, cx| {
                 if hovered.replace(*is_hovered) != *is_hovered {
-                    window.refresh();
+                    tell(window, cx);
                 }
             })
             .when(self.mentioned, |row| {

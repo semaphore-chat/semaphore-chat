@@ -3,12 +3,11 @@
 //! `OptimisticMessageActions` and `ThreadReplyBadge`, with `messageGrouping.ts` for the grouping.
 
 use super::actions::{
-    ListPermissions, UnreadDivider, render_reaction_tooltip, render_toolbar, render_unread_divider,
+    ListPermissions, UnreadDivider, reaction_tooltip_lines, toolbar_buttons, unread_label,
 };
 use super::format::TimeFormat;
-use super::icons::{self, Glyph, glyph as icon};
 use super::media::{CacheKind, Media, MediaRef, MediaState, contain};
-use super::palette::*;
+use super::palette::{AVATAR, Fonts, NAME_SIZE, Palette};
 use super::seen::{self, SeenState};
 use super::segments::{DrawnMap, RowText, row_text};
 use super::selection::Selection;
@@ -18,17 +17,28 @@ use super::third_party::{self, ThirdParty};
 use super::view::{MessageList, MessageListEvent};
 use crate::format::file_size;
 use crate::kit::chat::{
-    ListText, MessageRow as KitRow, MessageState, MessageText, OpenActionsRequest,
+    AttachmentKind as TileKind, AttachmentTile, LinkCard, ListText, MessageQuote,
+    MessageRow as KitRow, MessageState, MessageText, OpenActionsRequest, ReactionChip, RowFocus,
+    one_line,
 };
-use crate::kit::{Button as KitButton, ButtonSize};
+use crate::kit::overlays::type_text;
+use crate::kit::surface::{Surface, stand_out_fill, tint_base_token};
+use crate::kit::{Button as KitButton, ControlSize, Icon, ListSeparator};
+use crate::theme::SemTheme;
+use crate::theme::color::{blend, hsla_of};
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::links::check_link;
 use semaphore_core::model::{
-    AttachmentKind, AttachmentView, GifEmbed, MessageRow, ReactionUsers, SendState,
+    AttachmentKind, AttachmentView, GifEmbed, LinkPreviewView, MessageRow, ReactionUsers, SendState,
 };
-use semaphore_design::chat::strip_bidi;
+use semaphore_design::chat::{IMAGE_MAX, image_box, strip_bidi};
+use semaphore_design::lounge::{
+    CONTROL_SM, ICON_MD, ICON_SM, ICON_XS, RADIUS_MD, RADIUS_SM, SPACE_2XS, SPACE_MD, SPACE_SM,
+    SPACE_XS, STATE_HOVER, TEXT_BODY, TEXT_BODY_STRONG, TEXT_SMALL,
+};
+use semaphore_design::{Icon as IconName, LoungeIcon};
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
@@ -38,13 +48,6 @@ use std::time::{Duration, Instant};
 const GROUP_WINDOW_MS: i64 = 5 * 60 * 1000;
 /// Prepared rows held for repainting. About three screens' worth.
 const PREPARED_LIMIT: usize = 512;
-/// What a reserved image box measures when the server hasn't sent a size. It never resizes, so a
-/// late load can't move the rows below it, at the cost of letterboxing the image.
-const UNKNOWN_IMAGE: (f32, f32) = (320., 200.);
-const IMAGE_MAX_HEIGHT: f32 = 400.;
-const VIDEO_WIDTH: f32 = 480.;
-const VIDEO_HEIGHT: f32 = 270.;
-const MULTI_ATTACHMENT_WIDTH: f32 = 250.;
 /// Animated avatars kept as still copies (`Shared::still`), before the copies are dropped.
 const STILLS_LIMIT: usize = 64;
 
@@ -135,6 +138,28 @@ pub(crate) struct Shared {
     /// `MessageList::set_dm_peer_reads`, kept for the app; the list draws "Seen by" from core's
     /// `SeenByView` only, so nothing reads it yet.
     pub dm_peer_reads: RefCell<Option<semaphore_core::model::DmPeerReadsView>>,
+    /// Each row's focus handle, by seq, for the list's roving focus.
+    pub row_focus: RefCell<HashMap<i64, FocusHandle>>,
+    /// The row that holds the roving focus (the list's one Tab stop); the newest when unset.
+    pub roving: Cell<Option<i64>>,
+    /// The row whose focus handle the list holds (`ListState::splice_focusable`), so it stays
+    /// drawn while it has focus: the roving row. One row, so the list never walks them all.
+    pub focusable: Cell<Option<i64>>,
+    /// The rows placed on screen this frame, and last frame, with their bounds (`PaintedRow`):
+    /// a Tab stop must be one of them.
+    pub drawn: RefCell<Vec<(i64, Bounds<Pixels>)>>,
+    pub last_drawn: RefCell<Vec<(i64, Bounds<Pixels>)>>,
+    /// The list's bounds as its rows were placed: what counts as on screen.
+    pub viewport: Cell<Bounds<Pixels>>,
+    /// The room under the last row (`MessageList::set_bottom_room`), for `PaintedRow`.
+    pub bottom_room: Cell<Pixels>,
+    /// The Tab stop this frame's rows are drawn with (`MessageList::tab_stop`).
+    pub stop: Cell<Option<i64>>,
+    /// The row focus was last in, while it was in the list: where focus goes back when the
+    /// control that had it goes away.
+    pub focus_row: Cell<Option<i64>>,
+    /// The list's own focus handle: a pointer press anywhere in it focuses the list.
+    pub list_focus: FocusHandle,
 }
 
 impl Shared {
@@ -309,6 +334,84 @@ impl Shared {
         still
     }
 
+    /// A row's focus handle, made the first time the list asks for it.
+    pub(crate) fn row_focus(&self, seq: i64, cx: &mut App) -> RowFocus {
+        let handle = self
+            .row_focus
+            .borrow_mut()
+            .entry(seq)
+            .or_insert_with(|| cx.focus_handle())
+            .clone();
+        RowFocus {
+            handle,
+            tab_stop: false,
+        }
+    }
+
+    /// Drops the handles of rows no longer loaded, once they are many.
+    pub(crate) fn prune_row_focus(&self) {
+        let rows = self.rows.borrow();
+        let mut handles = self.row_focus.borrow_mut();
+        if handles.len() > rows.len() * 2 + 64 {
+            handles.retain(|seq, _| rows.by_seq(*seq).is_some());
+        }
+    }
+
+    /// The row that is the list's Tab stop this frame.
+    pub(crate) fn tab_stop_seq(&self) -> Option<i64> {
+        let rows = self.rows.borrow();
+        self.stop
+            .get()
+            .filter(|seq| rows.by_seq(*seq).is_some())
+            .or_else(|| {
+                rows.len()
+                    .checked_sub(1)
+                    .and_then(|ix| rows.get(ix))
+                    .map(|row| row.seq)
+            })
+    }
+
+    /// Where the row was placed last, if it was.
+    pub(crate) fn row_bounds(&self, seq: i64) -> Option<Bounds<Pixels>> {
+        let find = |placed: &[(i64, Bounds<Pixels>)]| {
+            placed
+                .iter()
+                .find(|(placed, _)| *placed == seq)
+                .map(|(_, bounds)| *bounds)
+        };
+        find(&self.drawn.borrow()).or_else(|| find(&self.last_drawn.borrow()))
+    }
+
+    /// The rows' focus handles for `range` of the store, for the list (`splice_focusable`): only
+    /// the focusable row's.
+    pub(crate) fn row_handles(
+        &self,
+        range: std::ops::Range<usize>,
+        cx: &mut App,
+    ) -> Vec<Option<FocusHandle>> {
+        let seqs: Vec<i64> = {
+            let rows = self.rows.borrow();
+            range
+                .filter_map(|ix| rows.get(ix).map(|row| row.seq))
+                .collect()
+        };
+        let focusable = self.focusable.get();
+        seqs.into_iter()
+            .map(|seq| (Some(seq) == focusable).then(|| self.row_focus(seq, cx).handle))
+            .collect()
+    }
+
+    /// Opens an address that is already `check_link`'s (`MessageText`'s and `LinkCard`'s
+    /// `on_link` hand over only that).
+    fn open_href(&self, href: &str, cx: &mut App) {
+        self.emit(
+            MessageListEvent::OpenLink {
+                url: href.to_owned(),
+            },
+            cx,
+        );
+    }
+
     pub(crate) fn emit(&self, event: MessageListEvent, cx: &mut App) {
         let view = self.view.borrow().clone();
         view.update(cx, |_, cx| cx.emit(event)).ok();
@@ -374,82 +477,87 @@ fn image_canvas(shared: &Rc<Shared>, image: Arc<RenderImage>, radius: Pixels) ->
     .size_full()
 }
 
-fn render_day_separator(label: SharedString, palette: &Palette) -> impl IntoElement {
-    let rule = || div().flex_1().h(px(1.)).bg(palette.divider);
+/// A row's part a press on which is its own: it starts no text selection.
+fn unselectable(shared: &Rc<Shared>, content: impl IntoElement) -> Div {
+    own_presses(shared).child(content)
+}
+
+/// A box of a row's parts that keep their presses (`unselectable`). A pointer press there
+/// still focuses the list, not the control (which may not stay drawn: a Load card, a toolbar).
+fn own_presses(shared: &Rc<Shared>) -> Div {
+    let list_focus = shared.list_focus.clone();
     div()
-        .flex()
-        .items_center()
-        .gap(px(12.))
-        .px(px(16.))
-        .pt(px(16.))
-        .pb(px(4.))
-        .child(rule())
-        .child(
-            div()
-                .flex_none()
-                .whitespace_nowrap()
-                .text_size(px(CAPTION_SIZE))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(palette.text_secondary)
-                .child(label),
-        )
-        .child(rule())
+        .min_w_0()
+        .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+            cx.stop_propagation();
+            window.focus(&list_focus, cx);
+        })
 }
 
-fn render_reply(reply: &ReplyPreview, palette: &Palette) -> impl IntoElement {
-    let (author, text, author_color, text_color): (SharedString, SharedString, Hsla, Hsla) =
-        if reply.deleted {
-            (
-                "[Deleted User]".into(),
-                "[Original message was deleted]".into(),
-                palette.text_disabled,
-                palette.text_disabled,
-            )
-        } else {
-            (
-                reply.author.clone().into(),
-                if reply.text.is_empty() {
-                    "Message".into()
-                } else {
-                    // Without bidi controls, as the panels' previews.
-                    strip_bidi(&reply.text).replace('\n', " ").into()
-                },
-                palette.primary,
-                palette.text_secondary,
-            )
-        };
-    let mut preview = div()
+/// The key of a row's part that comes once per attachment, reaction or preview.
+fn part_key(seq: i64, index: usize) -> u64 {
+    (seq as u64) << 8 | index as u64
+}
+
+/// The tooltip's look for the list's own tips (who reacted, "Seen by"), as the kit's `Tip`.
+fn tip_box(id: &'static str, label: impl Into<SharedString>, cx: &App) -> Stateful<Div> {
+    let sem = cx.sem();
+    div()
+        .id(id)
+        .role(Role::Tooltip)
+        .aria_label(label.into())
         .flex()
-        .items_center()
-        .gap(px(4.))
-        .min_w_0()
-        .pl(px(12.))
-        .py(px(2.))
-        .mb(px(2.))
-        .border_l_2()
-        .border_color(palette.primary)
-        .text_size(px(CAPTION_SIZE))
-        .child(
-            div()
-                .flex_none()
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(author_color)
-                .child(author),
-        );
-    let mut text = div()
-        .min_w_0()
-        .truncate()
-        .text_color(text_color)
-        .child(text);
-    if reply.deleted {
-        text = text.italic();
+        .flex_col()
+        .gap(px(SPACE_2XS))
+        .max_w(px(TIP_MAX_WIDTH))
+        .px(px(SPACE_SM))
+        .py(px(SPACE_XS))
+        .rounded(px(RADIUS_SM))
+        .bg(sem.tooltip_bg)
+        .text_color(sem.tooltip_text)
+        .font_family(TEXT_SMALL.family)
+        .text_size(px(TEXT_SMALL.size))
+        .line_height(px(TEXT_SMALL.line_height))
+}
+
+const TIP_MAX_WIDTH: f32 = 260.;
+
+/// The message a reply answers: the kit's `MessageQuote`. A press jumps to it, unless it's gone.
+fn render_quote(shared: &Rc<Shared>, row: &MessageRow, reply: &ReplyPreview) -> AnyElement {
+    let line: SharedString = if reply.text.is_empty() {
+        "Message".into()
+    } else {
+        // Without bidi controls, as the panels' previews.
+        strip_bidi(&reply.text).replace('\n', " ").into()
+    };
+    let quote = MessageQuote::new(("reply", row.seq as u64), reply.author.clone(), line)
+        .deleted(reply.deleted);
+    let target = row
+        .reply_to
+        .as_ref()
+        .filter(|reply_to| !reply_to.deleted && !reply_to.message_id.is_empty())
+        .map(|reply_to| reply_to.message_id.clone());
+    match target {
+        Some(message_id) => {
+            let event_shared = shared.clone();
+            quote
+                .on_open(move |_, cx| {
+                    event_shared.emit(
+                        MessageListEvent::OpenReply {
+                            message_id: message_id.clone(),
+                        },
+                        cx,
+                    );
+                })
+                .into_any_element()
+        }
+        None => quote.into_any_element(),
     }
-    preview = preview.child(text);
-    preview
 }
 
-/// Who removed it and why: only moderators are sent these.
-fn render_removed_by(row: &MessageRow, palette: &Palette) -> Option<impl IntoElement> {
+/// A removed message's words, and who removed it and why: only moderators are sent those.
+fn render_removed(row: &MessageRow, cx: &App) -> impl IntoElement {
+    let role = &cx.sem().role;
     let by = row.removed_by.as_ref().map(|user| {
         user.display_name
             .clone()
@@ -457,332 +565,200 @@ fn render_removed_by(row: &MessageRow, palette: &Palette) -> Option<impl IntoEle
             .unwrap_or_else(|| user.username.clone())
     });
     let label = match (by, row.removed_reason.as_deref().filter(|r| !r.is_empty())) {
-        (None, None) => return None,
-        (Some(by), None) => format!("Removed by {by}"),
-        (None, Some(reason)) => format!("Removed: {reason}"),
-        (Some(by), Some(reason)) => format!("Removed by {by}: {reason}"),
+        (None, None) => None,
+        (Some(by), None) => Some(format!("Removed by {by}")),
+        (None, Some(reason)) => Some(format!("Removed: {reason}")),
+        (Some(by), Some(reason)) => Some(format!("Removed by {by}: {reason}")),
     };
-    Some(
-        div()
-            .id(("removed-by", row.seq as u64))
-            .text_size(px(CAPTION_SIZE))
-            .text_color(palette.error)
-            .child(label),
-    )
+    div()
+        .flex()
+        .flex_col()
+        .min_w_0()
+        .child(
+            type_text(TEXT_BODY, "[Message deleted]")
+                .italic()
+                .text_color(role.text_dim),
+        )
+        .children(label.map(|label| {
+            type_text(TEXT_SMALL, label)
+                .id(("removed-by", row.seq as u64))
+                .text_color(role.danger)
+        }))
 }
 
-fn image_box(attachment: &AttachmentView) -> (f32, f32) {
-    match (attachment.width, attachment.height) {
-        (Some(width), Some(height)) if width > 0 && height > 0 => {
-            let scale = (IMAGE_MAX_HEIGHT / height as f32).min(1.);
-            (width as f32 * scale, height as f32 * scale)
-        }
-        _ => UNKNOWN_IMAGE,
+/// Opens (downloads) an attachment through the app.
+fn open_attachment(shared: &Rc<Shared>, file_id: &str) -> impl Fn(&mut Window, &mut App) + 'static {
+    let shared = shared.clone();
+    let file_id = file_id.to_owned();
+    move |_, cx| {
+        shared.emit(
+            MessageListEvent::OpenAttachment {
+                file_id: file_id.clone(),
+            },
+            cx,
+        );
     }
 }
 
-fn card(palette: &Palette) -> Div {
-    div()
-        .rounded(px(8.))
-        .border_1()
-        .border_color(palette.divider)
-        .bg(palette.paper)
-        .overflow_hidden()
-}
-
-/// The download card: `DownloadLink`, and for now audio too, since playback is another unit's.
-fn render_file_card(
+/// A file to download: the kit tile's file row, with its size.
+fn file_tile(
     shared: &Rc<Shared>,
     seq: i64,
     index: usize,
     attachment: &AttachmentView,
-    file_icon: Glyph,
-) -> impl IntoElement {
-    let palette = shared.palette.get();
-    let event_shared = shared.clone();
-    let file_id = attachment.file_id.clone();
-    clickable(("attachment", (seq as u64) << 8 | index as u64))
-        .flex()
-        .items_center()
-        .gap(px(16.))
-        .p(px(16.))
-        .max_w(px(TEXT_MAX_WIDTH))
-        .min_w_0()
-        .rounded(px(8.))
-        .border_1()
-        .border_color(palette.divider)
-        .bg(palette.paper)
-        .hover(|style| style.bg(palette.hover))
-        .on_click(move |_, _, cx| {
-            event_shared.emit(
-                MessageListEvent::OpenAttachment {
-                    file_id: file_id.clone(),
-                },
-                cx,
-            );
-        })
-        .child(
-            div()
-                .flex()
-                .flex_none()
-                .items_center()
-                .justify_center()
-                .size(px(48.))
-                .rounded(px(4.))
-                .bg(palette.hover)
-                .child(icon(file_icon, 24., palette.text_secondary)),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .truncate()
-                        .text_size(px(BODY_SIZE))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(palette.text)
-                        .child(attachment.filename.clone()),
-                )
-                .child(
-                    div()
-                        .text_size(px(CAPTION_SIZE))
-                        .text_color(palette.text_secondary)
-                        .child(file_size(attachment.size_bytes)),
-                ),
-        )
-        .child(icon(icons::DOWNLOAD, 24., palette.primary))
+) -> AnyElement {
+    AttachmentTile::new(
+        ("attachment", part_key(seq, index)),
+        TileKind::File,
+        attachment.filename.clone(),
+    )
+    .detail(file_size(attachment.size_bytes))
+    .on_open(open_attachment(shared, &attachment.file_id))
+    .into_any_element()
 }
 
+/// An image attachment: the kit tile, its box sized before the picture arrives, the picture
+/// painted on the list's animation clock. Opens the viewer. One that can't be drawn is a file.
 fn render_image(
     shared: &Rc<Shared>,
     seq: i64,
     index: usize,
     attachment: &AttachmentView,
-    fixed_width: Option<f32>,
     window: &mut Window,
     cx: &mut App,
-) -> impl IntoElement {
-    let palette = shared.palette.get();
+) -> AnyElement {
     let media = shared.media.source.attachment(attachment);
     let state = shared.media.resolve(media, CacheKind::Images, window, cx);
-    let (natural_w, natural_h) = image_box(attachment);
-    let frame = card(&palette)
-        .w(px(fixed_width.unwrap_or(natural_w)))
-        .max_w_full()
-        .flex_none()
-        .aspect_ratio(natural_w / natural_h);
+    let mut tile = AttachmentTile::new(
+        ("image", part_key(seq, index)),
+        TileKind::Image,
+        attachment.filename.clone(),
+    )
+    .detail(file_size(attachment.size_bytes))
+    .on_open(open_attachment(shared, &attachment.file_id));
+    if let (Some(width), Some(height)) = (attachment.width, attachment.height) {
+        tile = tile.size(f64::from(width), f64::from(height));
+    }
     match state {
-        // The web's image opens its lightbox. A press here doesn't start a selection.
-        MediaState::Ready(image) => {
-            let event_shared = shared.clone();
-            let file_id = attachment.file_id.clone();
-            frame
-                .id(("image", (seq as u64) << 8 | index as u64))
-                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .cursor_pointer()
-                .on_click(move |_, _, cx| {
-                    event_shared.emit(
-                        MessageListEvent::OpenAttachment {
-                            file_id: file_id.clone(),
-                        },
-                        cx,
-                    );
-                })
-                .child(image_canvas(shared, image, px(0.)))
-                .test_support()
-                .into_any_element()
-        }
-        MediaState::Loading => frame.bg(palette.hover).into_any_element(),
+        MediaState::Ready(image) => tile
+            .picture(image_canvas(shared, image, px(0.)))
+            .into_any_element(),
+        MediaState::Loading => tile.into_any_element(),
         // Unavailable, or refused as too big to decode: the file itself is still there to save.
-        MediaState::Failed => {
-            render_file_card(shared, seq, index, attachment, icons::FILE).into_any_element()
-        }
+        MediaState::Failed => file_tile(shared, seq, index, attachment),
     }
 }
 
 /// This client's uploads to the message, and what the server still waits for from others.
-fn render_uploads(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyElement> {
+fn render_uploads(shared: &Rc<Shared>, row: &MessageRow, cx: &App) -> Vec<AnyElement> {
     let others = (row.pending_attachments as usize).saturating_sub(row.uploads.len());
-    if row.uploads.is_empty() && others == 0 {
-        return None;
-    }
-    let palette = shared.palette.get();
-    let mut column = div().mt(px(8.)).flex().flex_col().gap(px(6.));
+    let mut items = Vec::new();
     for (index, upload) in row.uploads.iter().enumerate() {
-        let fraction = if upload.size_bytes == 0 {
-            1.
-        } else {
-            upload.sent_bytes as f32 / upload.size_bytes as f32
-        };
-        let mut line = div()
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .max_w(px(TEXT_MAX_WIDTH))
-            .text_size(px(CAPTION_SIZE))
-            .child(icon(icons::FILE, 18., palette.text_secondary))
-            .child(
-                div()
-                    .min_w_0()
-                    .flex_shrink(1.)
-                    .truncate()
-                    .text_color(palette.text)
-                    .child(upload.name.clone()),
-            )
-            .child(
-                div()
-                    .flex_none()
-                    .text_color(palette.text_secondary)
-                    .child(file_size(upload.size_bytes)),
-            );
+        let mut tile = AttachmentTile::new(
+            ("upload", part_key(row.seq, index)),
+            TileKind::File,
+            upload.name.clone(),
+        )
+        .detail(file_size(upload.size_bytes));
         match (&upload.failed, &row.client_nonce) {
             (Some(error), Some(nonce)) => {
                 let (retry_shared, remove_shared) = (shared.clone(), shared.clone());
                 let (retry_nonce, remove_nonce) = (nonce.clone(), nonce.clone());
                 let index = index as u32;
-                line = line
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_color(palette.error)
-                            .child(error.message.clone()),
-                    )
-                    .child(
-                        action_button(
-                            ("upload-retry", (row.seq as u64) << 8 | u64::from(index)),
-                            "Retry",
-                            icons::REPLAY,
-                            palette.primary,
-                            palette.tint(palette.primary, 0.08),
-                        )
-                        .on_click(move |_, _, cx| {
-                            retry_shared.emit(
-                                MessageListEvent::RetryUpload {
-                                    client_nonce: retry_nonce.clone(),
-                                    index,
-                                },
-                                cx,
-                            );
-                        })
-                        .test_support(),
-                    )
-                    .child(
-                        action_button(
-                            ("upload-remove", (row.seq as u64) << 8 | u64::from(index)),
-                            "Remove",
-                            icons::DELETE,
-                            palette.error,
-                            palette.tint(palette.error, 0.08),
-                        )
-                        .on_click(move |_, _, cx| {
-                            remove_shared.emit(
-                                MessageListEvent::RemoveUpload {
-                                    client_nonce: remove_nonce.clone(),
-                                    index,
-                                },
-                                cx,
-                            );
-                        })
-                        .test_support(),
-                    );
+                tile = tile
+                    .error(error.message.clone())
+                    .on_retry(move |_, cx| {
+                        retry_shared.emit(
+                            MessageListEvent::RetryUpload {
+                                client_nonce: retry_nonce.clone(),
+                                index,
+                            },
+                            cx,
+                        );
+                    })
+                    .on_remove(move |_, cx| {
+                        remove_shared.emit(
+                            MessageListEvent::RemoveUpload {
+                                client_nonce: remove_nonce.clone(),
+                                index,
+                            },
+                            cx,
+                        );
+                    });
             }
             _ => {
-                line = line.child(
-                    div()
-                        .w(px(120.))
-                        .h(px(4.))
-                        .flex_none()
-                        .rounded(px(2.))
-                        .bg(palette.hover)
-                        .child(
-                            div()
-                                .h_full()
-                                .rounded(px(2.))
-                                .bg(palette.primary)
-                                .w(px(120. * fraction.clamp(0., 1.))),
-                        ),
-                );
+                let fraction = if upload.size_bytes == 0 {
+                    1.
+                } else {
+                    upload.sent_bytes as f32 / upload.size_bytes as f32
+                };
+                tile = tile.progress((fraction * 100.).clamp(0., 100.));
             }
         }
-        column = column.child(line);
+        items.push(tile.into_any_element());
     }
     if others > 0 {
-        column = column.child(
-            div()
-                .text_size(px(CAPTION_SIZE))
-                .text_color(palette.text_secondary)
-                .child(if others == 1 {
+        items.push(
+            type_text(
+                TEXT_SMALL,
+                if others == 1 {
                     "1 file still uploading".to_owned()
                 } else {
                     format!("{others} files still uploading")
-                }),
+                },
+            )
+            .text_color(cx.sem().role.text_secondary)
+            .into_any_element(),
         );
     }
-    Some(column.into_any_element())
+    items
 }
 
-/// The web's `LinkPreview` card: site, title, description, and the image only where the source
-/// allows third-party images.
+/// The site a preview names: its own name, else the address's host.
+fn preview_site(preview: &LinkPreviewView) -> String {
+    if let Some(site) = preview.site_name.as_deref().filter(|site| !site.is_empty()) {
+        return strip_bidi(site);
+    }
+    let label = link_label(&preview.url);
+    let rest = label
+        .split_once("://")
+        .map_or(label.as_str(), |(_, rest)| rest);
+    rest.split(['/', '?', '#'])
+        .next()
+        .unwrap_or(rest)
+        .to_owned()
+}
+
+/// The link previews: the kit's `LinkCard`, opened through its checked address. The picture only
+/// where the source allows third-party images; while they are off, "Image from <host>" and Load.
 fn render_link_previews(
     shared: &Rc<Shared>,
     row: &MessageRow,
     window: &mut Window,
     cx: &mut App,
-) -> Option<AnyElement> {
-    if row.link_previews.is_empty() || row.removed {
-        return None;
+) -> Vec<AnyElement> {
+    if row.removed {
+        return Vec::new();
     }
-    let palette = shared.palette.get();
-    let mut cards = div().mt(px(8.)).flex().flex_col().gap(px(8.));
+    let mut items = Vec::new();
     for (index, preview) in row.link_previews.iter().enumerate() {
-        let event_shared = shared.clone();
-        let url = preview.url.clone();
-        let mut text = div().flex().flex_col().gap(px(2.)).min_w_0().flex_1();
-        if let Some(site) = &preview.site_name {
-            text = text.child(
-                div()
-                    .text_size(px(CAPTION_SIZE))
-                    .text_color(palette.text_secondary)
-                    .truncate()
-                    .child(site.clone()),
-            );
-        }
-        text = text.child(
-            div()
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(palette.primary_light)
-                .truncate()
-                .child(
-                    preview
-                        .title
-                        .clone()
-                        .unwrap_or_else(|| link_label(&preview.url)),
-                ),
-        );
+        let link_shared = shared.clone();
+        let mut card = LinkCard::new(
+            ("preview", part_key(row.seq, index)),
+            preview.url.clone(),
+            preview_site(preview),
+        )
+        .title(
+            preview
+                .title
+                .clone()
+                .unwrap_or_else(|| link_label(&preview.url)),
+        )
+        .on_link(move |href, _, cx| link_shared.open_href(href, cx));
         if let Some(description) = &preview.description {
-            text = text.child(
-                div()
-                    .text_size(px(CAPTION_SIZE))
-                    .text_color(palette.text_secondary)
-                    .line_clamp(2)
-                    .child(description.clone()),
-            );
+            card = card.description(description.clone());
         }
-        let mut card = clickable(("preview", (row.seq as u64) << 8 | index as u64))
-            .flex()
-            .flex_col()
-            .gap(px(8.))
-            .p(px(12.))
-            .max_w(px(TEXT_MAX_WIDTH))
-            .min_w_0()
-            .rounded(px(8.))
-            .border_l_4()
-            .border_color(palette.primary)
-            .bg(palette.paper)
-            .on_click(move |_, _, cx| event_shared.open_checked(&url, cx))
-            .child(text);
+        let mut blocked = None;
         match third_party::link_image(
             shared.third_party.get(),
             shared.media.source.as_ref(),
@@ -790,41 +766,53 @@ fn render_link_previews(
         ) {
             None | Some(ThirdParty::Allowed(MediaRef::Missing)) => {}
             Some(ThirdParty::Blocked { host }) => {
-                card = card.child(render_image_strip(shared, row.seq, index, &host));
+                blocked = Some(render_image_strip(shared, row.seq, index, &host, cx));
             }
             Some(ThirdParty::Allowed(media)) => {
-                let state = shared.media.resolve(media, CacheKind::Images, window, cx);
-                let frame = div().w_full().h(px(160.)).rounded(px(4.)).overflow_hidden();
-                card = card.child(match state {
-                    MediaState::Ready(image) => frame
-                        .child(image_canvas(shared, image, px(4.)))
-                        .into_any_element(),
-                    MediaState::Loading => frame.bg(palette.hover).into_any_element(),
-                    MediaState::Failed => div().into_any_element(),
-                });
+                if let MediaState::Ready(image) =
+                    shared.media.resolve(media, CacheKind::Images, window, cx)
+                {
+                    card = card.image(ImageSource::Render(shared.still(image, window, cx)));
+                }
             }
         }
-        cards = cards.child(card);
+        items.push(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(SPACE_XS))
+                .w_full()
+                .min_w_0()
+                .child(card)
+                .children(blocked)
+                .into_any_element(),
+        );
     }
-    Some(cards.into_any_element())
+    items
 }
 
-/// A "Load" button inside a row: it turns third-party pictures on for everything, and a press on it
-/// neither selects text nor reaches the card or row under it.
+/// A "Load" button inside a row: it turns third-party pictures on for everything.
 fn load_button(shared: &Rc<Shared>, id: String) -> impl IntoElement {
     let event_shared = shared.clone();
-    div()
-        .flex_none()
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .child(
-            KitButton::new(SharedString::from(id), "Load")
-                .soft()
-                .size(ButtonSize::Sm)
-                .on_click(move |_, _, cx| {
-                    cx.stop_propagation();
-                    event_shared.emit(MessageListEvent::EnableThirdPartyMedia, cx);
-                }),
-        )
+    KitButton::new(SharedString::from(id), "Load")
+        .soft()
+        .size(ControlSize::Sm)
+        .on_click(move |_, _, cx| {
+            cx.stop_propagation();
+            event_shared.emit(MessageListEvent::EnableThirdPartyMedia, cx);
+        })
+}
+
+/// The quiet box third-party pictures wait in while they are off.
+fn blocked_look(el: Stateful<Div>, cx: &App) -> Stateful<Div> {
+    let sem = cx.sem();
+    el.role(Role::Group)
+        .flex()
+        .min_w_0()
+        .max_w(px(IMAGE_MAX.width))
+        .rounded(px(RADIUS_MD))
+        .bg(stand_out_fill(sem, Surface::or_current(None, cx)))
+        .text_color(sem.role.text_secondary)
 }
 
 /// A link preview's picture while third-party pictures are off: "Image from <host>" and Load.
@@ -833,101 +821,74 @@ fn render_image_strip(
     seq: i64,
     index: usize,
     host: &SharedString,
-) -> impl IntoElement {
-    let palette = shared.palette.get();
+    cx: &App,
+) -> AnyElement {
     let title = SharedString::from(third_party::image_title(host));
-    div()
-        .id(SharedString::from(format!(
+    let secondary = cx.sem().role.text_secondary;
+    blocked_look(
+        div().id(SharedString::from(format!(
             "message-preview-blocked-{seq}-{index}"
-        )))
-        .test_support()
-        .role(Role::Group)
-        .aria_label(title.clone())
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .min_w_0()
-        .px(px(8.))
-        .py(px(4.))
-        .rounded(px(4.))
-        .bg(palette.hover)
-        .child(icon(icons::IMAGE, 20., palette.text_secondary))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .truncate()
-                .text_size(px(NAME_SIZE))
-                .text_color(palette.text_secondary)
-                .child(title),
-        )
-        .child(load_button(
-            shared,
-            format!("message-preview-load-{seq}-{index}"),
-        ))
+        ))),
+        cx,
+    )
+    .test_support()
+    .aria_label(title.clone())
+    .items_center()
+    .gap(px(SPACE_SM))
+    .w_full()
+    .px(px(SPACE_MD))
+    .py(px(SPACE_XS))
+    .child(
+        Icon::lounge(LoungeIcon::Image)
+            .size(ICON_SM)
+            .color(secondary),
+    )
+    .child(one_line(TEXT_SMALL, title).flex_1())
+    .child(load_button(
+        shared,
+        format!("message-preview-load-{seq}-{index}"),
+    ))
+    .into_any_element()
 }
 
 /// A GIF message while third-party pictures are off: "GIF from <host>", what Load does, and Load.
-fn render_gif_card(shared: &Rc<Shared>, seq: i64, host: &SharedString) -> AnyElement {
-    let palette = shared.palette.get();
+fn render_gif_card(shared: &Rc<Shared>, seq: i64, host: &SharedString, cx: &App) -> AnyElement {
+    let sem = cx.sem();
     let title = SharedString::from(third_party::gif_title(host));
-    div()
-        .id(SharedString::from(format!("message-gif-blocked-{seq}")))
-        .test_support()
-        .role(Role::Group)
-        .aria_label(title.clone())
-        .mt(px(4.))
-        .flex()
-        .items_start()
-        .gap(px(12.))
-        .p(px(12.))
-        .max_w(px(TEXT_MAX_WIDTH))
-        .min_w_0()
-        .rounded(px(8.))
-        .border_1()
-        .border_color(palette.divider)
-        .bg(palette.paper)
-        .child(
-            div()
-                .flex()
-                .flex_none()
-                .items_center()
-                .justify_center()
-                .size(px(40.))
-                .rounded(px(4.))
-                .bg(palette.hover)
-                .child(icon(icons::GIF, 28., palette.text_secondary)),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(2.))
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .truncate()
-                        .text_size(px(NAME_SIZE))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(palette.text)
-                        .child(title),
-                )
-                .child(
-                    div()
-                        .text_size(px(CAPTION_SIZE))
-                        .text_color(palette.text_secondary)
-                        .child(third_party::GIF_NOTE),
-                )
-                // Under the text, so a phone keeps the host and the note readable.
-                .child(
-                    div()
-                        .mt(px(6.))
-                        .flex()
-                        .child(load_button(shared, format!("message-gif-load-{seq}"))),
-                ),
-        )
-        .into_any_element()
+    blocked_look(
+        div().id(SharedString::from(format!("message-gif-blocked-{seq}"))),
+        cx,
+    )
+    .test_support()
+    .aria_label(title.clone())
+    .items_start()
+    .gap(px(SPACE_MD))
+    .p(px(SPACE_MD))
+    .child(
+        div().flex_none().pt(px(SPACE_2XS)).child(
+            Icon::lounge(LoungeIcon::ImagePlay)
+                .size(ICON_MD)
+                .color(sem.role.text_secondary),
+        ),
+    )
+    .child(
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(SPACE_2XS))
+            .flex_1()
+            .min_w_0()
+            .child(one_line(TEXT_BODY_STRONG, title).text_color(sem.role.text))
+            .child(type_text(TEXT_SMALL, third_party::GIF_NOTE))
+            // Under the text, so a phone keeps the host and the note readable.
+            .child(
+                div()
+                    .mt(px(SPACE_XS))
+                    .flex()
+                    .child(load_button(shared, format!("message-gif-load-{seq}"))),
+            ),
+    )
+    .into_any_element()
 }
 
 /// A box of `width` x `height` in a flex column (a row's body) that narrows with a column
@@ -960,13 +921,12 @@ fn render_gif(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<AnyElement> {
-    let palette = shared.palette.get();
     let media = match third_party::gif(
         shared.third_party.get(),
         shared.media.source.as_ref(),
         embed,
     ) {
-        ThirdParty::Blocked { host } => return Some(render_gif_card(shared, row.seq, &host)),
+        ThirdParty::Blocked { host } => return Some(render_gif_card(shared, row.seq, &host, cx)),
         ThirdParty::Allowed(media) => media,
     };
     let state = shared.media.resolve(media, CacheKind::Images, window, cx);
@@ -979,12 +939,13 @@ fn render_gif(
             (width, height, Some(image))
         }
     };
+    let sem = cx.sem();
+    let fill = stand_out_fill(sem, Surface::or_current(None, cx));
     let frame = fitted_frame(width, height)
-        .mt(px(4.))
-        .rounded(px(4.))
+        .rounded(px(RADIUS_MD))
         .overflow_hidden();
     Some(match image {
-        None => frame.bg(palette.hover).into_any_element(),
+        None => frame.bg(fill).into_any_element(),
         Some(image) => {
             let event_shared = shared.clone();
             let url = embed.url.clone();
@@ -996,18 +957,18 @@ fn render_gif(
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .cursor_pointer()
                 .on_click(move |_, _, cx| event_shared.open_checked(&url, cx))
-                .child(image_canvas(shared, image, px(4.)))
+                .child(image_canvas(shared, image, px(RADIUS_MD)))
                 .into_any_element()
         }
     })
 }
 
 /// "Seen by" under the own latest message: an eye, two names and "+N", the full list on hover.
-fn render_seen(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyElement> {
+fn render_seen(shared: &Rc<Shared>, row: &MessageRow, cx: &App) -> Option<AnyElement> {
     let seen_state = shared.seen.borrow();
     let view = seen_state.for_row(row.seq)?;
     let line = seen::seen_line(view)?;
-    let palette = shared.palette.get();
+    let sem = cx.sem();
     let tooltip = shared
         .seen_hovered
         .get()
@@ -1018,8 +979,8 @@ fn render_seen(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyElement> {
             deferred(
                 anchored()
                     .anchor(Anchor::BottomLeft)
-                    .snap_to_window_with_margin(px(8.))
-                    .child(div().pb(px(4.)).child(render_seen_tooltip(tip, &palette))),
+                    .snap_to_window_with_margin(px(SPACE_SM))
+                    .child(div().pb(px(SPACE_XS)).child(render_seen_tooltip(tip, cx))),
             )
         });
     let label = match &line.more {
@@ -1034,49 +995,36 @@ fn render_seen(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyElement> {
             .role(Role::Status)
             .aria_label(SharedString::from(label))
             .relative()
-            .mt(px(2.))
             .flex()
             .items_center()
-            .gap(px(4.))
-            .max_w(px(TEXT_MAX_WIDTH))
+            .gap(px(SPACE_XS))
+            .max_w(px(IMAGE_MAX.width))
             .min_w_0()
-            .text_size(px(CAPTION_SIZE))
-            .line_height(px(18.))
-            .text_color(palette.text_secondary)
+            .text_color(sem.role.text_secondary)
             .on_hover(move |hovered, _, cx| hover_shared.hover_seen(*hovered, cx))
-            .child(icon(icons::VISIBILITY, 14., palette.primary))
-            .child(div().min_w_0().truncate().child(line.names))
-            .children(line.more.map(|more| div().flex_none().child(more)))
+            .child(
+                Icon::lounge(LoungeIcon::Eye)
+                    .size(ICON_XS)
+                    .color(sem.role.text_secondary),
+            )
+            .child(one_line(TEXT_SMALL, line.names))
+            .children(
+                line.more
+                    .map(|more| type_text(TEXT_SMALL, more).flex_none()),
+            )
             .children(tooltip)
             .into_any_element(),
     )
 }
 
-/// The web's `SeenByTooltip`: a paper card with a header, the names, and "+N more".
-fn render_seen_tooltip(tip: seen::SeenTooltip, palette: &Palette) -> impl IntoElement {
-    div()
-        .id("message-seen-tooltip")
+/// Who has seen it: a header, the names, and "+N more".
+fn render_seen_tooltip(tip: seen::SeenTooltip, cx: &App) -> impl IntoElement {
+    tip_box("message-seen-tooltip", tip.header.clone(), cx)
         .test_support()
-        .role(Role::Tooltip)
-        .aria_label(SharedString::from(tip.header.clone()))
-        .flex()
-        .flex_col()
-        .gap(px(2.))
         .min_w(px(150.))
-        .max_w(px(250.))
-        .p(px(8.))
-        .rounded(px(4.))
-        .border_1()
-        .border_color(palette.divider)
-        .bg(palette.paper)
-        .shadow_md()
-        .text_size(px(CAPTION_SIZE))
-        .text_color(palette.text)
         .child(
             div()
-                .mb(px(2.))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(palette.text_secondary)
+                .font_weight(FontWeight(TEXT_BODY_STRONG.weight as f32))
                 .truncate()
                 .child(tip.header),
         )
@@ -1084,47 +1032,14 @@ fn render_seen_tooltip(tip: seen::SeenTooltip, palette: &Palette) -> impl IntoEl
             card.children(
                 tip.names
                     .into_iter()
-                    .map(|name| div().text_size(px(NAME_SIZE - 1.)).truncate().child(name)),
+                    .map(|name| div().truncate().child(name)),
             )
         })
-        .children(tip.more.map(|more| {
-            div()
-                .mt(px(2.))
-                .italic()
-                .text_size(px(NAME_SIZE - 1.))
-                .text_color(palette.text_secondary)
-                .child(more)
-        }))
+        .children(tip.more.map(|more| div().italic().child(more)))
 }
 
-fn render_video(attachment: &AttachmentView, palette: &Palette) -> impl IntoElement {
-    // The icon and caption sit on the black box in every theme, so they take the dark theme's
-    // ink: a light theme's secondary text would vanish there.
-    let ink = Palette::dark().text_secondary;
-    card(palette)
-        .relative()
-        .w(px(VIDEO_WIDTH))
-        .max_w_full()
-        .aspect_ratio(VIDEO_WIDTH / VIDEO_HEIGHT)
-        .bg(rgb(0x000000))
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .gap(px(8.))
-        .child(icon(icons::PLAY, 48., ink))
-        .child(
-            div()
-                .max_w_full()
-                .px(px(16.))
-                .truncate()
-                .text_size(px(CAPTION_SIZE))
-                .text_color(ink)
-                .child(attachment.filename.clone()),
-        )
-}
-
-/// An audio or video attachment with its inline player, which outlives the row's element.
+/// An audio or video attachment with its inline player, which outlives the row's element, in the
+/// kit tile's player slot.
 fn render_player(
     shared: &Rc<Shared>,
     players: &crate::player::Players,
@@ -1160,55 +1075,61 @@ fn render_player(
             };
             match player {
                 crate::player::AttachmentPlayer::Audio(view) => {
+                    // The tile shows the name and size; the player only its controls.
+                    view.update(cx, |view, _| view.set_in_tile(true));
                     cx.subscribe(view, move |_, event, cx| on_event(event, cx))
                 }
                 crate::player::AttachmentPlayer::Video(view) => {
+                    let size = image_box(
+                        attachment.width.map(f64::from),
+                        attachment.height.map(f64::from),
+                    );
+                    view.update(cx, |view, _| view.set_size((size.width, size.height)));
                     cx.subscribe(view, move |_, event, cx| on_event(event, cx))
                 }
             }
         },
         cx,
     );
-    div()
-        .id(("attachment-player", (row.seq as u64) << 8 | index as u64))
-        .test_support()
-        // Audio fills its width; video sizes itself from the clip's shape.
-        .when(
-            matches!(player, crate::player::AttachmentPlayer::Audio(_)),
-            |el| el.w(px(crate::player::model::AUDIO_MAX_WIDTH)),
-        )
-        .max_w_full()
-        .min_w_0()
-        // Presses on the controls are the player's, not the start of a text selection.
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .child(player.into_any_element())
-        .into_any_element()
+    let kind = match player {
+        crate::player::AttachmentPlayer::Audio(_) => TileKind::Audio,
+        crate::player::AttachmentPlayer::Video(_) => TileKind::Video,
+    };
+    let key = part_key(row.seq, index);
+    let mut tile = AttachmentTile::new(("attachment", key), kind, attachment.filename.clone())
+        .detail(file_size(attachment.size_bytes))
+        .on_open(open_attachment(shared, &attachment.file_id));
+    if let (Some(width), Some(height)) = (attachment.width, attachment.height) {
+        tile = tile.size(f64::from(width), f64::from(height));
+    }
+    tile.player(move |_slot| {
+        div()
+            .id(("attachment-player", key))
+            .test_support()
+            .size_full()
+            .min_w_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            // Presses on the controls are the player's, not the start of a text selection.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(player.into_any_element())
+            .into_any_element()
+    })
+    .into_any_element()
 }
 
+/// The files: the kit's `AttachmentTile` each, a player in the tile for what plays.
 fn render_attachments(
     shared: &Rc<Shared>,
     row: &MessageRow,
     window: &mut Window,
     cx: &mut App,
-) -> Option<AnyElement> {
-    if row.attachments.is_empty() {
-        return None;
-    }
-    let palette = shared.palette.get();
-    let multi = row.attachments.len() > 1;
+) -> Vec<AnyElement> {
     let mut items = Vec::with_capacity(row.attachments.len());
     for (index, attachment) in row.attachments.iter().enumerate() {
         let element = match attachment.kind {
-            AttachmentKind::Image => render_image(
-                shared,
-                row.seq,
-                index,
-                attachment,
-                multi.then_some(MULTI_ATTACHMENT_WIDTH),
-                window,
-                cx,
-            )
-            .into_any_element(),
+            AttachmentKind::Image => render_image(shared, row.seq, index, attachment, window, cx),
             AttachmentKind::Video | AttachmentKind::Audio
                 if let Some(players) = shared
                     .players
@@ -1218,47 +1139,28 @@ fn render_attachments(
             {
                 render_player(shared, players, row, index, attachment, cx)
             }
-            AttachmentKind::Video => render_video(attachment, &palette).into_any_element(),
-            AttachmentKind::Audio => {
-                render_file_card(shared, row.seq, index, attachment, icons::AUDIO_FILE)
-                    .into_any_element()
-            }
-            AttachmentKind::Document | AttachmentKind::Other => {
-                render_file_card(shared, row.seq, index, attachment, icons::FILE).into_any_element()
-            }
+            AttachmentKind::Video
+            | AttachmentKind::Audio
+            | AttachmentKind::Document
+            | AttachmentKind::Other => file_tile(shared, row.seq, index, attachment),
         };
         items.push(element);
     }
-    Some(
-        div()
-            .mt(px(8.))
-            .flex()
-            .flex_wrap()
-            .items_start()
-            .gap(px(8.))
-            .min_w_0()
-            .children(items)
-            .into_any_element(),
-    )
+    items
 }
 
+/// The reactions: the kit's `ReactionChip` each, with who reacted above it on hover.
 fn render_reactions(
     shared: &Rc<Shared>,
     row: &MessageRow,
     window: &mut Window,
     cx: &mut App,
-) -> Option<AnyElement> {
-    if row.reactions.is_empty() {
-        return None;
-    }
-    let palette = shared.palette.get();
+) -> Vec<AnyElement> {
+    let react = shared.permissions.get().react;
     let mut chips = Vec::with_capacity(row.reactions.len());
     for (index, reaction) in row.reactions.iter().enumerate() {
-        let event_shared = shared.clone();
-        let hover_shared = shared.clone();
-        let (message_id, emoji) = (row.id.clone(), reaction.emoji.clone());
-        let (hover_id, hover_emoji, seq) = (row.id.clone(), reaction.emoji.clone(), row.seq);
-        let tint = palette.tint(palette.primary, 0.15);
+        let key = part_key(row.seq, index);
+        let seq = row.seq;
         let tooltip = shared
             .hovered_reaction
             .borrow()
@@ -1279,88 +1181,103 @@ fn render_reactions(
                     div()
                         .absolute()
                         .left_0()
-                        .bottom(px(30.))
-                        .child(render_reaction_tooltip(users.as_ref(), &palette)),
+                        .bottom(px(CONTROL_SM + SPACE_XS))
+                        .child(render_reaction_tooltip(users.as_ref(), cx)),
                 )
             });
-        let mut chip = clickable(("reaction", (row.seq as u64) << 8 | index as u64))
-            .test_support()
-            .relative()
-            .flex()
-            .items_center()
-            .gap(px(4.))
-            .h(px(26.))
-            .px(px(8.))
-            .rounded(px(12.))
-            .border_1()
-            .text_size(px(13.))
-            .on_hover(move |hovered, _, cx| {
-                hover_shared.hover_reaction(seq, hover_id.as_deref(), &hover_emoji, *hovered, cx);
-            })
-            .children(tooltip)
-            .on_click(move |_, _, cx| {
-                if let Some(message_id) = message_id.clone() {
-                    event_shared.emit(
-                        MessageListEvent::ToggleReaction {
-                            message_id,
-                            emoji: emoji.clone(),
-                        },
-                        cx,
-                    );
-                }
-            });
-        chip = if reaction.me {
-            chip.bg(tint)
-                .border_color(palette.tint(palette.primary, 0.3))
-                .text_color(palette.primary_light)
-                .font_weight(FontWeight::SEMIBOLD)
-                .hover(|style| style.bg(palette.tint(palette.primary, 0.25)))
-        } else {
-            chip.bg(palette.overlay_medium)
-                .border_color(palette.divider)
-                .text_color(palette.text)
-                .font_weight(FontWeight::MEDIUM)
-                .hover(|style| style.bg(palette.overlay_heavy))
-        };
-        let custom = reaction.emoji.strip_prefix("custom:");
-        chip = match custom {
+        let (label, emoji_text, src): (String, String, Option<ImageSource>) = match reaction
+            .emoji
+            .strip_prefix("custom:")
+        {
             Some(emoji_id) => {
                 let media = shared.media.source.emoji(emoji_id);
                 let state = shared.media.resolve(media, CacheKind::Small, window, cx);
-                let glyph = div().size(px(15.)).flex_none();
-                chip.child(match state {
-                    MediaState::Ready(image) => glyph
-                        .child(image_canvas(shared, image, px(0.)))
-                        .into_any_element(),
-                    MediaState::Loading => glyph
-                        .rounded(px(4.))
-                        .bg(palette.skeleton)
-                        .into_any_element(),
+                match state {
+                    MediaState::Ready(image) => (
+                        "Custom emoji".to_owned(),
+                        "\u{2753}".to_owned(),
+                        Some(ImageSource::Render(shared.still(image, window, cx))),
+                    ),
+                    // Its room, until the picture comes.
+                    MediaState::Loading => ("Custom emoji".to_owned(), "\u{2003}".to_owned(), None),
                     // Unknown or deleted, as `CustomReactionLabel` shows it.
-                    MediaState::Failed => div().child("\u{2753}").into_any_element(),
-                })
-                .child(reaction.count.to_string())
+                    MediaState::Failed => ("Custom emoji".to_owned(), "\u{2753}".to_owned(), None),
+                }
             }
-            None => chip.child(format!("{} {}", reaction.emoji, reaction.count)),
+            None => (
+                crate::emoji::data::label(&reaction.emoji),
+                reaction.emoji.clone(),
+                None,
+            ),
         };
-        chips.push(chip);
+        let toggle_shared = shared.clone();
+        let people_shared = shared.clone();
+        let (message_id, emoji) = (row.id.clone(), reaction.emoji.clone());
+        let (people_id, people_emoji) = (row.id.clone(), reaction.emoji.clone());
+        let mut chip = ReactionChip::new(
+            ("reaction", key),
+            emoji_text,
+            label,
+            u64::from(reaction.count),
+        )
+        .mine(reaction.me)
+        .unavailable(!react)
+        .on_toggle(move |_, cx| {
+            if let Some(message_id) = message_id.clone() {
+                toggle_shared.emit(
+                    MessageListEvent::ToggleReaction {
+                        message_id,
+                        emoji: emoji.clone(),
+                    },
+                    cx,
+                );
+            }
+        })
+        .on_show_people(move |_, cx| {
+            people_shared.hover_reaction(seq, people_id.as_deref(), &people_emoji, true, cx);
+        });
+        if let Some(src) = src {
+            chip = chip.src(src);
+        }
+        let hover_shared = shared.clone();
+        let (hover_id, hover_emoji) = (row.id.clone(), reaction.emoji.clone());
+        chips.push(
+            div()
+                .id(("reaction-hover", key))
+                .relative()
+                .flex()
+                .on_hover(move |hovered, _, cx| {
+                    hover_shared.hover_reaction(
+                        seq,
+                        hover_id.as_deref(),
+                        &hover_emoji,
+                        *hovered,
+                        cx,
+                    );
+                })
+                .child(chip)
+                .children(tooltip)
+                .into_any_element(),
+        );
     }
-    Some(
-        div()
-            .mt(px(4.))
-            .flex()
-            .flex_wrap()
-            .gap(px(4.))
-            .children(chips)
-            .into_any_element(),
-    )
+    chips
 }
 
-fn render_thread_badge(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyElement> {
+/// Who reacted: `+N more`, or `Loading...` until core has names.
+fn render_reaction_tooltip(users: Option<&ReactionUsers>, cx: &App) -> impl IntoElement {
+    let (names, more) = reaction_tooltip_lines(users);
+    tip_box("reaction-tooltip", names.clone(), cx)
+        .test_support()
+        .whitespace_nowrap()
+        .child(names)
+        .when_some(more, |tip, more| tip.child(div().italic().child(more)))
+}
+
+/// The thread footer: "3 replies", a button that opens the thread.
+fn render_thread_footer(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyElement> {
     if row.reply_count == 0 {
         return None;
     }
-    let palette = shared.palette.get();
     let label = if row.reply_count == 1 {
         "1 reply".to_owned()
     } else {
@@ -1369,51 +1286,18 @@ fn render_thread_badge(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyEleme
     let event_shared = shared.clone();
     let message_id = row.id.clone();
     Some(
-        clickable(("thread", row.seq as u64))
-            .mt(px(4.))
-            .flex()
-            .w_auto()
-            .flex_none()
-            .items_center()
-            .gap(px(4.))
-            .px(px(8.))
-            .py(px(4.))
-            .rounded(px(4.))
-            .text_size(px(CAPTION_SIZE))
-            .font_weight(FontWeight::MEDIUM)
-            .text_color(palette.primary_light)
-            .hover(|style| style.bg(palette.tint(palette.primary, 0.08)))
+        KitButton::new(("thread", row.seq as u64), label.clone())
+            .text()
+            .size(ControlSize::Sm)
+            .start_icon(IconName::Forum)
+            .accessibility_label(format!("{label}, open the thread"))
             .on_click(move |_, _, cx| {
                 if let Some(message_id) = message_id.clone() {
                     event_shared.emit(MessageListEvent::OpenThread { message_id }, cx);
                 }
             })
-            .child(icon(icons::THREAD, 16., palette.primary))
-            .child(label)
             .into_any_element(),
     )
-}
-
-fn action_button(
-    id: impl Into<ElementId>,
-    label: &'static str,
-    action_icon: Glyph,
-    color: Hsla,
-    hover: Hsla,
-) -> Stateful<Div> {
-    clickable(id)
-        .flex()
-        .items_center()
-        .gap(px(4.))
-        .px(px(5.))
-        .py(px(4.))
-        .rounded(px(4.))
-        .text_size(px(13.))
-        .font_weight(FontWeight::MEDIUM)
-        .text_color(color)
-        .hover(move |style| style.bg(hover))
-        .child(icon(action_icon, 16., color))
-        .child(label)
 }
 
 pub(crate) fn render_row(
@@ -1429,7 +1313,6 @@ pub(crate) fn render_row(
         };
         (row, shared.decor_at(&rows, ix), rows.len())
     };
-    let palette = shared.palette.get();
     let prepared = shared.prepared_for(&row);
     let pending = matches!(row.send_state, SendState::Pending) || row.edit_pending;
     let selected = shared
@@ -1439,33 +1322,9 @@ pub(crate) fn render_row(
     let seq = row.seq;
 
     let reply = shared.replies.borrow().get(&row.seq).cloned();
-    let quote = reply.as_ref().map(|reply| {
-        let preview = render_reply(reply, &palette);
-        // A click jumps to the message answered, unless it's gone.
-        let target = row
-            .reply_to
-            .as_ref()
-            .filter(|reply_to| !reply_to.deleted && !reply_to.message_id.is_empty())
-            .map(|reply_to| reply_to.message_id.clone());
-        match target {
-            Some(message_id) => {
-                let event_shared = shared.clone();
-                clickable(("reply", row.seq as u64))
-                    .test_support()
-                    .on_click(move |_, _, cx| {
-                        event_shared.emit(
-                            MessageListEvent::OpenReply {
-                                message_id: message_id.clone(),
-                            },
-                            cx,
-                        );
-                    })
-                    .child(preview)
-                    .into_any_element()
-            }
-            None => preview.into_any_element(),
-        }
-    });
+    let quote = reply
+        .as_ref()
+        .map(|reply| unselectable(shared, render_quote(shared, &row, reply)).max_w_full());
 
     let editor = shared
         .editing
@@ -1474,27 +1333,20 @@ pub(crate) fn render_row(
         .filter(|(seq, _)| *seq == row.seq)
         .map(|(_, editor)| editor.clone());
     let is_editing = editor.is_some();
-    let mut body = div().flex().flex_col().flex_1().min_w_0();
-    let mut extras = div().flex().flex_col().flex_1().min_w_0();
+    let mut body: Option<AnyElement> = None;
+    let mut extras: Vec<AnyElement> = Vec::new();
     if row.removed {
-        body = body
-            .child(
-                div()
-                    .text_size(px(BODY_SIZE))
-                    .line_height(px(BODY_LINE))
-                    .italic()
-                    .text_color(palette.text_disabled)
-                    .child("[Message deleted]"),
-            )
-            .children(render_removed_by(&row, &palette));
+        body = Some(render_removed(&row, cx).into_any_element());
     }
     if let Some(editor) = editor {
-        body = body.child(
+        body = Some(
             div()
                 .id("message-editor")
-                .mt(px(4.))
+                .w_full()
+                .min_w_0()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .child(editor),
+                .child(editor)
+                .into_any_element(),
         );
     } else {
         // A lone GIF URL draws the GIF (or its Load card) in place of the link and its preview.
@@ -1505,23 +1357,32 @@ pub(crate) fn render_row(
             .and_then(|embed| render_gif(shared, &row, embed, window, cx));
         let has_gif = gif.is_some();
         if !has_gif && !prepared.text.segments.is_empty() {
-            body = body.child(render_words(shared, &row, &prepared.text, window, cx));
+            let words = render_words(shared, &row, &prepared.text, window, cx);
+            // A moderator is sent a removed message's words: they go under "[Message deleted]".
+            body = Some(match body.take() {
+                Some(removed) => div()
+                    .flex()
+                    .flex_col()
+                    .w_full()
+                    .min_w_0()
+                    .child(removed)
+                    .child(words)
+                    .into_any_element(),
+                None => words,
+            });
         }
-        extras = extras
-            .children(gif)
-            .children(render_attachments(shared, &row, window, cx))
-            .children(render_uploads(shared, &row));
+        extras.extend(gif);
+        extras.extend(render_attachments(shared, &row, window, cx));
+        extras.extend(render_uploads(shared, &row, cx));
         if !has_gif {
-            extras = extras.children(render_link_previews(shared, &row, window, cx));
+            extras.extend(render_link_previews(shared, &row, window, cx));
         }
     }
-    let footer = div()
-        .flex()
-        .flex_col()
-        .min_w_0()
-        .children(render_reactions(shared, &row, window, cx))
-        .children(render_thread_badge(shared, &row))
-        .children(render_seen(shared, &row));
+    // The own latest message's "Seen by" goes under the thread footer.
+    let footer: Vec<AnyElement> = render_thread_footer(shared, &row)
+        .into_iter()
+        .chain(render_seen(shared, &row, cx))
+        .collect();
 
     let avatar = row
         .author
@@ -1539,6 +1400,13 @@ pub(crate) fn render_row(
         _ if pending => MessageState::Pending,
         _ => MessageState::Sent,
     };
+    let focus = shared.row_focus(seq, cx);
+    let focus_within = focus.handle.contains_focused(window, cx);
+    if focus_within {
+        shared.roving.set(Some(seq));
+        shared.focus_row.set(Some(seq));
+    }
+    let tab_stop = shared.tab_stop_seq() == Some(seq);
     let mut kit_row = KitRow::new(
         ("message", row.seq as u64),
         prepared.author.clone(),
@@ -1550,9 +1418,39 @@ pub(crate) fn render_row(
     .state(state)
     .edited(row.edited)
     .pinned(row.pinned)
-    .body(body)
-    .attachments(extras)
-    .footer(footer);
+    .focus(RowFocus {
+        handle: focus.handle.clone(),
+        tab_stop,
+    })
+    .reactions(
+        render_reactions(shared, &row, window, cx)
+            .into_iter()
+            .map(|chip| unselectable(shared, chip)),
+    );
+    if let Some(body) = body {
+        kit_row = kit_row.body(body);
+    }
+    if !extras.is_empty() {
+        kit_row = kit_row.attachments(
+            own_presses(shared)
+                .flex()
+                .flex_col()
+                .items_start()
+                .gap(px(SPACE_SM))
+                .w_full()
+                .min_w_0()
+                .children(extras),
+        );
+    }
+    if !footer.is_empty() {
+        kit_row = kit_row.footer(
+            own_presses(shared)
+                .flex()
+                .flex_col()
+                .min_w_0()
+                .children(footer),
+        );
+    }
     if let Some(image) = avatar {
         kit_row = kit_row.avatar(ImageSource::Render(image));
     }
@@ -1600,28 +1498,48 @@ pub(crate) fn render_row(
             );
         });
     }
-    let menu_shared = shared.clone();
-    kit_row = kit_row.on_open_actions(move |request, _, cx| {
-        let view = menu_shared.view.borrow().clone();
-        let position = match request {
-            OpenActionsRequest::Pointer { position } | OpenActionsRequest::Touch { position } => {
-                position
-            }
-            OpenActionsRequest::Keyboard => return,
-        };
-        view.update(cx, |list, cx| list.open_menu(seq, position, cx))
-            .ok();
-    });
+    if !is_editing {
+        let menu_shared = shared.clone();
+        kit_row = kit_row.on_open_actions(move |request, _, cx| {
+            let position = match request {
+                OpenActionsRequest::Pointer { position }
+                | OpenActionsRequest::Touch { position } => position,
+                // The list's menu takes no keyboard yet (it becomes the kit Menu in PR 4), so a
+                // keyboard request opens nothing; the toolbar gives the keyboard every action.
+                OpenActionsRequest::Keyboard => return,
+            };
+            let view = menu_shared.view.borrow().clone();
+            view.update(cx, |list, cx| list.open_menu(seq, position, cx))
+                .ok();
+        });
+    }
 
     let staged = shared.staged_delete.get() == Some(row.seq);
-    let show_toolbar = !is_editing
-        && (staged
-            || shared.menu_for.get() == Some(row.seq)
-            || shared.hovered.get() == Some(row.seq));
-    let toolbar = show_toolbar
-        .then(|| render_toolbar(shared, &row, staged, shared.phone.get()))
-        .flatten();
+    // One row's toolbar at a time: the list's hovered row (or the one whose menu is open or that
+    // asks "Delete?"), and the row the keyboard brought focus into. Rows left out get no actions
+    // at all, so a hover the kit row has not heard end yet, or a toolbar button pressed with the
+    // pointer that kept focus, can't show a second toolbar.
+    let toolbar_held =
+        staged || shared.menu_for.get() == Some(row.seq) || shared.hovered.get() == Some(row.seq);
+    let keyboard = focus_within && window.last_input_was_keyboard();
+    if !is_editing && (toolbar_held || keyboard) {
+        // The keyboard gets every action as a button, at any width: the menu and the phone's
+        // sheet take no keys yet (they become kit pieces in PR 4).
+        let actions = toolbar_buttons(
+            shared,
+            &row,
+            staged,
+            shared.phone.get() && !keyboard,
+            keyboard,
+        );
+        if !actions.is_empty() {
+            kit_row = kit_row.actions(actions).actions_shown(toolbar_held);
+        }
+    }
     let hover_shared = shared.clone();
+    kit_row = kit_row.on_hover(move |hovered, _, cx| hover_shared.hover_row(seq, hovered, cx));
+    let keys_shared = shared.clone();
+    let keys_handle = focus.handle.clone();
     let mut container = div()
         .id(("message-item", row.seq as u64))
         .relative()
@@ -1631,7 +1549,18 @@ pub(crate) fn render_row(
         .aria_selected(selected)
         .aria_position_in_set(ix + 1)
         .aria_size_of_set(total)
-        .on_hover(move |hovered, _, cx| hover_shared.hover_row(seq, *hovered, cx));
+        // The list's roving focus: Up and Down, Home and End on the row itself.
+        .on_key_down(move |event, window, cx| {
+            if !keys_handle.is_focused(window) {
+                return;
+            }
+            if let Some(step) = super::view::RowStep::of(&event.keystroke) {
+                cx.stop_propagation();
+                let view = keys_shared.view.borrow().clone();
+                view.update(cx, |list, cx| list.move_row_focus(seq, step, window, cx))
+                    .ok();
+            }
+        });
     if window.is_a11y_active() {
         container = container.aria_label(accessible_label(
             &row,
@@ -1641,24 +1570,27 @@ pub(crate) fn render_row(
         ));
     }
     if staged {
-        container = container.bg(palette.tint(palette.error, 0.08));
+        let p = cx.sem().roles;
+        let under = tint_base_token(&p, Surface::or_current(None, cx));
+        container = container.bg(hsla_of(blend(p.danger, under, STATE_HOVER)));
     }
-    let container = container.child(kit_row).children(toolbar);
+    let container = container.child(kit_row);
     let divider = shared
         .unread
         .get()
         .filter(|divider| divider.after_seq == row.seq && ix + 1 < total)
-        .map(|divider| render_unread_divider(divider.count, &palette));
+        .map(|divider| ListSeparator::unread("unread-divider", unread_label(divider.count)));
 
-    match (decor.day, divider) {
+    let element = match (decor.day, divider) {
         (None, None) => container.into_any_element(),
         (day, divider) => div()
             .w_full()
-            .children(day.map(|label| render_day_separator(label, &palette)))
+            .children(day.map(|label| ListSeparator::day(("day", row.seq as u64), label)))
             .child(container)
             .children(divider)
             .into_any_element(),
-    }
+    };
+    super::painted::PaintedRow::new(seq, shared.clone(), element).into_any_element()
 }
 
 /// Side padding of a row in the list, outside the kit row's own.
@@ -1735,14 +1667,7 @@ fn render_words(
     let mention_shared = shared.clone();
     MessageText::shared(("message-text", seq as u64), text.segments.clone())
         .list(list)
-        .on_link(move |href, _, cx| {
-            link_shared.emit(
-                MessageListEvent::OpenLink {
-                    url: href.to_owned(),
-                },
-                cx,
-            );
-        })
+        .on_link(move |href, _, cx| link_shared.open_href(href, cx))
         .on_mention(move |mention, _, cx| {
             if mention.kind == crate::kit::chat::MentionKind::User
                 && let Some(user_id) = &mention.id
@@ -1876,11 +1801,11 @@ pub(crate) fn render_empty(palette: &Palette) -> impl IntoElement {
                 .rounded_full()
                 .mb(px(24.))
                 .bg(palette.tint(palette.primary, 0.2))
-                .child(icon(
-                    icons::FORUM,
-                    64.,
-                    palette.tint(palette.primary_light, 0.7),
-                )),
+                .child(
+                    Icon::lounge(LoungeIcon::MessageSquare)
+                        .size(64.)
+                        .color(palette.tint(palette.primary_light, 0.7)),
+                ),
         )
         .child(
             div()

@@ -271,12 +271,40 @@ pub struct MessageList {
     menu: Option<(i64, Point<Pixels>)>,
     /// A moderator removing someone else's message: its seq, and the optional reason.
     remove: Option<(i64, Entity<InputState>)>,
+    /// A reset happened: if a row had focus, the list takes it at the next draw.
+    refocus_after_reset: bool,
 }
 
 /// Under this list width the toolbar is one button and the menu a bottom sheet.
 const PHONE_WIDTH: f32 = 600.;
 
 impl EventEmitter<MessageListEvent> for MessageList {}
+
+/// A key that moves the list's roving focus from the row that has it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RowStep {
+    Previous,
+    Next,
+    First,
+    Last,
+}
+
+impl RowStep {
+    /// Up, Down, Home or End, with no modifier.
+    pub(crate) fn of(keystroke: &Keystroke) -> Option<Self> {
+        let m = keystroke.modifiers;
+        if m.shift || m.alt || m.control || m.platform || m.function {
+            return None;
+        }
+        Some(match keystroke.key.as_str() {
+            "up" => Self::Previous,
+            "down" => Self::Next,
+            "home" => Self::First,
+            "end" => Self::Last,
+            _ => return None,
+        })
+    }
+}
 
 impl MessageList {
     /// Whether third-party pictures (GIFs, link-preview images) may load
@@ -286,6 +314,7 @@ impl MessageList {
     /// (`semaphore_design::chat::TYPING_LINE_HEIGHT`), which floats there, so it never covers a row.
     pub fn set_bottom_room(&mut self, room: Pixels, cx: &mut Context<Self>) {
         self.bottom_room = room;
+        self.shared.bottom_room.set(room);
         cx.notify();
     }
 
@@ -376,6 +405,7 @@ impl MessageList {
         options: ListOptions,
         cx: &mut Context<Self>,
     ) -> Self {
+        let list_focus = cx.focus_handle();
         let shared = Rc::new(Shared {
             rows: RefCell::new(RowStore::new(data.rows)),
             prepared: RefCell::default(),
@@ -409,11 +439,23 @@ impl MessageList {
             seen: RefCell::default(),
             seen_hovered: Cell::new(false),
             dm_peer_reads: RefCell::new(None),
+            row_focus: RefCell::new(HashMap::new()),
+            roving: Cell::new(None),
+            focusable: Cell::new(None),
+            drawn: RefCell::new(Vec::new()),
+            last_drawn: RefCell::new(Vec::new()),
+            viewport: Cell::new(Bounds::default()),
+            bottom_room: Cell::new(px(8.)),
+            stop: Cell::new(None),
+            focus_row: Cell::new(None),
+            list_focus: list_focus.clone(),
         });
         let target = seen::own_latest(shared.rows.borrow().iter().map(|row| row.as_ref()));
         shared.seen.borrow_mut().retarget(target);
         let count = shared.rows.borrow().len();
         let list = ListState::new(count, ListAlignment::Top, OVERDRAW);
+        // Each row's focus handle goes to the list, so a row that has focus stays drawn.
+        list.splice_focusable(0..count, shared.row_handles(0..count, cx));
         list.set_follow_mode(FollowMode::Tail);
         let weak = cx.weak_entity();
         list.set_scroll_handler(move |_, _, cx| {
@@ -425,7 +467,7 @@ impl MessageList {
         Self {
             shared,
             list,
-            focus: cx.focus_handle(),
+            focus: list_focus,
             status: data.status,
             scrollbar: options.scrollbar,
             follow_theme: options.follow_theme,
@@ -447,6 +489,7 @@ impl MessageList {
             announce_timer: None,
             menu: None,
             remove: None,
+            refocus_after_reset: false,
         }
     }
 
@@ -736,6 +779,149 @@ impl MessageList {
         )
     }
 
+    /// Moves the roving focus from the row `from` by `step`: the row it lands on is scrolled into
+    /// view, becomes the list's Tab stop and takes focus.
+    pub(crate) fn move_row_focus(
+        &mut self,
+        from: i64,
+        step: RowStep,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let target = {
+            let rows = self.shared.rows.borrow();
+            let Some(ix) = rows.index_of(from) else {
+                return;
+            };
+            let last = rows.len().saturating_sub(1);
+            let to = match step {
+                RowStep::Previous => ix.saturating_sub(1),
+                RowStep::Next => (ix + 1).min(last),
+                RowStep::First => 0,
+                RowStep::Last => last,
+            };
+            rows.get(to).map(|row| (to, row.seq))
+        };
+        let Some((ix, seq)) = target else {
+            return;
+        };
+        let last = self.shared.rows.borrow().len().saturating_sub(1);
+        if ix == last {
+            self.list.set_follow_mode(FollowMode::Tail);
+        } else {
+            // Following the tail would snap the list back to the end at the next layout.
+            self.list.set_follow_mode(FollowMode::Normal);
+        }
+        self.list.scroll_to_reveal_item(ix);
+        self.shared.roving.set(Some(seq));
+        self.sync_focusable_row(cx);
+        let handle = self.shared.row_focus(seq, cx).handle;
+        window.focus(&handle, cx);
+        cx.notify();
+    }
+
+    /// Hands the list the roving row's focus handle (and takes the last one's back), so the row
+    /// with focus stays drawn when it scrolls out of view.
+    fn sync_focusable_row(&mut self, cx: &mut Context<Self>) {
+        let wanted = self.shared.roving.get();
+        let held = self.shared.focusable.get();
+        if wanted == held {
+            return;
+        }
+        let index_of =
+            |seq: Option<i64>| seq.and_then(|seq| self.shared.rows.borrow().index_of(seq));
+        let (old, new) = (index_of(held), index_of(wanted));
+        self.shared.focusable.set(wanted);
+        // A splice puts the list back at the top of the row it is scrolled to, and the follow
+        // state with it: keep both.
+        let top = self.list.logical_scroll_top();
+        let following = self.list.is_following_tail();
+        for ix in [old, new].into_iter().flatten() {
+            let handles = self.shared.row_handles(ix..ix + 1, cx);
+            self.list.splice_focusable(ix..ix + 1, handles);
+        }
+        if following {
+            self.list.set_follow_mode(FollowMode::Tail);
+        } else if self.list.logical_scroll_top() != top {
+            self.list.scroll_to(top);
+        }
+    }
+
+    /// After a draw: if focus was in a row and the window now has none, the row (or the list, if
+    /// the row is gone) takes it. If focus is elsewhere, the list forgets the row.
+    fn recover_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(seq) = self.shared.focus_row.get() else {
+            return;
+        };
+        if window.focused(cx).is_some() {
+            if !self.focus.contains_focused(window, cx) {
+                self.shared.focus_row.set(None);
+            }
+            return;
+        }
+        let present = self.shared.rows.borrow().by_seq(seq).is_some();
+        if present {
+            let handle = self.shared.row_focus(seq, cx).handle;
+            window.focus(&handle, cx);
+        } else {
+            window.focus(&self.focus, cx);
+        }
+        cx.notify();
+    }
+
+    /// The row that is the list's one Tab stop this frame, from where the list is scrolled now
+    /// (only rows drawn are in the window's Tab order): the roving row (else the newest) when it
+    /// is among the rows this frame shows, otherwise the first row wholly on screen. Picked from
+    /// the scroll position before the rows are laid out, so a jump or a scroll needs no second
+    /// frame to have a stop on screen.
+    fn tab_stop(&self) -> Option<i64> {
+        let rows = self.shared.rows.borrow();
+        let last = rows.len().checked_sub(1)?;
+        let wanted = self
+            .shared
+            .roving
+            .get()
+            .and_then(|seq| rows.index_of(seq))
+            .unwrap_or(last);
+        // How many rows the view holds: as many as were wholly on screen last frame, at least one.
+        let shown = {
+            let viewport = self.shared.viewport.get();
+            self.shared
+                .last_drawn
+                .borrow()
+                .iter()
+                .filter(|(_, bounds)| {
+                    bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom()
+                })
+                .count()
+                .max(1)
+        };
+        let (first, end) = if self.list.is_following_tail() {
+            ((last + 1).saturating_sub(shown), last + 1)
+        } else {
+            let top = self.list.logical_scroll_top();
+            let first = if top.offset_in_item > px(0.) && top.item_ix < last {
+                top.item_ix + 1
+            } else {
+                top.item_ix.min(last)
+            };
+            (first, (first + shown).min(last + 1))
+        };
+        let ix = if (first..end).contains(&wanted) {
+            wanted
+        } else if self.list.is_following_tail() {
+            last
+        } else {
+            first
+        };
+        rows.get(ix).map(|row| row.seq)
+    }
+
+    /// The row holding the list's roving focus (its one Tab stop).
+    pub fn focused_row(&self) -> Option<i64> {
+        self.shared.tab_stop_seq()
+    }
+
     pub fn focus_handle(&self) -> &FocusHandle {
         &self.focus
     }
@@ -797,6 +983,7 @@ impl MessageList {
             self.freeze_anchor_decor(index.saturating_add(*count) as usize);
         }
         let change = self.shared.rows.borrow_mut().apply(op);
+        self.shared.prune_row_focus();
         // A deleted or removed message's player goes with it, and stops.
         self.shared
             .list_players
@@ -808,11 +995,23 @@ impl MessageList {
                 // Seqs aren't stable across a reset, so a held selection now means nothing.
                 self.set_selection(None, cx);
                 self.caret = None;
+                // Another conversation, or the same one anew: the newest row is the Tab stop,
+                // and a row that had focus gives it to the list (`render`), even if a new row
+                // has its seq.
+                self.shared.roving.set(None);
+                self.shared.focusable.set(None);
+                self.shared.focus_row.set(None);
+                self.refocus_after_reset = true;
                 self.list.reset(count);
+                self.list
+                    .splice_focusable(0..count, self.shared.row_handles(0..count, cx));
                 self.list.set_follow_mode(FollowMode::Tail);
             }
             RowChange::Splice { old, count } => {
-                self.list.splice(old.clone(), count);
+                self.list.splice_focusable(
+                    old.clone(),
+                    self.shared.row_handles(old.start..old.start + count, cx),
+                );
                 let after = old.start + count;
                 if after < self.list.item_count() {
                     self.list.remeasure_items(after..after + 1);
@@ -1107,6 +1306,8 @@ impl MessageList {
     }
 
     fn on_press(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        // A pointer press focuses the list, as it always did, so its shortcuts work wherever the
+        // pressed row scrolls to. Rows take focus from the keyboard.
         window.focus(&self.focus, cx);
         self.pointer = event.position;
         self.pressed_at = event.position;
@@ -1348,8 +1549,26 @@ impl MessageList {
 }
 
 impl Render for MessageList {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.shared.visible.borrow_mut().clear();
+        {
+            let drawn = std::mem::take(&mut *self.shared.drawn.borrow_mut());
+            *self.shared.last_drawn.borrow_mut() = drawn;
+        }
+        // A row the keyboard focused, or a control in it, that is gone (deleted, or a reset): the
+        // list takes focus, so its shortcuts still work. Last frame's tree still has the row.
+        let reset = std::mem::take(&mut self.refocus_after_reset);
+        let focused_row_gone = {
+            let rows = self.shared.rows.borrow();
+            self.shared.row_focus.borrow().iter().any(|(seq, handle)| {
+                (reset || rows.by_seq(*seq).is_none()) && handle.contains_focused(window, cx)
+            })
+        };
+        if focused_row_gone {
+            window.focus(&self.focus, cx);
+        }
+        self.sync_focusable_row(cx);
+        self.shared.stop.set(self.tab_stop());
         self.shared.list_players.next_frame();
         self.release_frozen_decor();
         if self.follow_theme
@@ -1470,6 +1689,13 @@ impl Render for MessageList {
                         });
                         let after = entity.clone();
                         cx.defer(move |cx| after.update(cx, |view, cx| view.after_paint(cx)));
+                        // A control in a row that had focus and went (a reaction taken back, a
+                        // Load card): once its handle is dropped the window has no focus. Give it
+                        // to that row, or to the list.
+                        let lost = entity.clone();
+                        window.defer(cx, move |window, cx| {
+                            lost.update(cx, |view, cx| view.recover_focus(window, cx));
+                        });
                     },
                 )
                 .absolute()

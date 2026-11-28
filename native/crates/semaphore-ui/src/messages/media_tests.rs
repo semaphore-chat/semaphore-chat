@@ -181,7 +181,6 @@ fn only_third_party_rs_calls_gif_or_link_image() {
     let sources = [
         ("actions.rs", include_str!("actions.rs")),
         ("format.rs", include_str!("format.rs")),
-        ("icons.rs", include_str!("icons.rs")),
         ("media.rs", include_str!("media.rs")),
         ("palette.rs", include_str!("palette.rs")),
         ("row.rs", include_str!("row.rs")),
