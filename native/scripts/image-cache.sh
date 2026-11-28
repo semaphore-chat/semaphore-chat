@@ -5,7 +5,7 @@
 #
 # Each image keeps its local name, semaphore-native-<kind>:<hash>, where the hash covers every
 # file the image is built from. With NATIVE_IMAGE_REGISTRY set (CI sets ghcr.io/semaphore-chat),
-# an image missing locally is pulled from <registry>/<local name> before it is built; any failed
+# an image missing locally is pulled from <registry>/<local name>-<generation> before it is built; any failed
 # pull (a miss, an outage) falls back to a local build. Pulls need no login: the packages are
 # public.
 #
@@ -23,11 +23,20 @@
 
 NATIVE_IMAGE_SOURCE_URL="https://github.com/semaphore-chat/semaphore-chat"
 
+# The registry tag is <local tag>-<generation>. Bumping the generation orphans every tag pushed
+# before it: nothing pulls them again and native-images.yml pushes fresh ones from main. g2 drops
+# the tags that pull-request runs pushed while #887 was in review, before only main could push.
+NATIVE_IMAGE_CACHE_GEN=g2
+
+native_image_remote() { # <image> -> <registry>/<image>-<generation>
+  printf '%s/%s-%s' "$NATIVE_IMAGE_REGISTRY" "$1" "$NATIVE_IMAGE_CACHE_GEN"
+}
+
 native_image_fetch() {
   local image="$1" remote
   docker image inspect "$image" >/dev/null 2>&1 && return 0
   [ -n "${NATIVE_IMAGE_REGISTRY:-}" ] || return 1
-  remote="$NATIVE_IMAGE_REGISTRY/$image"
+  remote="$(native_image_remote "$image")"
   echo "image-cache: pulling $remote ..." >&2
   # A miss and a registry outage both fall back to a build: the run is never worse than without
   # the registry.
@@ -47,7 +56,7 @@ native_image_build() {
   docker build -q --label "org.opencontainers.image.source=$NATIVE_IMAGE_SOURCE_URL" \
     -t "$image" "$@" >/dev/null || return 1
   [ -n "${NATIVE_IMAGE_REGISTRY:-}" ] && [ "${NATIVE_IMAGE_PUSH:-0}" = 1 ] || return 0
-  remote="$NATIVE_IMAGE_REGISTRY/$image"
+  remote="$(native_image_remote "$image")"
   # Only a definite "not there" leads to a push: an existing tag is never pushed over, and an
   # error (network, auth) is not taken to mean absent.
   local answer

@@ -50,6 +50,7 @@ ok() { [ "$fail" = 0 ] && echo "ok   $current"; }
 
 img=semaphore-native-build:abc123
 reg=ghcr.io/semaphore-chat
+rem=$reg/$img-g2
 
 run "local image: nothing pulled" STUB_INSPECT=0 NATIVE_IMAGE_REGISTRY=$reg -- "native_image_fetch $img"
 expect_rc 0; expect_no '^pull'; ok
@@ -58,7 +59,7 @@ run "no registry: a miss builds" STUB_INSPECT=1 -- "native_image_fetch $img"
 expect_rc 1; expect_no '^pull'; ok
 
 run "registry hit: pulled and tagged locally" STUB_INSPECT=1 NATIVE_IMAGE_REGISTRY=$reg -- "native_image_fetch $img"
-expect_rc 0; expect_call "pull -q $reg/$img"; expect_call "tag $reg/$img $img"; ok
+expect_rc 0; expect_call "pull -q $rem"; expect_call "tag $rem $img"; ok
 
 run "registry miss: falls back to a build" STUB_INSPECT=1 STUB_PULL=1 NATIVE_IMAGE_REGISTRY=$reg -- "native_image_fetch $img"
 expect_rc 1; expect_no '^tag'; ok
@@ -72,10 +73,10 @@ run "push needs a registry" NATIVE_IMAGE_PUSH=1 -- "native_image_build $img ctx"
 expect_rc 0; expect_no '^push'; expect_no '^manifest'; ok
 
 run "push: a tag the registry calls unknown is pushed" NATIVE_IMAGE_PUSH=1 STUB_MANIFEST=1 NATIVE_IMAGE_REGISTRY=$reg -- "native_image_build $img ctx"
-expect_rc 0; expect_call "tag $img $reg/$img"; expect_call "push -q $reg/$img"; ok
+expect_rc 0; expect_call "tag $img $rem"; expect_call "push -q $rem"; ok
 
 run "push: an existing tag is not pushed over" NATIVE_IMAGE_PUSH=1 STUB_MANIFEST=0 NATIVE_IMAGE_REGISTRY=$reg -- "native_image_build $img ctx"
-expect_rc 0; expect_call "manifest inspect $reg/$img"; expect_no '^push'; ok
+expect_rc 0; expect_call "manifest inspect $rem"; expect_no '^push'; ok
 
 run "push failure only warns" NATIVE_IMAGE_PUSH=1 STUB_MANIFEST=1 STUB_PUSH=1 NATIVE_IMAGE_REGISTRY=$reg GITHUB_ACTIONS=true -- "native_image_build $img ctx"
 expect_rc 0; grep -q '::warning title=Image cache::' "$work/out" || { echo "FAIL $current: no warning annotation"; fail=1; }; ok
