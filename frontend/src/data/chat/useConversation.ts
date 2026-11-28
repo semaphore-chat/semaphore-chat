@@ -6,10 +6,12 @@
  * (`useReadMarks`), the anchored-to-live transition, the new-message announcement, typing, and marking the
  * channel's notifications read. What is new is only the "N new" count (`useNewWhileAway`) and that the three
  * "jump" buttons of the old chat are one Jump to latest here (the same three actions, chosen the same way).
+ *
+ * A DM group's conversation (`target: { kind: 'dm', dmGroupId }`) is the same model on the DM variants of those
+ * hooks, as the old shell's DM screen (`components/DirectMessages/DirectMessageContainer.tsx`) calls them.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { MessageListCoreHandle } from '../../features/chat/MessageListCore';
-import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { useAnchoredModeTransition } from '../../hooks/useAnchoredModeTransition';
 import { useAutoMarkNotificationsRead } from '../../hooks/useAutoMarkNotificationsRead';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
@@ -17,12 +19,14 @@ import { useMessageListAnnouncer } from '../../hooks/useMessageListAnnouncer';
 import { useTypingUsers } from '../../hooks/useTypingUsers';
 import type { Message } from '../../types/message.type';
 import { useChannelChat } from './useChannelChat';
+import { chatTargetContext, chatTargetId, chatTargetIds, resolveChatTarget, type ChatTargetArgs } from './chatTarget';
 import { useNewWhileAway } from './useNewWhileAway';
 import { useReadMarks } from './useReadMarks';
 
-export interface UseConversationOptions {
-  communityId: string;
-  channelId: string;
+/** A `target` (a channel or a DM group), or the channel's `communityId` + `channelId`. */
+export type UseConversationOptions = ChatTargetArgs & ConversationOptions;
+
+interface ConversationOptions {
   /** Where clearing `?highlight=` leads (`useChannelChat`'s `chatPath`). Default: the app's channel route. */
   chatPath?: string;
   /**
@@ -72,13 +76,17 @@ export interface Conversation {
   announcement: string;
 }
 
-export function useConversation({ communityId, channelId, chatPath, covered = false }: UseConversationOptions): Conversation {
+export function useConversation({ chatPath, covered = false, ...targetArgs }: UseConversationOptions): Conversation {
+  const target = resolveChatTarget(targetArgs as ChatTargetArgs);
+  // The conversation's identity: the channel id or the DM group id.
+  const contextKey = chatTargetId(target);
+  const ids = chatTargetIds(target);
   const { user } = useCurrentUser();
   const me = user?.id ?? '';
 
-  useAutoMarkNotificationsRead({ contextType: VoiceSessionType.Channel, contextId: channelId });
+  useAutoMarkNotificationsRead(chatTargetContext(target));
 
-  const { messagesHookResult } = useChannelChat(channelId, communityId, { chatPath });
+  const { messagesHookResult } = useChannelChat(target, { chatPath });
   const {
     messages,
     isLoading,
@@ -115,7 +123,7 @@ export function useConversation({ communityId, channelId, chatPath, covered = fa
     orderedMessages,
     atBottom,
     authorId: me,
-    contextKey: channelId,
+    contextKey,
     enabled: !isLoading,
   });
 
@@ -124,8 +132,8 @@ export function useConversation({ communityId, channelId, chatPath, covered = fa
   const { handleDetachedJumpToPresent, handleVisibleRangeChange, unreadCount, lastReadIndex } = useReadMarks({
     orderedMessages,
     isLoading,
-    channelId,
-    contextKey: channelId,
+    ...ids,
+    contextKey,
     isDetachedFromPresent,
     resetToPresent,
     scrollToBottomRef,
@@ -152,10 +160,10 @@ export function useConversation({ communityId, channelId, chatPath, covered = fa
     orderedMessages,
     atBottom,
     authorId: me,
-    contextKey: channelId,
+    contextKey,
     live: mode === 'normal' && !isDetachedFromPresent,
   });
-  const typingUserIds = useTypingUsers({ channelId, currentUserId: me });
+  const typingUserIds = useTypingUsers({ ...ids, currentUserId: me });
 
   // The old chat's three buttons, in its order: back to the present from a jump, back to the live edge from a
   // detached window (#404), or down to the bottom.
@@ -184,7 +192,7 @@ export function useConversation({ communityId, channelId, chatPath, covered = fa
       lastReadIndex,
       highlightMessageId,
       highlightSeq,
-      resetKey: channelId,
+      resetKey: contextKey,
       onAtBottomChange: setAtBottom,
       onVisibleRangeChange,
     },

@@ -40,8 +40,9 @@ export interface CommunityChannels extends SortedChannels {
   query: UseQueryResult<Channel[]>;
 }
 
-export function useCommunityChannels(communityId: string): CommunityChannels {
-  const query = useQuery(channelsControllerFindAllForCommunityOptions({ path: { communityId } }));
+/** `enabled: false` (a DM composer, which has no community): nothing is fetched. */
+export function useCommunityChannels(communityId: string, { enabled = true }: { enabled?: boolean } = {}): CommunityChannels {
+  const query = useQuery({ ...channelsControllerFindAllForCommunityOptions({ path: { communityId } }), enabled });
   const { data, status, isLoading, error, refetch } = query;
   const sorted = useMemo(() => sortCommunityChannels(data), [data]);
   const refetchChannels = useCallback(() => void refetch(), [refetch]);
