@@ -94,8 +94,8 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
   const { text, voice, status, error, query } = useCommunityChannels(communityId);
   const unread = useUnreadSummary();
   const range = useWidthRange();
-  const { rightOpen, setRightOpen } = useScreenChrome();
-  const onShowMembers = useCallback(() => setRightOpen(true), [setRightOpen]);
+  // At wide the button gives way to the island as it shows: `showRight` moves focus into the island.
+  const { rightOpen, panel, showRight: onShowMembers } = useScreenChrome();
   const { blobUrl } = useAuthenticatedImage(community?.avatarFileId ?? null);
   // Loaded channels stay through a failed refetch (a toast says so); the error face only with nothing to show.
   const channelsState = useQueryLoadState(query, { notifyId: 'lounge-channels', resetKey: communityId, isEmpty: noTextChannels });
@@ -175,7 +175,7 @@ export function CommunityLeft({ communityId, channelId }: CommunityLeftProps): J
         onAction,
         onShowMembers,
         // At wide the members can be an island beside the list; below it they are always a Sheet over it.
-        membersShown: range === 'wide' && rightOpen,
+        membersShown: range === 'wide' && rightOpen && panel === null,
       }}
       channels={{
         channels: channelItems,

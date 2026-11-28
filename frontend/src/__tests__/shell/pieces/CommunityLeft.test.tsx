@@ -71,7 +71,7 @@ import { userControllerGetProfileQueryKey } from '../../../api-client/@tanstack/
 import { handleNewMessage } from '../../../socket-hub/handlers/messageHandlers';
 import { handleVoiceUserJoined } from '../../../socket-hub/handlers/voiceHandlers';
 import { CommunityLeft } from '../../../shell/lounge/pieces/community/CommunityLeft';
-import { ScreenChromeContext, type ScreenChrome } from '../../../shell/lounge/screen';
+import { NO_SCREEN_CHROME, ScreenChromeContext, type ScreenChrome } from '../../../shell/lounge/screen';
 import { LAST_COMMUNITY_KEY } from '../../../utils/lastCommunity';
 import { forgetVoiceChannels, knownVoiceChannels } from '../../../shell/voiceChannelMemory';
 import { CommunityHeader } from '../../../shell/lounge/pieces/community/CommunityHeader';
@@ -398,10 +398,11 @@ describe('CommunityLeft (connected)', () => {
 describe('CommunityLeft (the phone community home, PR 9b)', () => {
   it('the header\'s "N around" opens the frame\'s members', async () => {
     serve();
-    const setRightOpen = vi.fn();
-    const { user } = renderLeft('ch-general', { rightOpen: false, setRightOpen });
+    const showRight = vi.fn();
+    const { user } = renderLeft('ch-general', { ...NO_SCREEN_CHROME, rightOpen: false, showRight });
     await user.click(await screen.findByRole('button', { name: '9 around, show members' }));
-    expect(setRightOpen).toHaveBeenCalledWith(true);
+    // `showRight` opens them and moves focus into the island (the button goes away at wide).
+    expect(showRight).toHaveBeenCalledTimes(1);
   });
 
   it('records the community for the classic Home tab', async () => {

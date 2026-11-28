@@ -179,3 +179,55 @@ export const WithTop = () => {
     </Page>
   );
 };
+
+/** A filling sheet (`fill`): the content brings its own header with Close, a body that scrolls itself and a field at the foot (a thread). */
+function FillContent({ onClose }: { onClose: () => void }): JSX.Element {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: tokens.space.sm, padding: tokens.space.md }}>
+        <div style={{ flex: '1 1 auto' }}>
+          <Text variant="title" as="h2">
+            Thread
+          </Text>
+        </div>
+        <Button variant="ghost" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+      <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: `0 ${tokens.space.md}px` }}>
+        {Array.from({ length: 24 }, (_, i) => (
+          <div key={i}>
+            <Text>Reply {i + 1}: we wiped four times on that drop</Text>
+          </div>
+        ))}
+      </div>
+      <div style={{ padding: tokens.space.md }}>
+        <TextField label="Reply in thread" labelHidden shape="round" value="" onChange={() => undefined} />
+      </div>
+    </div>
+  );
+}
+
+function OpenFill(): JSX.Element {
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Thread</Button>
+      <Sheet open={open} onClose={() => setOpen(false)} title="Thread" fill>
+        <FillContent onClose={() => setOpen(false)} />
+      </Sheet>
+    </>
+  );
+}
+
+export const Fill = () => (
+  <Page mode="dark">
+    <OpenFill />
+  </Page>
+);
+
+export const FillLight = () => (
+  <Page mode="light">
+    <OpenFill />
+  </Page>
+);

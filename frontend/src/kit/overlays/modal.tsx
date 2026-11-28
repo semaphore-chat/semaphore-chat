@@ -48,6 +48,8 @@ export interface ModalProps {
   panel: (theme: Theme) => CSSObject;
   /** Where focus returns when it closes, whatever has focus as it opens. Default: what had focus as it opened. */
   opener?: HTMLElement | null;
+  /** Called once the closing transition has finished (the content is gone from the page). */
+  onExited?: () => void;
   children: ReactNode;
 }
 
@@ -60,6 +62,7 @@ export function Modal({
   container,
   panel,
   opener,
+  onExited,
   children,
 }: ModalProps): JSX.Element {
   // The element MUI's focus trap guards: layers opened from inside render in it.
@@ -97,6 +100,7 @@ export function Modal({
       {...fadeTransition}
       sx={{ '& .MuiDialog-container': { boxSizing: 'border-box', ...container, ...reducedMotion } }}
       slotProps={{
+        transition: { onExited },
         // A stable hook for tests that ask whether focus is inside a kit modal (not MUI's class name).
         container: { ref: containerRef, 'data-kit-modal': kind } as { ref: typeof containerRef },
         backdrop: {

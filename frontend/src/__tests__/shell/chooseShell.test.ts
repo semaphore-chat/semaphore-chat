@@ -268,10 +268,11 @@ describe('the registry (LOUNGE_ROUTES)', () => {
     expect(real).toEqual(fixtureWithoutLinks);
   });
 
-  it('the community home: threeIslands, community, left pane on a phone, no centre, the members island, no links', async () => {
+  it('the community home: threeIslands, community, left pane on a phone, the redirecting centre, the members island, no links', async () => {
     const route = LOUNGE_ROUTES.find((candidate) => candidate.path === COMMUNITY_HOME_PATH)!;
     const { default: screen } = await route.load();
-    expect(screen).toMatchObject({ template: 'threeIslands', place: 'community', phonePane: 'left', Centre: null, right: 'members' });
+    const { CommunityRedirect } = await import('../../shell/lounge/screens/CommunityRedirect');
+    expect(screen).toMatchObject({ template: 'threeIslands', place: 'community', phonePane: 'left', Centre: CommunityRedirect, right: 'members' });
     expect(screen.template === 'threeIslands' && screen.links).toBeUndefined();
   });
 

@@ -5,6 +5,9 @@
  * reply: to its parent, then its thread opens). Unpin, for those who may, only in a known text channel; the list
  * stays current through the socket's pin events and Unpin's refresh. Focus returns to More when the sheet closes; a
  * row that goes away (unpinned) hands focus to its neighbour.
+ *
+ * At wide (PR 10e, B9) the list is the screen's right panel instead (`PinnedPanel`): beside the chat, a heading and
+ * Close at its top; choosing a pin jumps without closing it, as the old docked panel.
  */
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -68,15 +71,19 @@ function PinRow({
   );
 }
 
-export function PinnedSheet({ communityId, channelId, writable, opener, onDone, onJump }: PinnedSheetProps): JSX.Element {
+/** The list's body (loading, error, empty, the rows) and its title, for the Sheet and the panel. */
+function usePinnedListView({
+  communityId,
+  channelId,
+  writable,
+  onChoose,
+}: {
+  communityId: string;
+  channelId: string;
+  writable: boolean;
+  onChoose: (pin: PinnedMessageDto) => void;
+}): { title: string; body: JSX.Element } {
   const { pins, isLoading, error, refetch, canUnpin, unpin } = usePinnedList(channelId, communityId);
-  const [open, setOpen] = useState(true);
-  const [chosen, setChosen] = useState<PinnedMessageDto | null>(null);
-  useEffect(() => {
-    if (open) return;
-    onDone();
-    if (chosen !== null) onJump(chosen);
-  }, [open, chosen, onDone, onJump]);
   const toasts = useToasts();
   const rows = useRef(new Map<string, HTMLElement>());
   // The row that had focus when it was unpinned: its neighbour takes focus once the list no longer has it.
@@ -131,10 +138,7 @@ export function PinnedSheet({ communityId, channelId, writable, opener, onDone, 
               if (element) rows.current.set(pin.id, element);
               else rows.current.delete(pin.id);
             }}
-            onJump={() => {
-              setChosen(pin);
-              setOpen(false);
-            }}
+            onJump={() => onChoose(pin)}
             onUnpin={() => {
               unpinned.current = { id: pin.id, index };
               void unpin(pin.id).then((ok) => {
@@ -149,9 +153,69 @@ export function PinnedSheet({ communityId, channelId, writable, opener, onDone, 
       </Stack>
     );
 
+  return { title: list.length > 0 ? `Pinned messages (${list.length})` : 'Pinned messages', body };
+}
+
+export function PinnedSheet({ communityId, channelId, writable, opener, onDone, onJump }: PinnedSheetProps): JSX.Element {
+  const [open, setOpen] = useState(true);
+  const [chosen, setChosen] = useState<PinnedMessageDto | null>(null);
+  useEffect(() => {
+    if (open) return;
+    onDone();
+    if (chosen !== null) onJump(chosen);
+  }, [open, chosen, onDone, onJump]);
+  const { title, body } = usePinnedListView({
+    communityId,
+    channelId,
+    writable,
+    onChoose: (pin) => {
+      setChosen(pin);
+      setOpen(false);
+    },
+  });
+
   return (
-    <Sheet open={open} onClose={() => setOpen(false)} title={list.length > 0 ? `Pinned messages (${list.length})` : 'Pinned messages'} size="lg" opener={opener}>
+    <Sheet open={open} onClose={() => setOpen(false)} title={title} size="lg" opener={opener}>
       {body}
     </Sheet>
+  );
+}
+
+export interface PinnedPanelProps {
+  communityId: string;
+  channelId: string;
+  writable: boolean;
+  /** Close: the screen closes the panel (and returns focus to More). */
+  onClose: () => void;
+  /** A pin was chosen; the panel stays open. */
+  onJump: (pin: PinnedMessageDto) => void;
+}
+
+/** The pinned messages as the right panel at wide: a heading with Close, then the list. Its heading takes focus. */
+export function PinnedPanel({ communityId, channelId, writable, onClose, onJump }: PinnedPanelProps): JSX.Element {
+  const { title, body } = usePinnedListView({ communityId, channelId, writable, onChoose: onJump });
+  const head = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const heading = head.current?.querySelector('h2');
+    if (heading instanceof HTMLElement) {
+      heading.setAttribute('tabindex', '-1');
+      heading.style.outline = 'none';
+      heading.focus({ preventScroll: true });
+    }
+  }, []);
+  return (
+    <Stack gap="md">
+      <div ref={head}>
+        <Stack direction="row" gap="sm">
+          <Stack direction="row" gap="xs" fill>
+            <Text variant="title" as="h2" truncate>
+              {title}
+            </Text>
+          </Stack>
+          <IconButton icon="X" label="Close pinned messages" variant="ghost" onClick={onClose} />
+        </Stack>
+      </div>
+      {body}
+    </Stack>
   );
 }

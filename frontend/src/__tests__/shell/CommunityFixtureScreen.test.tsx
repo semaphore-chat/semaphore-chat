@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import type { ComponentType } from 'react';
 import { renderWithKit } from '../test-utils/renderWithKit';
-import { ScreenChromeContext, type LoungeScreenProps } from '../../shell/lounge/screen';
+import { NO_SCREEN_CHROME, ScreenChromeContext, type LoungeScreenProps } from '../../shell/lounge/screen';
 import fixture from '../../shell/lounge/screens/CommunityFixtureScreen';
 
 vi.mock('../../data/communities', () => ({
@@ -19,7 +19,7 @@ describe('the community fixture centre', () => {
   it('below wide (members closed) offers Members, which opens them', async () => {
     const setRightOpen = vi.fn();
     const { user } = renderWithKit(
-      <ScreenChromeContext value={{ rightOpen: false, setRightOpen }}>
+      <ScreenChromeContext value={{ ...NO_SCREEN_CHROME, rightOpen: false, setRightOpen }}>
         <Centre params={{ communityId: 'c-1' }} />
       </ScreenChromeContext>,
     );
@@ -31,7 +31,7 @@ describe('the community fixture centre', () => {
 
   it('with the members beside it, no Members button', () => {
     renderWithKit(
-      <ScreenChromeContext value={{ rightOpen: true, setRightOpen: () => undefined }}>
+      <ScreenChromeContext value={{ ...NO_SCREEN_CHROME, rightOpen: true, setRightOpen: () => undefined }}>
         <Centre params={{ communityId: 'c-1' }} />
       </ScreenChromeContext>,
     );
