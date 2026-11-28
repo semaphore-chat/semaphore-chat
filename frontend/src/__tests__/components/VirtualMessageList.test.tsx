@@ -1505,6 +1505,29 @@ describe('VirtualMessageList', () => {
         resizeViewport(616);
         expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
       });
+
+      it('pins an unpinned reader the browser clamped to the bottom before the observer sees the growth', () => {
+        const { onAtBottomChange } = renderAtPhone();
+        layOut({ top: 508, client: 616, scroll: 1424 });
+        act(() => capturedProps.onScroll?.(508)); // 300 px above the bottom → not pinned
+        expect(onAtBottomChange).toHaveBeenLastCalledWith(false);
+
+        // 616 → 1028 with the same 1424 px of content: the browser clamps scrollTop to the new end. The scroll event
+        // arrives first, so virtua still has the phone's viewport, whose cached numbers put the reader 412 px above
+        // the bottom; the live layout has them at it.
+        layOut({ top: 396, client: 1028, scroll: 1424 });
+        act(() => capturedProps.onScroll?.(396));
+        expect(onAtBottomChange).toHaveBeenLastCalledWith(true);
+
+        // virtua's observer catches up (the clamp did not move where the reader was), then the list shrinks back.
+        fakeHandle.viewportSize = 1028;
+        resizeViewport(1028);
+        fakeHandle.scrollToIndex.mockClear();
+        layOut({ top: 396, client: 616, scroll: 1424 });
+        fakeHandle.viewportSize = 616;
+        resizeViewport(616);
+        expect(bottomScrolls()).toHaveLength(1);
+      });
     });
   });
 });
